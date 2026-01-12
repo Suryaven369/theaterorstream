@@ -4,25 +4,26 @@ import { NavLink } from "react-router-dom";
 
 const MobileNavigation = () => {
   return (
-    <section className="lg:hidden h-14 bg-black bg-opacity-70 backdrop-blur-2xl fixed bottom-0 w-full z-40">
-      <div className="flex items-center justify-between h-full text-neutral-400">
-        {mobileNavigation.map((nav, index) => {
-          return (
+    <section className="lg:hidden fixed bottom-0 w-full z-40 p-4">
+      <nav className="glass rounded-2xl p-2 mx-auto max-w-xs">
+        <div className="flex items-center justify-around">
+          {mobileNavigation.map((nav) => (
             <NavLink
               key={nav.label + "mobilenavigation"}
               to={nav.href}
               className={({ isActive }) =>
-                `px-3 flex h-full items-center flex-col justify-center ${
-                  isActive && "text-yellow-300"
+                `flex flex-col items-center justify-center p-3 rounded-xl transition-smooth ${isActive
+                  ? "bg-yellow-500/10 text-yellow-400"
+                  : "text-white/50 hover:text-white"
                 }`
               }
             >
-              <div className="text-2xl">{nav.icon}</div>
-              <p className="text-sm">{nav.label}</p>
+              <div className="text-xl mb-1">{nav.icon}</div>
+              <p className="text-[10px] font-medium">{nav.label}</p>
             </NavLink>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      </nav>
     </section>
   );
 };

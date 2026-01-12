@@ -6,6 +6,7 @@ import Home from "../views/Home";
 import Explore from "../views/Explore";
 import Details from "../views/Details";
 import Search from "../views/Search";
+import UpcomingPage from "../views/upcoming";
 
 const router = createBrowserRouter([
   {
@@ -15,6 +16,10 @@ const router = createBrowserRouter([
       {
         path: "",
         element: <Home />,
+      },
+      {
+        path: "upcoming",
+        element: <UpcomingPage />,
       },
       {
         path: ":explore",
