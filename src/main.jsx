@@ -10,18 +10,21 @@ import router from "./routes";
 import { Provider } from "react-redux";
 import { store } from "./store/store.jsx";
 
+import { AuthProvider } from "./context/AuthContext.jsx";
+
 /**setup axios */
 axios.defaults.baseURL = "https://api.themoviedb.org/3";
-axios.defaults.headers.common["Authorization"] = `Bearer ${
-  import.meta.env.VITE_MOVIE_API_KEY
-}`;
+axios.defaults.headers.common["Authorization"] = `Bearer ${import.meta.env.VITE_MOVIE_API_KEY
+  }`;
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <Provider store={store}>
-      <RouterProvider router={router}>
-        <App />
-      </RouterProvider>
+      <AuthProvider>
+        <RouterProvider router={router}>
+          <App />
+        </RouterProvider>
+      </AuthProvider>
     </Provider>
   </React.StrictMode>
 );

@@ -180,8 +180,8 @@ const UpcomingPage = () => {
       return true;
     });
 
-    // Sort by popularity (most popular first)
-    filtered = filtered.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+    // Sort by release date (earliest first)
+    filtered = filtered.sort((a, b) => new Date(a.release_date) - new Date(b.release_date));
 
     // If filtering by single month, limit to MAX_PER_MONTH
     if (selectedMonth !== null) {
@@ -219,10 +219,10 @@ const UpcomingPage = () => {
       tempOrganized[month].push(movie);
     });
 
-    // Sort each month by popularity and limit to MAX_PER_MONTH
+    // Sort each month by release date (earliest first) and limit to MAX_PER_MONTH
     MONTHS.forEach((month) => {
       organized[month.id] = tempOrganized[month.id]
-        .sort((a, b) => (b.popularity || 0) - (a.popularity || 0))
+        .sort((a, b) => new Date(a.release_date) - new Date(b.release_date))
         .slice(0, MAX_PER_MONTH);
     });
 
@@ -266,19 +266,19 @@ const UpcomingPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a]">
+    <div className="min-h-screen bg-[#0a0a0a] pb-20 lg:pb-0">
       {/* Header */}
-      <section className="pt-20 pb-4 px-4 sticky top-0 z-40 bg-[#0a0a0a]/95 backdrop-blur-md border-b border-white/5">
+      <section className="pt-16 sm:pt-20 pb-3 sm:pb-4 px-3 sm:px-4 sticky top-0 z-40 bg-[#0a0a0a]/95 backdrop-blur-md border-b border-white/5">
         <div className="container mx-auto">
           <div className="flex flex-col gap-4">
             {/* Title Row */}
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center">
-                  <FaCalendarAlt className="text-black text-lg" />
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center">
+                  <FaCalendarAlt className="text-black text-sm sm:text-lg" />
                 </div>
                 <div>
-                  <h1 className="text-xl md:text-2xl font-bold text-white">
+                  <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-white">
                     Coming <span className="text-green-400">Soon</span>
                   </h1>
                   <p className="text-xs text-white/40">
@@ -403,7 +403,7 @@ const UpcomingPage = () => {
               {[...Array(3)].map((_, i) => (
                 <div key={i} className="animate-pulse">
                   <div className="h-6 bg-white/5 rounded w-32 mb-4" />
-                  <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-3">
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-2 sm:gap-3">
                     {[...Array(10)].map((_, j) => (
                       <div key={j} className="aspect-[2/3] bg-white/5 rounded-lg" />
                     ))}
@@ -450,7 +450,7 @@ const UpcomingPage = () => {
 
                     {/* Movies Grid */}
                     {movies.length > 0 ? (
-                      <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-3">
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2 sm:gap-3">
                         {movies.map((movie) => (
                           <CompactCard key={movie.id} movie={movie} />
                         ))}
@@ -481,7 +481,7 @@ const UpcomingPage = () => {
 
                 {/* Movies Grid */}
                 {filteredMovies.length > 0 ? (
-                  <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-3">
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2 sm:gap-3">
                     {filteredMovies.map((movie) => (
                       <CompactCard key={movie.id} movie={movie} />
                     ))}

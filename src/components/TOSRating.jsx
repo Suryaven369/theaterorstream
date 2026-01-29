@@ -113,7 +113,7 @@ const CircleRating = ({ value, label, color = "green" }) => {
 };
 
 // Main TOS Rating Component
-const TOSRating = ({ ratings, verdict }) => {
+const TOSRating = ({ ratings, verdict, onRateClick, hasUserRated }) => {
     if (!ratings) return null;
 
     // Rating categories with their colors
@@ -196,17 +196,41 @@ const TOSRating = ({ ratings, verdict }) => {
                 })}
             </div>
 
-            {/* Verdict */}
-            {verdict && (
-                <div className="pt-4 border-t border-white/10">
-                    <div className="flex items-center gap-3">
-                        <span className={`px-3 py-1.5 rounded-full text-sm font-semibold border ${getVerdictColor()}`}>
-                            {overallScore >= 7 ? "🎬 Theater" : overallScore >= 5 ? "📺 Stream" : "⏭️ Skip"}
-                        </span>
+            {/* Footer with Verdict and Rate Button */}
+            <div className="pt-4 border-t border-white/10 flex items-center justify-between">
+                {/* Verdict */}
+                <div className="flex items-center gap-3 flex-1">
+                    <span className={`px-3 py-1.5 rounded-full text-sm font-semibold border ${getVerdictColor()}`}>
+                        {overallScore >= 7 ? "🎬 Theater" : overallScore >= 5 ? "📺 Stream" : "⏭️ Skip"}
+                    </span>
+                    {verdict && (
                         <p className="text-white/70 text-sm flex-1">{verdict}</p>
-                    </div>
+                    )}
                 </div>
-            )}
+
+                {/* Rate Button - Changes based on whether user has rated */}
+                {onRateClick && (
+                    <button
+                        onClick={onRateClick}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-full text-white text-sm font-medium transition-all shadow-lg ${hasUserRated
+                            ? 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 hover:shadow-green-500/25'
+                            : 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 hover:shadow-orange-500/25'
+                            }`}
+                    >
+                        {hasUserRated ? (
+                            <>
+                                <span>✓</span>
+                                Update Rating
+                            </>
+                        ) : (
+                            <>
+                                <span>⭐</span>
+                                Rate This
+                            </>
+                        )}
+                    </button>
+                )}
+            </div>
         </div>
     );
 };

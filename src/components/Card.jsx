@@ -1,12 +1,45 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useSelector } from "react-redux";
 import moment from "moment";
 import { Link } from "react-router-dom";
 import { FaStar } from "react-icons/fa";
+import { getMovieRatings } from "../lib/supabase";
 
 const Card = ({ data, trending, index, media_type }) => {
   const imageURL = useSelector((state) => state.movieData.imageURL);
   const mediaType = data.media_type ?? media_type;
+  const [tosRating, setTosRating] = useState(null);
+
+  // Fetch TOS community rating from Supabase
+  useEffect(() => {
+    const fetchTosRating = async () => {
+      if (!data?.id) return;
+
+      try {
+        const ratings = await getMovieRatings(data.id.toString());
+        if (ratings && ratings.totalRatings > 0) {
+          // Calculate average from all categories
+          const categories = ['acting', 'screenplay', 'sound', 'direction', 'entertainment', 'pacing', 'cinematography'];
+          const validRatings = categories.filter(cat => ratings[cat] !== null && ratings[cat] !== undefined);
+          if (validRatings.length > 0) {
+            const avg = validRatings.reduce((sum, cat) => sum + ratings[cat], 0) / validRatings.length;
+            setTosRating({
+              score: avg,
+              count: ratings.totalRatings
+            });
+          }
+        }
+      } catch (error) {
+        // Silently fail, will use TMDB rating
+      }
+    };
+
+    fetchTosRating();
+  }, [data?.id]);
+
+  // Determine which rating to display
+  const displayRating = tosRating ? tosRating.score : (data.vote_average || 0);
+  const isTosRating = tosRating !== null;
 
   return (
     <Link
@@ -34,11 +67,26 @@ const Card = ({ data, trending, index, media_type }) => {
         {/* Gradient overlay on hover */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
-        {/* Rating badge - always visible */}
+        {/* Rating badge - TOS or TMDB */}
         <div className="absolute top-2 right-2">
-          <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-sm text-xs font-medium text-yellow-400">
-            <FaStar className="text-[10px]" />
-            {Number(data.vote_average).toFixed(1)}
+          <span
+            className={`flex items-center gap-1 px-2 py-0.5 rounded-md backdrop-blur-sm text-xs font-medium ${isTosRating
+                ? 'bg-gradient-to-r from-orange-500/80 to-red-500/80 text-white'
+                : 'bg-black/60 text-yellow-400'
+              }`}
+            title={isTosRating ? `TOS Rating (${tosRating.count} votes)` : 'TMDB Rating'}
+          >
+            {isTosRating ? (
+              <>
+                <span className="text-[8px] font-bold">TOS</span>
+                {displayRating.toFixed(1)}
+              </>
+            ) : (
+              <>
+                <FaStar className="text-[10px]" />
+                {Number(displayRating).toFixed(1)}
+              </>
+            )}
           </span>
         </div>
 

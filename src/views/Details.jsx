@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import useFetch from "../hooks/useFetch";
 import useFetchDetails from "../hooks/useFetchDetails";
 import useReviewAnalysis from "../hooks/useReviewAnalysis";
 import { useSelector } from "react-redux";
@@ -8,25 +7,36 @@ import moment from "moment";
 import VideoPlay from "../components/VideoPlay";
 import ReviewAnalysis from "../components/ReviewAnalysis";
 import TOSRating from "../components/TOSRating";
-import Card from "../components/Card";
 import axios from "axios";
 import { FaStar, FaClock, FaCalendar, FaPlay } from "react-icons/fa";
 import { IoArrowBack } from "react-icons/io5";
+import UserRatingSystem, { RatingModal } from "../components/UserRatingSystem";
+import { getMovieRatings, getUserRatingForMovie } from "../lib/supabase";
+import { ShareButton } from "../components/ShareMovie";
+import ParentGuide from "../components/ParentGuide";
+import VibeChart from "../components/VibeChart";
+import { useAuth } from "../context/AuthContext";
+import { useNavigate } from "react-router-dom";
+import MovieActionButtons from "../components/MovieActionButtons";
 
 const Details = () => {
   const params = useParams();
+  const navigate = useNavigate();
+  const { isAuthenticated, user } = useAuth();
   const [tmbdID, setTmbdID] = useState(null);
   const [AIRatings, setAIRatings] = useState({});
+  const [communityRatings, setCommunityRatings] = useState(null);
+  const [displayRatings, setDisplayRatings] = useState(null);
+  const [userRating, setUserRating] = useState(null); // User's existing rating
   const imageURL = useSelector((state) => state.movieData.imageURL);
   const { data } = useFetchDetails(`/${params?.explore}/${params?.id}`);
   const { data: castData } = useFetchDetails(
     `/${params?.explore}/${params?.id}/credits`
   );
-  const { data: similarData } = useFetch(
-    `/${params?.explore}/${params?.id}/similar`
-  );
   const [playVideo, setPlayVideo] = useState(false);
   const [playVideoId, setPlayVideoId] = useState("");
+  const [ratingModalOpen, setRatingModalOpen] = useState(false);
+  const [ratingsKey, setRatingsKey] = useState(0); // For refreshing ratings
 
   const { analysis, loading: analysisLoading } = useReviewAnalysis(params?.id);
 
@@ -38,11 +48,9 @@ const Details = () => {
   const duration = (data?.runtime / 60)?.toFixed(1)?.split(".");
   const director = castData?.crew?.find((el) => el?.job === "Director");
 
-
   // Generate fallback TOS ratings based on TMDB score
   const generateFallbackRatings = (tmdbScore) => {
     const baseScore = tmdbScore || 7;
-    // Add some variance to make each category slightly different
     const variance = () => (Math.random() - 0.5) * 1.5;
     const clamp = (val) => Math.max(1, Math.min(10, val));
 
@@ -62,6 +70,59 @@ const Details = () => {
     };
   };
 
+  // Fetch community ratings from Supabase
+  useEffect(() => {
+    const fetchCommunityRatings = async () => {
+      if (!params?.id) return;
+
+      try {
+        const ratings = await getMovieRatings(params.id);
+        if (ratings && ratings.totalRatings > 0) {
+          setCommunityRatings(ratings);
+        }
+      } catch (error) {
+        console.log("Error fetching community ratings:", error);
+      }
+    };
+
+    fetchCommunityRatings();
+  }, [params?.id, ratingsKey]);
+
+  // Fetch user's existing rating for this movie
+  useEffect(() => {
+    const fetchUserRating = async () => {
+      if (!params?.id || !user?.id) {
+        setUserRating(null);
+        return;
+      }
+
+      try {
+        const rating = await getUserRatingForMovie(user.id, params.id);
+        setUserRating(rating);
+      } catch (error) {
+        console.log("Error fetching user rating:", error);
+      }
+    };
+
+    fetchUserRating();
+  }, [params?.id, user?.id, ratingsKey]);
+
+  // Handle rate button click
+  const handleRateClick = () => {
+    if (!isAuthenticated) {
+      sessionStorage.setItem('authMessage', 'Please sign up or login to rate movies');
+      navigate('/auth');
+      return;
+    }
+    setRatingModalOpen(true);
+  };
+
+  // Handle rating submission success
+  const handleRatingSubmitSuccess = () => {
+    setRatingsKey(prev => prev + 1); // Force refetch of ratings and user rating
+  };
+
+  // Fetch AI/scraper ratings
   useEffect(() => {
     if (!tmbdID && !data?.vote_average) return;
 
@@ -73,7 +134,6 @@ const Details = () => {
         setAIRatings(response?.data);
       } catch (error) {
         console.log("Rating fetch error, using fallback:", error);
-        // Generate fallback ratings based on TMDB score
         if (data?.vote_average) {
           setAIRatings(generateFallbackRatings(data.vote_average));
         }
@@ -82,6 +142,41 @@ const Details = () => {
 
     fetchTosRating();
   }, [tmbdID, data?.vote_average]);
+
+  // Determine which ratings to display
+  useEffect(() => {
+    if (communityRatings && communityRatings.totalRatings > 0) {
+      const ratings = {
+        acting: communityRatings.acting,
+        screenplay: communityRatings.screenplay,
+        sound: communityRatings.sound,
+        direction: communityRatings.direction,
+        entertainmentValue: communityRatings.entertainment,
+        pacing: communityRatings.pacing,
+        cinematicQuality: communityRatings.cinematography,
+      };
+
+      const avgScore = Object.values(ratings).filter(v => v).reduce((a, b) => a + b, 0) /
+        Object.values(ratings).filter(v => v).length;
+
+      setDisplayRatings({
+        ratings: {
+          ...ratings,
+          verdict: avgScore >= 7 ? `Community Rating: Worth watching in theaters! (${communityRatings.totalRatings} ratings)`
+            : avgScore >= 5 ? `Community Rating: A good streaming choice. (${communityRatings.totalRatings} ratings)`
+              : `Community Rating: Mixed reviews. (${communityRatings.totalRatings} ratings)`
+        },
+        source: 'community'
+      });
+    } else if (AIRatings?.ratings) {
+      setDisplayRatings({
+        ratings: AIRatings.ratings,
+        source: 'ai'
+      });
+    } else if (data?.vote_average) {
+      setDisplayRatings(generateFallbackRatings(data.vote_average));
+    }
+  }, [communityRatings, AIRatings, data?.vote_average]);
 
   useEffect(() => {
     if (!data) return;
@@ -108,19 +203,32 @@ const Details = () => {
 
   return (
     <div className="min-h-screen bg-[#0a0a0a]">
-      {/* Hero Backdrop */}
-      <div className="relative h-[50vh] md:h-[60vh] lg:h-[70vh]">
+      {/* Hero Backdrop - Extended height */}
+      <div className="relative h-[55vh] md:h-[65vh] lg:h-[75vh]">
         <div className="absolute inset-0">
           {data?.backdrop_path && (
             <img
               src={imageURL + data?.backdrop_path}
-              className="w-full h-full object-cover"
+              className="w-full h-full object-cover object-top"
               alt={data?.title || data?.name}
             />
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/60 to-transparent" />
-          <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0a] via-transparent to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/50 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0a]/80 via-transparent to-transparent" />
         </div>
+
+        {/* Centered Play Button on Backdrop */}
+        <button
+          onClick={() => handlePlayVideo(data)}
+          className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10 group"
+        >
+          <div className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center transition-all duration-300 group-hover:scale-110 group-hover:bg-white/20 group-hover:shadow-2xl group-hover:shadow-white/10">
+            <FaPlay className="text-white text-2xl md:text-3xl ml-1 group-hover:scale-110 transition-transform" />
+          </div>
+          <span className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-sm text-white/60 font-medium opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+            Watch Trailer
+          </span>
+        </button>
 
         {/* Back Button */}
         <Link
@@ -132,12 +240,13 @@ const Details = () => {
         </Link>
       </div>
 
-      {/* Content */}
-      <div className="container mx-auto px-6 -mt-48 md:-mt-64 relative z-10">
+      {/* Content - Positioned lower */}
+      <div className="container mx-auto px-6 -mt-40 md:-mt-56 lg:-mt-64 relative z-10">
         <div className="flex flex-col lg:flex-row gap-8 lg:gap-12">
-          {/* Poster */}
-          <div className="flex-shrink-0">
-            <div className="w-48 md:w-64 mx-auto lg:mx-0 rounded-2xl overflow-hidden shadow-2xl">
+          {/* Left Column - Poster, Vibe Chart, Actions */}
+          <div className="flex-shrink-0 w-full lg:w-72">
+            {/* Poster */}
+            <div className="w-48 md:w-64 lg:w-full mx-auto lg:mx-0 rounded-2xl overflow-hidden shadow-2xl">
               {data?.poster_path ? (
                 <img
                   src={imageURL + data?.poster_path}
@@ -151,31 +260,60 @@ const Details = () => {
               )}
             </div>
 
-            {/* Play Button */}
-            <button
-              onClick={() => handlePlayVideo(data)}
-              className="btn-primary w-full mt-4 flex items-center justify-center gap-2"
-            >
-              <FaPlay className="text-sm" />
-              Watch Trailer
-            </button>
+            {/* Vibe Chart - RIGHT BELOW POSTER */}
+            {data?.genres && (
+              <div className="mt-4 hidden lg:block">
+                <VibeChart genres={data.genres} compact={true} />
+              </div>
+            )}
+
+            {/* Movie Action Buttons - Watchlist, Watched, Like, Save */}
+            {data && (
+              <MovieActionButtons
+                movieId={params?.id}
+                movieTitle={data?.title || data?.name}
+                posterPath={data?.poster_path}
+                mediaType={params?.explore}
+              />
+            )}
+
+            {/* Share Button */}
+            {displayRatings?.ratings && (
+              <div className="mt-3">
+                <ShareButton
+                  movieTitle={data?.title || data?.name}
+                  movieYear={data?.release_date?.split('-')[0] || data?.first_air_date?.split('-')[0]}
+                  posterUrl={data?.poster_path}
+                  backdropUrl={data?.backdrop_path}
+                  ratings={displayRatings.ratings}
+                  imageURL={imageURL}
+                />
+              </div>
+            )}
           </div>
 
-          {/* Details */}
+          {/* Right Column - Details */}
           <div className="flex-1 pt-4 lg:pt-12">
             {/* Title */}
-            <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-3">
+            <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-2">
               {data?.title || data?.name}
             </h1>
 
             {data?.tagline && (
-              <p className="text-white/40 text-lg italic mb-6">
+              <p className="text-white/40 text-lg italic mb-4">
                 "{data.tagline}"
               </p>
             )}
 
+            {/* Parent Guide Badges - Fetches real TMDB certifications */}
+            <ParentGuide
+              movieId={params?.id}
+              mediaType={params?.explore}
+              genres={data?.genres}
+            />
+
             {/* Meta info */}
-            <div className="flex flex-wrap items-center gap-4 mb-8">
+            <div className="flex flex-wrap items-center gap-4 mb-6">
               <span className="rating-badge flex items-center gap-1.5">
                 <FaStar className="text-yellow-400" />
                 {Number(data?.vote_average).toFixed(1)}
@@ -198,7 +336,7 @@ const Details = () => {
 
             {/* Genres */}
             {data?.genres && (
-              <div className="flex flex-wrap gap-2 mb-8">
+              <div className="flex flex-wrap gap-2 mb-6">
                 {data.genres.map((genre) => (
                   <span
                     key={genre.id}
@@ -211,23 +349,32 @@ const Details = () => {
             )}
 
             {/* Overview */}
-            <div className="mb-8">
+            <div className="mb-6">
               <h3 className="text-lg font-semibold text-white mb-3">
                 Overview
               </h3>
               <p className="text-white/60 leading-relaxed">{data?.overview}</p>
             </div>
 
-            {/* TOS Rating - Circular Progress Indicators */}
-            {AIRatings?.ratings && (
+            {/* Vibe Chart - Mobile Only */}
+            {data?.genres && (
+              <div className="mb-6 lg:hidden">
+                <VibeChart genres={data.genres} />
+              </div>
+            )}
+
+            {/* TOS Rating */}
+            {displayRatings?.ratings && (
               <TOSRating
-                ratings={AIRatings.ratings}
-                verdict={AIRatings.ratings.verdict}
+                ratings={displayRatings.ratings}
+                verdict={displayRatings.ratings.verdict}
+                onRateClick={handleRateClick}
+                hasUserRated={!!userRating}
               />
             )}
 
             {/* Credits */}
-            <div className="flex gap-8 mb-8">
+            <div className="flex gap-8 mb-6">
               {director && (
                 <div>
                   <p className="text-white/40 text-sm mb-1">Director</p>
@@ -242,59 +389,60 @@ const Details = () => {
               )}
             </div>
 
-            {/* Cast */}
+            {/* Cast - Compact */}
             {castData?.cast?.length > 0 && (
-              <div className="mb-8">
-                <h3 className="text-lg font-semibold text-white mb-4">Cast</h3>
-                <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-none">
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold text-white mb-3">Top Cast</h3>
+                <div className="flex gap-3 overflow-x-auto pb-3 scrollbar-none">
                   {castData.cast
                     .filter((el) => el?.profile_path)
-                    .slice(0, 10)
+                    .slice(0, 8)
                     .map((actor) => (
                       <div
                         key={actor.id}
-                        className="flex-shrink-0 text-center w-20"
+                        className="flex-shrink-0 flex items-center gap-2 bg-white/5 rounded-full pr-3"
                       >
                         <img
                           src={imageURL + actor.profile_path}
-                          className="w-16 h-16 rounded-full object-cover mx-auto mb-2"
+                          className="w-10 h-10 rounded-full object-cover"
                           alt={actor.name}
                         />
-                        <p className="text-xs text-white/70 line-clamp-2">
+                        <span className="text-xs text-white/70 whitespace-nowrap">
                           {actor.name}
-                        </p>
+                        </span>
                       </div>
                     ))}
                 </div>
               </div>
             )}
 
+            {/* Review Analysis */}
             <ReviewAnalysis analysis={analysis} loading={analysisLoading} />
           </div>
         </div>
+
+        {/* Community Discussion Section - FULL WIDTH, DISPLAYED DIRECTLY */}
+        <div className="mt-12 pb-16">
+          {/* <div className="flex items-center gap-3 mb-6">
+            <span className="text-2xl">💬</span>
+            <h2 className="text-2xl font-bold text-white">Community Discussion</h2>
+            <span className="text-white/40 text-sm">Share your thoughts like a Reddit thread</span>
+          </div> */}
+
+          {/* User Rating System - Now displayed directly */}
+          {data && (
+            <UserRatingSystem
+              movieId={params?.id}
+              movieTitle={data?.title || data?.name}
+              hasUserRated={!!userRating}
+              existingRating={userRating}
+              userId={user?.id}
+            />
+          )}
+        </div>
       </div>
 
-      {/* Similar Movies */}
-      {similarData?.length > 0 && (
-        <section className="px-6 py-16">
-          <div className="container mx-auto">
-            <h2 className="text-2xl font-semibold text-white mb-8">
-              Similar Movies
-            </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6">
-              {similarData.slice(0, 6).map((movie, index) => (
-                <Card
-                  key={movie.id}
-                  data={movie}
-                  media_type={params?.explore}
-                  index={index}
-                />
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
-
+      {/* Video Player Modal */}
       {playVideo && (
         <VideoPlay
           data={playVideoId}
@@ -302,6 +450,17 @@ const Details = () => {
           media_type={params?.explore}
         />
       )}
+
+      {/* Rating Modal */}
+      <RatingModal
+        isOpen={ratingModalOpen}
+        onClose={() => setRatingModalOpen(false)}
+        movieId={params?.id}
+        movieTitle={data?.title || data?.name}
+        onSubmitSuccess={handleRatingSubmitSuccess}
+        existingRating={userRating}
+        userId={user?.id}
+      />
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import axios from "axios";
 import { useEffect } from "react";
 import { useDispatch } from "react-redux";
@@ -11,6 +11,7 @@ import MobileNavigation from "./components/MobileNavigation";
 
 function App() {
   const dispatch = useDispatch();
+  const location = useLocation();
 
   const fetchConfiguration = async () => {
     try {
@@ -25,6 +26,11 @@ function App() {
     fetchConfiguration();
   }, []);
 
+  // Scroll to top on route change
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [location.pathname]);
+
   return (
     <div className="bg-[#0a0a0a] min-h-screen">
       <Header />
@@ -38,3 +44,4 @@ function App() {
 }
 
 export default App;
+
