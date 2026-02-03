@@ -394,6 +394,7 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
     ];
 
     useEffect(() => { loadData(); }, []);
+    useEffect(() => { setActiveTab(initialTab); }, [initialTab]);
     useEffect(() => { setSavedIds(new Set(library.map(m => m.tmdb_id))); }, [library]);
     useEffect(() => {
         if (activeTab === 'browse' || activeTab === 'bulk') {
@@ -845,7 +846,6 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
         await removeMovieFromSection(sectionId, tmdbId);
         await loadData();
     };
-
 
     return (
         <div className="min-h-screen bg-[#0a0a0a] py-6">
@@ -1424,6 +1424,32 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                 {
                     activeTab === 'bulk' && (
                         <div>
+                            <div className="mb-4">
+                                <h1 className="text-xl font-bold text-white">⚡ Bulk Import</h1>
+                                <p className="text-xs text-white/40">Import multiple movies or TV shows at once</p>
+                            </div>
+
+                            {/* Sub-tabs for Library page */}
+                            <div className="flex gap-1 border-b border-white/10 mb-4">
+                                <button
+                                    onClick={() => setActiveTab('library')}
+                                    className="px-3 py-2 text-xs font-medium text-white/50 hover:text-white"
+                                >
+                                    📚 Library
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('browse')}
+                                    className="px-3 py-2 text-xs font-medium text-white/50 hover:text-white"
+                                >
+                                    🔍 Browse TMDB
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('bulk')}
+                                    className="px-3 py-2 text-xs font-medium text-white border-b-2 border-orange-500"
+                                >
+                                    ⚡ Bulk Import
+                                </button>
+                            </div>
 
 
                             {/* Filters Row - Compact */}
