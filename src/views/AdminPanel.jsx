@@ -850,18 +850,14 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
     return (
         <div className="min-h-screen bg-[#0a0a0a] py-6">
             <div className="container mx-auto px-4 max-w-6xl">
-                {/* Header */}
-                <div className="mb-4">
-                    <h1 className="text-xl font-bold text-white">🎬 Admin Panel</h1>
-                    <p className="text-xs text-white/40">Content Management System</p>
-                </div>
 
-                {/* Tabs */}
-                <Tab tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
-
-                {/* Dashboard Tab */}
+                {/* Dashboard View - Only stats, no tabs */}
                 {activeTab === 'dashboard' && (
                     <div>
+                        <div className="mb-6">
+                            <h1 className="text-xl font-bold text-white">📊 Dashboard</h1>
+                            <p className="text-xs text-white/40">Overview of your content library</p>
+                        </div>
                         {/* Stats Cards */}
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                             <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/10 rounded-xl p-4 border border-blue-500/20">
@@ -891,6 +887,32 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                 {/* Library Tab */}
                 {activeTab === 'library' && (
                     <div>
+                        <div className="mb-4">
+                            <h1 className="text-xl font-bold text-white">📚 Library</h1>
+                            <p className="text-xs text-white/40">Manage your movies and TV shows</p>
+                        </div>
+
+                        {/* Sub-tabs for Library page */}
+                        <div className="flex gap-1 border-b border-white/10 mb-4">
+                            <button
+                                onClick={() => setActiveTab('library')}
+                                className="px-3 py-2 text-xs font-medium text-white border-b-2 border-orange-500"
+                            >
+                                📚 Library
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('browse')}
+                                className="px-3 py-2 text-xs font-medium text-white/50 hover:text-white"
+                            >
+                                🔍 Browse TMDB
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('bulk')}
+                                className="px-3 py-2 text-xs font-medium text-white/50 hover:text-white"
+                            >
+                                ⚡ Bulk Import
+                            </button>
+                        </div>
                         <div className="flex gap-2 mb-3">
                             <input
                                 type="text"
@@ -1085,6 +1107,33 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                 {/* Browse Tab */}
                 {activeTab === 'browse' && (
                     <div>
+                        <div className="mb-4">
+                            <h1 className="text-xl font-bold text-white">🔍 Browse TMDB</h1>
+                            <p className="text-xs text-white/40">Search and import movies from TMDB</p>
+                        </div>
+
+                        {/* Sub-tabs for Library page */}
+                        <div className="flex gap-1 border-b border-white/10 mb-4">
+                            <button
+                                onClick={() => setActiveTab('library')}
+                                className="px-3 py-2 text-xs font-medium text-white/50 hover:text-white"
+                            >
+                                📚 Library
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('browse')}
+                                className="px-3 py-2 text-xs font-medium text-white border-b-2 border-orange-500"
+                            >
+                                🔍 Browse TMDB
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('bulk')}
+                                className="px-3 py-2 text-xs font-medium text-white/50 hover:text-white"
+                            >
+                                ⚡ Bulk Import
+                            </button>
+                        </div>
+
                         {/* TMDB Search */}
                         <div className="bg-white/5 rounded p-3 mb-4">
                             <h4 className="text-xs font-medium text-white mb-2">🔍 Search TMDB</h4>
