@@ -148,14 +148,24 @@ const Home = () => {
                 })
                 .map((section) => (
                   <div key={section.id}>
-                    <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
-                      <div className="p-1.5 sm:p-2 rounded-lg bg-purple-500/10">
-                        <span className="text-base sm:text-lg">{section.icon}</span>
+                    <div className="flex items-center gap-3 mb-6 group">
+                      {/* Icon with shiny background */}
+                      <div className="relative p-2 rounded-xl bg-white/5 border border-white/10 overflow-hidden">
+                        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                        <span className="relative text-xl sm:text-2xl drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]">{section.icon}</span>
                       </div>
-                      <h2 className="text-lg sm:text-xl font-semibold text-white">{section.name}</h2>
-                      {section.description && (
-                        <span className="text-xs text-white/40 hidden sm:inline">{section.description}</span>
-                      )}
+
+                      {/* Section Title with Gradient and Animation */}
+                      <div className="flex flex-col">
+                        <h2 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-white group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-yellow-200 group-hover:via-yellow-400 group-hover:to-orange-500 transition-all duration-300">
+                          {section.name}
+                        </h2>
+                        {section.description && (
+                          <span className="text-xs sm:text-sm text-white/40 font-medium tracking-wide">
+                            {section.description}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {/* Get movies for the selected region */}
@@ -164,25 +174,28 @@ const Home = () => {
 
                       if (regionMovies.length > 0) {
                         return (
-                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-4">
-                            {regionMovies.slice(0, section.max_movies || 10).map((movie, index) => (
-                              <Card
-                                key={movie.tmdb_id}
-                                data={{
-                                  id: movie.tmdb_id,
-                                  title: movie.title,
-                                  poster_path: movie.poster_path,
-                                  backdrop_path: movie.backdrop_path,
-                                  media_type: movie.media_type,
-                                  vote_average: movie.vote_average,
-                                  release_date: movie.release_date,
-                                  overview: movie.overview,
-                                  genres: movie.genres,
-                                  runtime: movie.runtime
-                                }}
-                                media_type={movie.media_type || "movie"}
-                                index={index}
-                              />
+                          /* Grid Layout - More columns for smaller posters, wider gap for whitespace */
+                          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-4 sm:gap-6 px-1">
+                            {regionMovies.slice(0, section.max_movies || 14).map((movie, index) => (
+                              <div key={movie.tmdb_id} className="transform hover:scale-105 transition-transform duration-300">
+                                <Card
+                                  data={{
+                                    id: movie.tmdb_id,
+                                    title: movie.title,
+                                    poster_path: movie.poster_path,
+                                    backdrop_path: movie.backdrop_path,
+                                    media_type: movie.media_type,
+                                    vote_average: movie.vote_average,
+                                    release_date: movie.release_date,
+                                    overview: movie.overview,
+                                    genres: movie.genres,
+                                    runtime: movie.runtime
+                                  }}
+                                  media_type={movie.media_type || "movie"}
+                                  index={index}
+                                  mini={true} // Hint to card to be compact if supported
+                                />
+                              </div>
                             ))}
                           </div>
                         );
