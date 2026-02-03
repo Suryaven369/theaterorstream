@@ -368,7 +368,7 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
     const [tmdbMediaType, setTmdbMediaType] = useState('movie'); // Global media type toggle
     const [tmdbYear, setTmdbYear] = useState(''); // Year filter
     const [tmdbCountry, setTmdbCountry] = useState(''); // Country filter
-    const [tmdbRegion, setTmdbRegion] = useState('IN'); // Region for Now Playing (matches frontend default)
+    const [tmdbRegion, setTmdbRegion] = useState('US'); // Region for Now Playing (matches frontend default)
     const [tmdbPage, setTmdbPage] = useState(1); // Current page
     const [tmdbTotalPages, setTmdbTotalPages] = useState(0); // Total pages available
     const [tmdbResultsLimit, setTmdbResultsLimit] = useState(60); // Number of movies to fetch
@@ -1221,8 +1221,9 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                                         }}
                                         className="w-full bg-black/30 rounded px-3 py-1.5 text-xs text-white border border-white/10"
                                     >
-                                        <option value="IN">🇮🇳 India</option>
+                                        <option value="">🌍 All Regions</option>
                                         <option value="US">🇺🇸 USA</option>
+                                        <option value="IN">🇮🇳 India</option>
                                         <option value="GB">🇬🇧 UK</option>
                                         <option value="CA">🇨🇦 Canada</option>
                                         <option value="AU">🇦🇺 Australia</option>

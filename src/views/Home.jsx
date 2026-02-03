@@ -68,7 +68,7 @@ const Home = () => {
   return (
     <div className="min-h-screen bg-[#0a0a0a] pb-20 lg:pb-0">
       {/* Header Section with Region */}
-      <section className="pt-20 sm:pt-24 pb-6 sm:pb-8 px-4 sm:px-8 md:pl-20 lg:pl-32">
+      <section className="pt-20 sm:pt-24 pb-6 sm:pb-8 px-4 sm:px-8 md:pl-12 lg:pl-16">
         <div className="container mx-auto">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div>
@@ -111,7 +111,7 @@ const Home = () => {
       </section>
 
       {/* Main Content Grid */}
-      <section className="px-4 sm:px-8 md:pl-20 lg:pl-32 pb-8">
+      <section className="px-4 sm:px-8 md:pl-12 lg:pl-16 pb-8">
         <div className="container mx-auto">
           <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 sm:gap-8">
             {/* Left Content - 3 columns */}
@@ -174,9 +174,9 @@ const Home = () => {
 
                       if (regionMovies.length > 0) {
                         return (
-                          /* Grid Layout - More columns for smaller posters, wider gap for whitespace */
-                          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-4 sm:gap-6 px-1">
-                            {regionMovies.slice(0, section.max_movies || 14).map((movie, index) => (
+                          /* Grid Layout - 5 Columns for Desktop (Standard Size), 2 Rows */
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 sm:gap-6 px-1">
+                            {regionMovies.slice(0, 10).map((movie, index) => (
                               <div key={movie.tmdb_id} className="transform hover:scale-105 transition-transform duration-300">
                                 <Card
                                   data={{
@@ -193,7 +193,7 @@ const Home = () => {
                                   }}
                                   media_type={movie.media_type || "movie"}
                                   index={index}
-                                  mini={true} // Hint to card to be compact if supported
+                                // Removed mini={true} to restore standard poster sizing
                                 />
                               </div>
                             ))}
