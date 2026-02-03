@@ -443,7 +443,7 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
         setLoading(false);
     };
 
-    const fetchTmdb = async (source, startPage = 1, append = false) => {
+    const fetchTmdb = async (source, startPage = 1, append = false, limitOverride = null) => {
         setLoadingTmdb(true);
         setTmdbSource(source);
         try {
@@ -476,7 +476,8 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
             }
 
             // Calculate number of pages to fetch based on results limit (20 movies per page)
-            const pagesToFetch = Math.ceil(tmdbResultsLimit / 20);
+            const effectiveLimit = limitOverride || tmdbResultsLimit;
+            const pagesToFetch = Math.ceil(effectiveLimit / 20);
             const requests = [];
 
             // If year or country filter is active, OR if it's upcoming category, use discover endpoint
@@ -1188,9 +1189,10 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                                     <select
                                         value={tmdbResultsLimit}
                                         onChange={(e) => {
-                                            setTmdbResultsLimit(parseInt(e.target.value));
+                                            const newLimit = Number(e.target.value);
+                                            setTmdbResultsLimit(newLimit);
                                             if (tmdbSource && tmdbSource !== 'search') {
-                                                fetchTmdb(tmdbSource);
+                                                fetchTmdb(tmdbSource, 1, false, newLimit);
                                             }
                                         }}
                                         className="w-full bg-black/30 rounded px-3 py-1.5 text-xs text-white border border-white/10"
