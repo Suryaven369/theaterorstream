@@ -174,9 +174,9 @@ const Home = () => {
 
                       if (regionMovies.length > 0) {
                         return (
-                          /* Grid Layout - 5 Columns for Desktop (Standard Size), 2 Rows */
+                          /* Grid Layout - 5 Columns for Desktop (Standard Size), 2 Rows (if limit is 10) */
                           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 sm:gap-6 px-1">
-                            {regionMovies.slice(0, 10).map((movie, index) => (
+                            {regionMovies.slice(0, section.max_movies || 10).map((movie, index) => (
                               <div key={movie.tmdb_id} className="transform hover:scale-105 transition-transform duration-300">
                                 <Card
                                   data={{

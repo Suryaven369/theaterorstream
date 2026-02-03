@@ -967,7 +967,7 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                                 </select>
                                 <input
                                     type="number"
-                                    placeholder="Max"
+                                    placeholder="Limit"
                                     value={newSection.max_movies}
                                     onChange={(e) => setNewSection({ ...newSection, max_movies: parseInt(e.target.value) || 10 })}
                                     className="w-16 bg-black/30 rounded p-2 text-xs text-white border border-white/10"
