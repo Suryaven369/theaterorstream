@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import axios from "axios";
 import {
     getHomepageSections,
@@ -6,24 +6,67 @@ import {
     updateHomepageSection,
     deleteHomepageSection,
     toggleHomepageSectionActive,
-    addMovieToSection,
-    removeMovieFromSection,
-    reorderHomepageSections
+    reorderHomepageSections,
+    saveFullMovieToLibrary
 } from "../../lib/supabase";
+import { useToast } from "../../components/Toast";
+
+// Available regions for fetching content
+const REGIONS = [
+    { code: "IN", name: "India", flag: "🇮🇳" },
+    { code: "US", name: "United States", flag: "🇺🇸" },
+    { code: "GB", name: "United Kingdom", flag: "🇬🇧" },
+    { code: "CA", name: "Canada", flag: "🇨🇦" },
+    { code: "AU", name: "Australia", flag: "🇦🇺" },
+    { code: "DE", name: "Germany", flag: "🇩🇪" },
+    { code: "FR", name: "France", flag: "🇫🇷" },
+    { code: "JP", name: "Japan", flag: "🇯🇵" },
+    { code: "KR", name: "South Korea", flag: "🇰🇷" },
+    { code: "BR", name: "Brazil", flag: "🇧🇷" },
+];
+
+// Language codes by region for discover API
+const REGION_LANGUAGES = {
+    IN: 'en|hi|ta|te|ml|kn|bn|mr',
+    US: 'en',
+    GB: 'en',
+    CA: 'en|fr',
+    AU: 'en',
+    DE: 'de|en',
+    FR: 'fr|en',
+    JP: 'ja|en',
+    KR: 'ko|en',
+    BR: 'pt|en',
+};
 
 // API endpoints for fetching movies based on section type
 const API_ENDPOINTS = {
     trending: "/trending/all/week",
-    now_playing: "/movie/now_playing",
+    trending_movies: "/trending/movie/week",
+    trending_tv: "/trending/tv/week",
+    now_playing: "/movie/now_playing", // Needs region parameter
     popular: "/movie/popular",
+    popular_tv: "/tv/popular",
     top_rated: "/movie/top_rated",
-    upcoming: "/movie/upcoming",
-    provider_8: "/discover/movie", // Netflix
-    provider_119: "/discover/movie", // Prime
-    provider_122: "/discover/movie", // Hotstar
+    top_rated_tv: "/tv/top_rated",
+    upcoming: "/movie/upcoming", // Use official upcoming endpoint with region
+    coming_soon: "/discover/movie", // Use discover for flexible date filtering
+    airing_today: "/tv/airing_today",
+    on_the_air: "/tv/on_the_air",
+    provider_8: "/discover/movie",
+    provider_119: "/discover/movie",
+    provider_122: "/discover/movie",
+    provider_337: "/discover/movie",
+    provider_350: "/discover/movie",
 };
 
 const AdminSectionsPage = () => {
+    // Toast notifications
+    const toast = useToast();
+
+    // Saved sections from DB
+    const [savedSections, setSavedSections] = useState([]);
+    // Working copy for editing (staged changes)
     const [sections, setSections] = useState([]);
     const [loading, setLoading] = useState(true);
     const [newSection, setNewSection] = useState({ name: "", icon: "🎬", section_type: "manual", max_movies: 10 });
@@ -32,14 +75,38 @@ const AdminSectionsPage = () => {
     const [searchResults, setSearchResults] = useState([]);
     const [searchLoading, setSearchLoading] = useState(false);
     const [draggedIndex, setDraggedIndex] = useState(null);
-    const [fetchingApi, setFetchingApi] = useState(null); // Track which section is fetching
+    const [fetchingApi, setFetchingApi] = useState(null);
 
-    // Load sections
-    const loadSections = useCallback(async () => {
+    // Region selection for API fetches
+    const [selectedRegion, setSelectedRegion] = useState(REGIONS[0]); // Default India
+
+    // Track if there are unsaved changes
+    const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+    const [saving, setSaving] = useState(false);
+
+    // Ref to preserve scroll position
+    const containerRef = useRef(null);
+    const scrollPositionRef = useRef(0);
+
+    // Load sections from DB
+    const loadSections = useCallback(async (preserveScroll = false) => {
+        if (preserveScroll && containerRef.current) {
+            scrollPositionRef.current = containerRef.current.scrollTop;
+        }
+
         setLoading(true);
         const data = await getHomepageSections();
+        setSavedSections(data || []);
         setSections(data || []);
+        setHasUnsavedChanges(false);
         setLoading(false);
+
+        // Restore scroll position
+        if (preserveScroll && containerRef.current) {
+            requestAnimationFrame(() => {
+                containerRef.current.scrollTop = scrollPositionRef.current;
+            });
+        }
     }, []);
 
     useEffect(() => {
@@ -74,101 +141,407 @@ const AdminSectionsPage = () => {
         setSearchLoading(false);
     };
 
-    // Fetch movies from API for a section
+    // Helper to get date strings for API filters
+    const getDateFilters = () => {
+        const today = new Date();
+        const todayStr = today.toISOString().split('T')[0];
+        const threeMonthsAhead = new Date(today);
+        threeMonthsAhead.setMonth(threeMonthsAhead.getMonth() + 3);
+        const threeMonthsStr = threeMonthsAhead.toISOString().split('T')[0];
+        const sixMonthsAhead = new Date(today);
+        sixMonthsAhead.setMonth(sixMonthsAhead.getMonth() + 6);
+        const sixMonthsStr = sixMonthsAhead.toISOString().split('T')[0];
+        return { todayStr, threeMonthsStr, sixMonthsStr };
+    };
+
+    // Fetch movies from API for a section - STAGES changes locally
     const handleFetchFromApi = async (section) => {
         setFetchingApi(section.id);
         try {
             let endpoint = API_ENDPOINTS[section.api_source] || "/trending/all/week";
             let params = { page: 1 };
+            const { todayStr, sixMonthsStr } = getDateFilters();
+            const regionCode = selectedRegion.code;
+            const regionLanguages = REGION_LANGUAGES[regionCode] || 'en';
 
-            // Handle provider-based sections (Netflix, Prime, Hotstar)
-            if (section.api_source?.startsWith("provider_")) {
+            console.log(`🌍 Fetching for region: ${selectedRegion.name} (${regionCode})`);
+
+            // Handle different API sources with region support
+            if (section.api_source === 'now_playing') {
+                // Now Playing - uses region parameter
+                params = {
+                    region: regionCode,
+                    page: 1
+                };
+            } else if (section.api_source === 'upcoming') {
+                // Upcoming - official TMDB endpoint with region
+                params = {
+                    region: regionCode,
+                    page: 1
+                };
+            } else if (section.api_source === 'coming_soon') {
+                // Coming Soon - use discover for more control
+                endpoint = "/discover/movie";
+                params = {
+                    region: regionCode,
+                    'primary_release_date.gte': todayStr,
+                    'primary_release_date.lte': sixMonthsStr,
+                    sort_by: 'popularity.desc',
+                    with_original_language: regionLanguages,
+                    page: 1
+                };
+            } else if (section.api_source?.startsWith("provider_")) {
                 const providerId = section.api_source.split("_")[1];
                 params = {
                     with_watch_providers: providerId,
-                    watch_region: "IN",
+                    watch_region: regionCode,
                     sort_by: "popularity.desc",
                     page: 1
                 };
+            } else if (['popular', 'top_rated'].includes(section.api_source)) {
+                // Popular/Top Rated - add region
+                params = {
+                    region: regionCode,
+                    page: 1
+                };
+            } else if (['airing_today', 'on_the_air'].includes(section.api_source)) {
+                // TV endpoints - use timezone based on region
+                params = {
+                    page: 1,
+                    // Note: TMDB TV endpoints don't support region, but we can filter by language
+                };
             }
 
+            console.log(`🔄 Fetching ${section.api_source} from: ${endpoint}`, params);
             const response = await axios.get(endpoint, { params });
-            const movies = response.data.results?.slice(0, section.max_movies || 10) || [];
+            let movies = response.data.results?.slice(0, section.max_movies || 10) || [];
 
-            // Convert to our format and save to section
-            const movieData = movies.map(movie => ({
-                tmdb_id: movie.id,
-                title: movie.title || movie.name,
-                poster_path: movie.poster_path,
-                media_type: movie.media_type || "movie"
+            // Filter for upcoming
+            if (section.api_source === 'upcoming' || section.api_source === 'coming_soon') {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                movies = movies.filter(movie => {
+                    const releaseDate = new Date(movie.release_date);
+                    return releaseDate >= today;
+                });
+            }
+
+            console.log(`📦 Found ${movies.length} movies for ${section.name}`);
+
+            // Save each movie to library and prepare section data
+            const movieDataPromises = movies.map(async (movie) => {
+                const mediaType = movie.media_type || "movie";
+                try {
+                    const detailEndpoint = mediaType === "tv" ? `/tv/${movie.id}` : `/movie/${movie.id}`;
+                    const detailResponse = await axios.get(detailEndpoint, {
+                        params: { append_to_response: 'credits,videos,images,release_dates,keywords' }
+                    });
+                    const fullData = detailResponse.data;
+                    await saveFullMovieToLibrary(fullData);
+
+                    return {
+                        tmdb_id: movie.id,
+                        title: fullData.title || fullData.name,
+                        poster_path: fullData.poster_path,
+                        backdrop_path: fullData.backdrop_path,
+                        media_type: mediaType,
+                        release_date: fullData.release_date || fullData.first_air_date,
+                        vote_average: fullData.vote_average,
+                        overview: fullData.overview,
+                        popularity: fullData.popularity,
+                        original_language: fullData.original_language,
+                        genres: fullData.genres,
+                        runtime: fullData.runtime || fullData.episode_run_time?.[0],
+                        order: movies.indexOf(movie) + 1
+                    };
+                } catch (err) {
+                    console.log(`⚠️ Fallback for ${movie.title || movie.name}`);
+                    return {
+                        tmdb_id: movie.id,
+                        title: movie.title || movie.name,
+                        poster_path: movie.poster_path,
+                        backdrop_path: movie.backdrop_path,
+                        media_type: mediaType,
+                        release_date: movie.release_date || movie.first_air_date,
+                        vote_average: movie.vote_average,
+                        overview: movie.overview,
+                        order: movies.indexOf(movie) + 1
+                    };
+                }
+            });
+
+            const movieData = await Promise.all(movieDataPromises);
+
+            // Update locally (staged) - save movies BY REGION
+            // movies_by_region: { IN: [...], US: [...], etc }
+            setSections(prev => prev.map(s => {
+                if (s.id !== section.id) return s;
+                const existingMoviesByRegion = s.movies_by_region || {};
+                return {
+                    ...s,
+                    movies_by_region: {
+                        ...existingMoviesByRegion,
+                        [selectedRegion.code]: movieData
+                    }
+                };
             }));
-
-            // Update section with fetched movies
-            await updateHomepageSection(section.id, { movies: movieData });
-            await loadSections();
+            setHasUnsavedChanges(true);
+            console.log(`✅ Staged ${movieData.length} movies for "${section.name}" in ${selectedRegion.name} region`);
+            toast.success(`Saved ${movieData.length} movies for ${selectedRegion.flag} ${selectedRegion.name}`);
 
         } catch (error) {
             console.error("Error fetching from API:", error);
-            alert("Failed to fetch movies. Check console for details.");
+            toast.error("Failed to fetch movies. Check console for details.");
         }
         setFetchingApi(null);
     };
 
-    // Create section
+    // Create section (immediate save since it's a new item)
     const handleCreateSection = async () => {
         if (!newSection.name.trim()) return;
         const slug = newSection.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
         await createHomepageSection({ ...newSection, slug });
+        toast.success(`Section "${newSection.name}" created!`);
         setNewSection({ name: "", icon: "🎬", section_type: "manual", max_movies: 10 });
-        await loadSections();
+        await loadSections(true);
     };
 
-    // Delete section
+    // Delete section (immediate save)
     const handleDelete = async (id, isSystem) => {
         if (isSystem) {
-            alert("System sections cannot be deleted");
+            toast.warning("System sections cannot be deleted");
             return;
         }
         if (confirm("Delete this section?")) {
             await deleteHomepageSection(id);
-            await loadSections();
+            toast.success("Section deleted");
+            await loadSections(true);
         }
     };
 
-    // Toggle active
-    const handleToggle = async (id) => {
-        await toggleHomepageSectionActive(id);
-        await loadSections();
+    // Toggle active - stages locally
+    const handleToggle = (id) => {
+        setSections(prev => prev.map(s =>
+            s.id === id ? { ...s, is_active: !s.is_active } : s
+        ));
+        setHasUnsavedChanges(true);
     };
 
-    // Add movie to section
+    // Add movie to section - STAGES locally, doesn't save to DB yet
     const handleAddMovie = async (sectionId, movie) => {
-        await addMovieToSection(sectionId, {
-            tmdb_id: movie.id,
-            title: movie.title || movie.name,
-            poster_path: movie.poster_path,
-            media_type: movie.media_type || "movie"
-        });
-        await loadSections();
-        setSearchQuery("");
-        setSearchResults([]);
-    };
+        try {
+            const mediaType = movie.media_type || "movie";
+            console.log(`📥 Fetching full data for: ${movie.title || movie.name}`);
 
-    // Remove movie from section
-    const handleRemoveMovie = async (sectionId, tmdbId) => {
-        await removeMovieFromSection(sectionId, tmdbId);
-        await loadSections();
-    };
+            // Fetch full movie details
+            const detailEndpoint = mediaType === "tv" ? `/tv/${movie.id}` : `/movie/${movie.id}`;
+            const detailResponse = await axios.get(detailEndpoint, {
+                params: { append_to_response: 'credits,videos,images,release_dates,keywords' }
+            });
+            const fullData = detailResponse.data;
 
-    // Clear all movies from section
-    const handleClearMovies = async (sectionId) => {
-        if (confirm("Remove all movies from this section?")) {
-            await updateHomepageSection(sectionId, { movies: [] });
-            await loadSections();
+            // Save to library (this is fine to do immediately)
+            await saveFullMovieToLibrary(fullData);
+            console.log(`✓ Saved to library: ${fullData.title || fullData.name}`);
+
+            // Get existing movies for this section (for selected region)
+            const section = sections.find(s => s.id === sectionId);
+            const regionCode = selectedRegion.code;
+            const currentMovies = section?.movies_by_region?.[regionCode] || [];
+
+            // Check if already added
+            if (currentMovies.some(m => m.tmdb_id === movie.id)) {
+                console.log('Movie already in section');
+                toast.warning('Movie is already in this section');
+                return;
+            }
+
+            const newMovie = {
+                tmdb_id: movie.id,
+                title: fullData.title || fullData.name,
+                poster_path: fullData.poster_path,
+                backdrop_path: fullData.backdrop_path,
+                media_type: mediaType,
+                release_date: fullData.release_date || fullData.first_air_date,
+                vote_average: fullData.vote_average,
+                overview: fullData.overview,
+                popularity: fullData.popularity,
+                original_language: fullData.original_language,
+                genres: fullData.genres,
+                runtime: fullData.runtime || fullData.episode_run_time?.[0],
+                order: currentMovies.length + 1
+            };
+
+            // Update locally (staged) - add to SELECTED region
+            setSections(prev => prev.map(s => {
+                if (s.id !== sectionId) return s;
+                return {
+                    ...s,
+                    movies_by_region: {
+                        ...s.movies_by_region,
+                        [regionCode]: [...(s.movies_by_region?.[regionCode] || []), newMovie]
+                    }
+                };
+            }));
+            setHasUnsavedChanges(true);
+            setSearchQuery("");
+            setSearchResults([]);
+            console.log(`✅ Staged movie "${newMovie.title}" - Click SAVE to publish`);
+            toast.success(`Added "${newMovie.title}" - Click Save to publish`);
+
+        } catch (error) {
+            console.error("Error adding movie:", error);
+            toast.error("Failed to add movie");
         }
     };
 
-    // Drag and drop handlers
+    // Remove movie from section - STAGES locally (removes from SELECTED region)
+    const handleRemoveMovie = (sectionId, tmdbId) => {
+        setSections(prev => prev.map(s => {
+            if (s.id !== sectionId) return s;
+            const regionCode = selectedRegion.code;
+            const currentMovies = s.movies_by_region?.[regionCode] || [];
+            return {
+                ...s,
+                movies_by_region: {
+                    ...s.movies_by_region,
+                    [regionCode]: currentMovies.filter(m => m.tmdb_id !== tmdbId)
+                }
+            };
+        }));
+        setHasUnsavedChanges(true);
+    };
+
+    // Movie drag state for reordering within a section
+    const [draggedMovie, setDraggedMovie] = useState(null);
+    const [draggedMovieSectionId, setDraggedMovieSectionId] = useState(null);
+
+    // Handle movie drag start
+    const handleMovieDragStart = (e, sectionId, movieIndex) => {
+        e.stopPropagation(); // Prevent section drag
+        setDraggedMovie(movieIndex);
+        setDraggedMovieSectionId(sectionId);
+        e.dataTransfer.effectAllowed = 'move';
+    };
+
+    // Handle movie drag over - reorder within SELECTED region
+    const handleMovieDragOver = (e, sectionId, movieIndex) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (draggedMovie === null || draggedMovieSectionId !== sectionId || draggedMovie === movieIndex) return;
+
+        const regionCode = selectedRegion.code;
+
+        // Reorder movies within the selected region
+        setSections(prev => prev.map(s => {
+            if (s.id !== sectionId) return s;
+            const movies = [...(s.movies_by_region?.[regionCode] || [])];
+            const [removed] = movies.splice(draggedMovie, 1);
+            movies.splice(movieIndex, 0, removed);
+            return {
+                ...s,
+                movies_by_region: {
+                    ...s.movies_by_region,
+                    [regionCode]: movies
+                }
+            };
+        }));
+        setDraggedMovie(movieIndex);
+        setHasUnsavedChanges(true);
+    };
+
+    // Handle movie drag end
+    const handleMovieDragEnd = () => {
+        setDraggedMovie(null);
+        setDraggedMovieSectionId(null);
+    };
+
+    // Move movie left/right with buttons (for selected region)
+    const handleMoveMovie = (sectionId, currentIndex, direction) => {
+        const regionCode = selectedRegion.code;
+        setSections(prev => prev.map(s => {
+            if (s.id !== sectionId) return s;
+            const movies = [...(s.movies_by_region?.[regionCode] || [])];
+            const newIndex = direction === 'left' ? currentIndex - 1 : currentIndex + 1;
+            if (newIndex < 0 || newIndex >= movies.length) return s;
+            [movies[currentIndex], movies[newIndex]] = [movies[newIndex], movies[currentIndex]];
+            return {
+                ...s,
+                movies_by_region: {
+                    ...s.movies_by_region,
+                    [regionCode]: movies
+                }
+            };
+        }));
+        setHasUnsavedChanges(true);
+    };
+
+    // Clear all movies from section - STAGES locally
+    const handleClearMovies = (sectionId) => {
+        if (confirm("Remove all movies from this section?")) {
+            setSections(prev => prev.map(s =>
+                s.id === sectionId ? { ...s, movies: [] } : s
+            ));
+            setHasUnsavedChanges(true);
+        }
+    };
+
+    // SAVE ALL CHANGES TO DATABASE
+    const handleSaveChanges = async () => {
+        setSaving(true);
+        try {
+            console.log('💾 Saving all changes to database...');
+
+            // Find changed sections and save them
+            for (const section of sections) {
+                const savedVersion = savedSections.find(s => s.id === section.id);
+                if (!savedVersion) continue;
+
+                // Check if anything changed
+                const moviesByRegionChanged = JSON.stringify(section.movies_by_region) !== JSON.stringify(savedVersion.movies_by_region);
+                const activeChanged = section.is_active !== savedVersion.is_active;
+
+                if (moviesByRegionChanged || activeChanged) {
+                    // Count total movies across all regions
+                    const totalMovies = Object.values(section.movies_by_region || {}).reduce((acc, arr) => acc + (arr?.length || 0), 0);
+                    const regionCount = Object.keys(section.movies_by_region || {}).length;
+                    console.log(`  Updating section: ${section.name} (${totalMovies} movies across ${regionCount} regions)`);
+
+                    await updateHomepageSection(section.id, {
+                        movies_by_region: section.movies_by_region || {},
+                        is_active: section.is_active
+                    });
+                }
+            }
+
+            // Save reorder if changed
+            const orderChanged = JSON.stringify(sections.map(s => s.id)) !== JSON.stringify(savedSections.map(s => s.id));
+            if (orderChanged) {
+                console.log('  Updating section order...');
+                await reorderHomepageSections(sections.map(s => s.id));
+            }
+
+            // Reload from DB to confirm
+            await loadSections(true);
+            console.log('✅ All changes saved and published!');
+            toast.success('Changes saved and published to the homepage!');
+
+        } catch (error) {
+            console.error('Error saving changes:', error);
+            toast.error('Failed to save changes. Please try again.');
+        }
+        setSaving(false);
+    };
+
+    // Discard changes
+    const handleDiscardChanges = () => {
+        if (confirm("Discard all unsaved changes?")) {
+            setSections([...savedSections]);
+            setHasUnsavedChanges(false);
+        }
+    };
+
+    // Drag and drop handlers - STAGES locally
     const handleDragStart = (index) => {
         setDraggedIndex(index);
     };
@@ -182,20 +555,47 @@ const AdminSectionsPage = () => {
         newSections.splice(index, 0, removed);
         setSections(newSections);
         setDraggedIndex(index);
+        setHasUnsavedChanges(true);
     };
 
-    const handleDragEnd = async () => {
+    const handleDragEnd = () => {
         setDraggedIndex(null);
-        const orderedIds = sections.map(s => s.id);
-        await reorderHomepageSections(orderedIds);
+        // Don't save to DB here - just mark as having changes
     };
 
     return (
-        <div className="p-6">
-            {/* Header */}
-            <div className="mb-6">
-                <h1 className="text-2xl font-bold text-white">📐 Homepage Sections</h1>
-                <p className="text-white/50 text-sm">Manage sections displayed on the homepage. Drag to reorder. Click Edit to add/remove movies.</p>
+        <div className="p-6 h-full overflow-auto" ref={containerRef}>
+            {/* Header with Save Button */}
+            <div className="mb-6 flex items-start justify-between">
+                <div>
+                    <h1 className="text-2xl font-bold text-white">📐 Homepage Sections</h1>
+                    <p className="text-white/50 text-sm">Manage sections displayed on the homepage. Changes are staged locally until you click Save.</p>
+                </div>
+
+                {/* Save/Discard Buttons */}
+                <div className="flex items-center gap-3">
+                    {hasUnsavedChanges && (
+                        <>
+                            <span className="text-yellow-400 text-sm animate-pulse">● Unsaved changes</span>
+                            <button
+                                onClick={handleDiscardChanges}
+                                className="px-4 py-2 rounded-lg text-sm font-medium bg-white/10 text-white/70 hover:bg-white/20 transition-colors"
+                            >
+                                Discard
+                            </button>
+                        </>
+                    )}
+                    <button
+                        onClick={handleSaveChanges}
+                        disabled={!hasUnsavedChanges || saving}
+                        className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${hasUnsavedChanges
+                            ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 shadow-lg shadow-green-500/20'
+                            : 'bg-white/10 text-white/30 cursor-not-allowed'
+                            }`}
+                    >
+                        {saving ? '⏳ Saving...' : '💾 Save & Publish'}
+                    </button>
+                </div>
             </div>
 
             {/* Create New Section */}
@@ -214,41 +614,67 @@ const AdminSectionsPage = () => {
                         placeholder="Icon"
                         value={newSection.icon}
                         onChange={(e) => setNewSection({ ...newSection, icon: e.target.value })}
-                        className="w-16 bg-black/30 rounded-lg px-3 py-2 text-sm text-white border border-white/10 text-center"
+                        className="w-16 bg-black/30 rounded-lg px-3 py-2 text-sm text-center text-white border border-white/10 focus:border-orange-500/50 outline-none"
                     />
                     <select
                         value={newSection.section_type}
                         onChange={(e) => setNewSection({ ...newSection, section_type: e.target.value })}
-                        className="bg-black/30 rounded-lg px-3 py-2 text-sm text-white border border-white/10"
+                        className="bg-black/30 rounded-lg px-4 py-2 text-sm text-white border border-white/10 outline-none"
                     >
-                        <option value="manual">Manual (Add movies yourself)</option>
-                        <option value="api">API (Fetch from TMDB)</option>
+                        <option value="manual">Manual</option>
+                        <option value="api">API Source</option>
                     </select>
                     <input
                         type="number"
                         placeholder="Max"
                         value={newSection.max_movies}
                         onChange={(e) => setNewSection({ ...newSection, max_movies: parseInt(e.target.value) || 10 })}
-                        className="w-20 bg-black/30 rounded-lg px-3 py-2 text-sm text-white border border-white/10 text-center"
+                        className="w-20 bg-black/30 rounded-lg px-3 py-2 text-sm text-white border border-white/10 focus:border-orange-500/50 outline-none"
                     />
                     <button
                         onClick={handleCreateSection}
-                        disabled={!newSection.name.trim()}
-                        className="px-6 py-2 bg-green-500 text-white rounded-lg text-sm font-medium hover:bg-green-600 transition-colors disabled:opacity-50"
+                        className="px-4 py-2 rounded-lg text-sm font-medium bg-orange-500 text-white hover:bg-orange-600 transition-colors"
                     >
                         + Create
                     </button>
                 </div>
             </div>
 
+            {/* Region Selector for API Fetches */}
+            <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-xl p-4 mb-6 border border-blue-500/20">
+                <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                        <span className="text-xl">🌍</span>
+                        <h3 className="text-sm font-medium text-white">Region for API Fetches</h3>
+                    </div>
+                    <span className="text-xs text-white/50">
+                        Currently: {selectedRegion.flag} {selectedRegion.name}
+                    </span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                    {REGIONS.map((region) => (
+                        <button
+                            key={region.code}
+                            onClick={() => setSelectedRegion(region)}
+                            className={`px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${selectedRegion.code === region.code
+                                ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-lg shadow-blue-500/20'
+                                : 'bg-white/5 text-white/70 hover:bg-white/10'
+                                }`}
+                        >
+                            <span>{region.flag}</span>
+                            <span>{region.name}</span>
+                        </button>
+                    ))}
+                </div>
+                <p className="text-xs text-white/40 mt-3">
+                    💡 Select a region before clicking "Fetch from API" on sections. This affects Now Playing, Upcoming, Coming Soon, and streaming provider results.
+                </p>
+            </div>
+
             {/* Sections List */}
             {loading ? (
                 <div className="flex items-center justify-center py-12">
-                    <div className="animate-pulse text-white/40">Loading sections...</div>
-                </div>
-            ) : sections.length === 0 ? (
-                <div className="text-center py-12 text-white/40">
-                    No sections found. Create one above or run the SQL migration to add defaults.
+                    <div className="animate-spin w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full"></div>
                 </div>
             ) : (
                 <div className="space-y-3">
@@ -259,7 +685,7 @@ const AdminSectionsPage = () => {
                             onDragStart={() => handleDragStart(index)}
                             onDragOver={(e) => handleDragOver(e, index)}
                             onDragEnd={handleDragEnd}
-                            className={`bg-white/[0.03] rounded-xl border border-white/10 overflow-hidden transition-all ${draggedIndex === index ? "opacity-50 scale-[0.98]" : ""
+                            className={`bg-white/5 rounded-xl border transition-all ${draggedIndex === index ? "border-orange-500 scale-[1.02]" : "border-white/10"
                                 } ${!section.is_active ? "opacity-60" : ""}`}
                         >
                             {/* Section Header */}
@@ -281,7 +707,7 @@ const AdminSectionsPage = () => {
 
                                 {/* Info */}
                                 <div className="flex-1">
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 flex-wrap">
                                         <span className="text-white font-medium">{section.name}</span>
                                         {section.is_system && (
                                             <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 text-[10px] font-medium">SYSTEM</span>
@@ -290,14 +716,28 @@ const AdminSectionsPage = () => {
                                             {section.section_type === 'api' ? `API: ${section.api_source}` : 'Manual'}
                                         </span>
                                     </div>
-                                    <div className="text-white/40 text-xs mt-0.5">
-                                        {section.movies?.length || 0} movies • Max: {section.max_movies || 10}
+                                    {/* Region movie counts */}
+                                    <div className="flex items-center gap-1 mt-1 flex-wrap">
+                                        {section.movies_by_region && Object.keys(section.movies_by_region).length > 0 ? (
+                                            Object.entries(section.movies_by_region).map(([regionCode, movies]) => (
+                                                <span
+                                                    key={regionCode}
+                                                    className={`px-2 py-0.5 rounded text-[10px] font-medium ${selectedRegion.code === regionCode
+                                                        ? 'bg-orange-500/30 text-orange-300 ring-1 ring-orange-500/50'
+                                                        : 'bg-purple-500/20 text-purple-400'
+                                                        }`}
+                                                >
+                                                    {REGIONS.find(r => r.code === regionCode)?.flag || '🌍'} {regionCode}: {movies?.length || 0}
+                                                </span>
+                                            ))
+                                        ) : (
+                                            <span className="text-white/30 text-xs">No movies saved yet</span>
+                                        )}
                                     </div>
                                 </div>
 
                                 {/* Actions */}
                                 <div className="flex items-center gap-2">
-                                    {/* Fetch from API button for API sections */}
                                     {section.section_type === 'api' && (
                                         <button
                                             onClick={() => handleFetchFromApi(section)}
@@ -310,8 +750,8 @@ const AdminSectionsPage = () => {
                                     <button
                                         onClick={() => handleToggle(section.id)}
                                         className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${section.is_active
-                                                ? "bg-green-500/20 text-green-400 hover:bg-green-500/30"
-                                                : "bg-red-500/20 text-red-400 hover:bg-red-500/30"
+                                            ? "bg-green-500/20 text-green-400 hover:bg-green-500/30"
+                                            : "bg-red-500/20 text-red-400 hover:bg-red-500/30"
                                             }`}
                                     >
                                         {section.is_active ? "Active" : "Hidden"}
@@ -319,8 +759,8 @@ const AdminSectionsPage = () => {
                                     <button
                                         onClick={() => setEditingSection(editingSection === section.id ? null : section.id)}
                                         className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${editingSection === section.id
-                                                ? "bg-orange-500/30 text-orange-300"
-                                                : "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
+                                            ? "bg-orange-500/30 text-orange-300"
+                                            : "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
                                             }`}
                                     >
                                         {editingSection === section.id ? "✕ Close" : "✏️ Edit"}
@@ -336,30 +776,85 @@ const AdminSectionsPage = () => {
                                 </div>
                             </div>
 
-                            {/* Movies Preview (Always visible when has movies) */}
-                            {section.movies && section.movies.length > 0 && (
-                                <div className="px-4 pb-4">
-                                    <div className="flex gap-2 overflow-x-auto pb-2">
-                                        {section.movies.map((movie, idx) => (
-                                            <div key={`${movie.tmdb_id}-${idx}`} className="relative flex-shrink-0 group">
-                                                <img
-                                                    src={movie.poster_path ? `https://image.tmdb.org/t/p/w92${movie.poster_path}` : "/placeholder.png"}
-                                                    alt={movie.title}
-                                                    className="w-14 h-20 rounded-lg object-cover border border-white/10"
-                                                />
+                            {/* Movies Preview - Shows movies for SELECTED REGION */}
+                            {(() => {
+                                const regionMovies = section.movies_by_region?.[selectedRegion.code] || [];
+                                const hasAnyMovies = Object.values(section.movies_by_region || {}).some(arr => arr?.length > 0);
+
+                                if (regionMovies.length > 0) {
+                                    return (
+                                        <div className="px-4 pb-4">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <p className="text-xs text-white/50">
+                                                    {selectedRegion.flag} Showing {regionMovies.length} movies for <span className="text-orange-400">{selectedRegion.name}</span>
+                                                </p>
                                                 {editingSection === section.id && (
-                                                    <button
-                                                        onClick={() => handleRemoveMovie(section.id, movie.tmdb_id)}
-                                                        className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 rounded-full text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
-                                                    >
-                                                        ×
-                                                    </button>
+                                                    <span className="text-xs text-white/40">💡 Drag to reorder</span>
                                                 )}
                                             </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
+                                            <div className="flex gap-3 overflow-x-auto pb-2">
+                                                {regionMovies.map((movie, idx) => (
+                                                    <div
+                                                        key={`${movie.tmdb_id}-${idx}`}
+                                                        className={`relative flex-shrink-0 group transition-all duration-200 ${editingSection === section.id ? 'cursor-grab active:cursor-grabbing hover:scale-105' : ''
+                                                            } ${draggedMovie === idx && draggedMovieSectionId === section.id ? 'opacity-40 scale-90 rotate-2' : ''}`}
+                                                        draggable={editingSection === section.id}
+                                                        onDragStart={(e) => handleMovieDragStart(e, section.id, idx)}
+                                                        onDragOver={(e) => handleMovieDragOver(e, section.id, idx)}
+                                                        onDragEnd={handleMovieDragEnd}
+                                                    >
+                                                        {/* Position Badge */}
+                                                        {editingSection === section.id && (
+                                                            <div className="absolute -top-2 -left-2 w-6 h-6 bg-gradient-to-br from-orange-500 to-red-500 rounded-full text-white text-xs font-bold flex items-center justify-center z-10 shadow-lg border-2 border-black/50">
+                                                                {idx + 1}
+                                                            </div>
+                                                        )}
+
+                                                        <img
+                                                            src={movie.poster_path ? `https://image.tmdb.org/t/p/w92${movie.poster_path}` : "/placeholder.png"}
+                                                            alt={movie.title}
+                                                            className={`w-16 h-24 rounded-lg object-cover border-2 transition-all ${editingSection === section.id
+                                                                ? 'border-orange-500/50 hover:border-orange-400 shadow-lg shadow-orange-500/20'
+                                                                : 'border-white/10'
+                                                                }`}
+                                                        />
+
+                                                        {/* Drag indicator overlay */}
+                                                        {editingSection === section.id && (
+                                                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center pb-1">
+                                                                <span className="text-white/80 text-[10px]">⋮⋮</span>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Remove button */}
+                                                        {editingSection === section.id && (
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleRemoveMovie(section.id, movie.tmdb_id); }}
+                                                                className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 rounded-full text-white text-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow-lg z-20 border-2 border-black/50"
+                                                            >
+                                                                ×
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    );
+                                } else if (hasAnyMovies) {
+                                    // Has movies in other regions but not this one
+                                    return (
+                                        <div className="px-4 pb-4">
+                                            <div className="py-3 px-4 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-center">
+                                                <p className="text-yellow-400 text-xs">
+                                                    {selectedRegion.flag} No movies saved for {selectedRegion.name}.
+                                                    <span className="text-white/50 ml-1">Select this region above and click "Fetch from API" to add movies.</span>
+                                                </p>
+                                            </div>
+                                        </div>
+                                    );
+                                }
+                                return null;
+                            })()}
 
                             {/* Expanded Edit Panel */}
                             {editingSection === section.id && (
@@ -419,8 +914,7 @@ const AdminSectionsPage = () => {
                                                             alt={movie.title || movie.name}
                                                             className="w-full rounded-lg border border-white/10"
                                                         />
-                                                        <div className={`absolute inset-0 flex items-center justify-center bg-black/60 rounded-lg transition-opacity ${alreadyAdded ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-                                                            }`}>
+                                                        <div className={`absolute inset-0 flex items-center justify-center bg-black/60 rounded-lg transition-opacity ${alreadyAdded ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
                                                             <span className="text-white text-2xl font-bold">{alreadyAdded ? "✓" : "+"}</span>
                                                         </div>
                                                         <div className="text-[10px] text-white/60 mt-1 truncate text-center">{movie.title || movie.name}</div>
@@ -447,6 +941,19 @@ const AdminSectionsPage = () => {
                             )}
                         </div>
                     ))}
+                </div>
+            )}
+
+            {/* Floating Save Button when scrolled */}
+            {hasUnsavedChanges && (
+                <div className="fixed bottom-6 right-6 z-50">
+                    <button
+                        onClick={handleSaveChanges}
+                        disabled={saving}
+                        className="px-6 py-3 rounded-xl text-sm font-bold bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 shadow-2xl shadow-green-500/30 flex items-center gap-2 transition-all hover:scale-105"
+                    >
+                        {saving ? '⏳ Saving...' : '💾 Save & Publish'}
+                    </button>
                 </div>
             )}
         </div>

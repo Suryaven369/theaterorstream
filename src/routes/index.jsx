@@ -77,6 +77,16 @@ const router = createBrowserRouter([
         path: "search",
         element: <Search />,
       },
+      // SEO-friendly slug-based routes (new format: /movies/greenland-2-840464)
+      {
+        path: "movies/:slug",
+        element: <Details />,
+      },
+      {
+        path: "tv/:slug",
+        element: <Details />,
+      },
+      // Legacy ID-based routes (backward compatibility: /movie/840464)
       {
         path: ":explore",
         element: <Explore />,

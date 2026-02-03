@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
+import React, { useState, useEffect, useMemo } from "react";
+import { useParams, Link, useLocation } from "react-router-dom";
 import useFetchDetails from "../hooks/useFetchDetails";
 import useReviewAnalysis from "../hooks/useReviewAnalysis";
 import { useSelector } from "react-redux";
@@ -18,27 +18,51 @@ import VibeChart from "../components/VibeChart";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import MovieActionButtons from "../components/MovieActionButtons";
+import { extractIdFromSlug } from "../lib/slugUtils";
 
 const Details = () => {
   const params = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const { isAuthenticated, user } = useAuth();
+
+  // Determine if using new slug-based URL or legacy ID-based URL
+  // New format: /movies/greenland-2-840464 or /tv/breaking-bad-1396
+  // Legacy format: /movie/840464 or /tv/1396
+  const isSlugRoute = location.pathname.startsWith('/movies/') || location.pathname.startsWith('/tv/');
+
+  // Extract movie ID and media type based on route type
+  const movieId = useMemo(() => {
+    if (isSlugRoute && params.slug) {
+      // Extract ID from end of slug (e.g., "greenland-2-840464" -> "840464")
+      return extractIdFromSlug(params.slug) || params.slug;
+    }
+    return params.id;
+  }, [isSlugRoute, params.slug, params.id]);
+
+  const mediaType = useMemo(() => {
+    if (location.pathname.startsWith('/movies/')) return 'movie';
+    if (location.pathname.startsWith('/tv/')) return 'tv';
+    return params.explore || 'movie';
+  }, [location.pathname, params.explore]);
+
   const [tmbdID, setTmbdID] = useState(null);
   const [AIRatings, setAIRatings] = useState({});
   const [communityRatings, setCommunityRatings] = useState(null);
   const [displayRatings, setDisplayRatings] = useState(null);
-  const [userRating, setUserRating] = useState(null); // User's existing rating
+  const [userRating, setUserRating] = useState(null);
   const imageURL = useSelector((state) => state.movieData.imageURL);
-  const { data } = useFetchDetails(`/${params?.explore}/${params?.id}`);
-  const { data: castData } = useFetchDetails(
-    `/${params?.explore}/${params?.id}/credits`
-  );
+
+  // Use the extracted movieId and mediaType for API calls
+  const { data } = useFetchDetails(`/${mediaType}/${movieId}`);
+  const { data: castData } = useFetchDetails(`/${mediaType}/${movieId}/credits`);
+
   const [playVideo, setPlayVideo] = useState(false);
   const [playVideoId, setPlayVideoId] = useState("");
   const [ratingModalOpen, setRatingModalOpen] = useState(false);
-  const [ratingsKey, setRatingsKey] = useState(0); // For refreshing ratings
+  const [ratingsKey, setRatingsKey] = useState(0);
 
-  const { analysis, loading: analysisLoading } = useReviewAnalysis(params?.id);
+  const { analysis, loading: analysisLoading } = useReviewAnalysis(movieId);
 
   const handlePlayVideo = (data) => {
     setPlayVideoId(data);
@@ -73,10 +97,10 @@ const Details = () => {
   // Fetch community ratings from Supabase
   useEffect(() => {
     const fetchCommunityRatings = async () => {
-      if (!params?.id) return;
+      if (!movieId) return;
 
       try {
-        const ratings = await getMovieRatings(params.id);
+        const ratings = await getMovieRatings(movieId);
         if (ratings && ratings.totalRatings > 0) {
           setCommunityRatings(ratings);
         }
@@ -86,18 +110,18 @@ const Details = () => {
     };
 
     fetchCommunityRatings();
-  }, [params?.id, ratingsKey]);
+  }, [movieId, ratingsKey]);
 
   // Fetch user's existing rating for this movie
   useEffect(() => {
     const fetchUserRating = async () => {
-      if (!params?.id || !user?.id) {
+      if (!movieId || !user?.id) {
         setUserRating(null);
         return;
       }
 
       try {
-        const rating = await getUserRatingForMovie(user.id, params.id);
+        const rating = await getUserRatingForMovie(user.id, movieId);
         setUserRating(rating);
       } catch (error) {
         console.log("Error fetching user rating:", error);
@@ -105,7 +129,7 @@ const Details = () => {
     };
 
     fetchUserRating();
-  }, [params?.id, user?.id, ratingsKey]);
+  }, [movieId, user?.id, ratingsKey]);
 
   // Handle rate button click
   const handleRateClick = () => {
@@ -122,26 +146,15 @@ const Details = () => {
     setRatingsKey(prev => prev + 1); // Force refetch of ratings and user rating
   };
 
-  // Fetch AI/scraper ratings
+  // AI/scraper ratings - backend service not available, use fallback
+  // Note: This previously connected to localhost:3000/scraper/analyze
+  // The scraper backend is not running, so we skip directly to fallback
   useEffect(() => {
-    if (!tmbdID && !data?.vote_average) return;
+    if (!data?.vote_average) return;
 
-    const fetchTosRating = async () => {
-      try {
-        const response = await axios.get(
-          `http://localhost:3000/scraper/analyze/${tmbdID}`
-        );
-        setAIRatings(response?.data);
-      } catch (error) {
-        console.log("Rating fetch error, using fallback:", error);
-        if (data?.vote_average) {
-          setAIRatings(generateFallbackRatings(data.vote_average));
-        }
-      }
-    };
-
-    fetchTosRating();
-  }, [tmbdID, data?.vote_average]);
+    // Use fallback ratings based on TMDB score (no external API call)
+    setAIRatings(generateFallbackRatings(data.vote_average));
+  }, [data?.vote_average]);
 
   // Determine which ratings to display
   useEffect(() => {
@@ -185,10 +198,10 @@ const Details = () => {
       try {
         let response;
 
-        if (params?.explore === "movie") {
-          response = await axios.get(`/movie/${params?.id}`);
-        } else if (params?.explore === "tv") {
-          response = await axios.get(`/tv/${params?.id}/external_ids`);
+        if (mediaType === "movie") {
+          response = await axios.get(`/movie/${movieId}`);
+        } else if (mediaType === "tv") {
+          response = await axios.get(`/tv/${movieId}/external_ids`);
         }
 
         const imdbId = response?.data?.imdb_id;
@@ -199,7 +212,7 @@ const Details = () => {
     };
 
     fetchID();
-  }, [data, params?.explore]);
+  }, [data, mediaType, movieId]);
 
   return (
     <div className="min-h-screen bg-[#0a0a0a]">
@@ -270,10 +283,10 @@ const Details = () => {
             {/* Movie Action Buttons - Watchlist, Watched, Like, Save */}
             {data && (
               <MovieActionButtons
-                movieId={params?.id}
+                movieId={movieId}
                 movieTitle={data?.title || data?.name}
                 posterPath={data?.poster_path}
-                mediaType={params?.explore}
+                mediaType={mediaType}
               />
             )}
 
@@ -307,8 +320,8 @@ const Details = () => {
 
             {/* Parent Guide Badges - Fetches real TMDB certifications */}
             <ParentGuide
-              movieId={params?.id}
-              mediaType={params?.explore}
+              movieId={movieId}
+              mediaType={mediaType}
               genres={data?.genres}
             />
 
@@ -432,7 +445,7 @@ const Details = () => {
           {/* User Rating System - Now displayed directly */}
           {data && (
             <UserRatingSystem
-              movieId={params?.id}
+              movieId={movieId}
               movieTitle={data?.title || data?.name}
               hasUserRated={!!userRating}
               existingRating={userRating}
@@ -447,7 +460,7 @@ const Details = () => {
         <VideoPlay
           data={playVideoId}
           close={() => setPlayVideo(false)}
-          media_type={params?.explore}
+          media_type={mediaType}
         />
       )}
 
@@ -455,7 +468,7 @@ const Details = () => {
       <RatingModal
         isOpen={ratingModalOpen}
         onClose={() => setRatingModalOpen(false)}
-        movieId={params?.id}
+        movieId={movieId}
         movieTitle={data?.title || data?.name}
         onSubmitSuccess={handleRatingSubmitSuccess}
         existingRating={userRating}

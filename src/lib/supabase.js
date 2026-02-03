@@ -830,6 +830,7 @@ export const updateCollection = async (slug, updates) => {
 // =============================================
 
 // Get all homepage sections (ordered by display_order)
+// Movies are stored per region in movies_by_region field
 export const getHomepageSections = async (activeOnly = false) => {
     let query = supabase
         .from('homepage_sections')
@@ -869,7 +870,8 @@ export const createHomepageSection = async (section) => {
             ...section,
             slug,
             display_order: section.display_order ?? nextOrder,
-            movies: section.movies || []
+            movies: [], // Deprecated: using movies_by_region now
+            movies_by_region: section.movies_by_region || {}
         })
         .select();
 
@@ -942,7 +944,7 @@ export const reorderHomepageSections = async (orderedIds) => {
     return { success: true };
 };
 
-// Add movie to a section
+// Add movie to a section - stores rich movie data for display
 export const addMovieToSection = async (sectionId, movie) => {
     // Get current section
     const { data: section } = await supabase
@@ -955,17 +957,27 @@ export const addMovieToSection = async (sectionId, movie) => {
 
     const currentMovies = section.movies || [];
 
+    const tmdbId = movie.tmdb_id || movie.id;
+
     // Check if movie already exists
-    if (currentMovies.some(m => m.tmdb_id === movie.tmdb_id)) {
+    if (currentMovies.some(m => m.tmdb_id === tmdbId || m.tmdb_id === String(tmdbId))) {
         return { success: false, error: 'Movie already in section' };
     }
 
-    // Add movie with next order
+    // Add movie with rich data for display (includes all fields needed for Home page)
     const newMovie = {
-        tmdb_id: movie.tmdb_id || movie.id,
+        tmdb_id: tmdbId,
         title: movie.title || movie.name,
         poster_path: movie.poster_path,
+        backdrop_path: movie.backdrop_path,
         media_type: movie.media_type || 'movie',
+        release_date: movie.release_date || movie.first_air_date,
+        vote_average: movie.vote_average,
+        overview: movie.overview,
+        popularity: movie.popularity,
+        original_language: movie.original_language,
+        genres: movie.genres,
+        runtime: movie.runtime,
         order: currentMovies.length + 1
     };
 
@@ -1009,25 +1021,58 @@ export const reorderSectionMovies = async (sectionId, orderedTmdbIds) => {
     return updateHomepageSection(sectionId, { movies: reorderedMovies });
 };
 
+// Get movies from library by array of tmdb_ids
+// Returns a map of tmdb_id -> full movie data for easy lookup
+export const getMoviesFromLibraryByIds = async (tmdbIds) => {
+    if (!tmdbIds || tmdbIds.length === 0) return new Map();
+
+    // Convert all IDs to strings for consistent matching
+    const stringIds = tmdbIds.map(id => String(id));
+
+    const { data, error } = await supabase
+        .from('movies_library')
+        .select('*')
+        .in('tmdb_id', stringIds);
+
+    if (error) {
+        console.error('Error fetching movies from library:', error);
+        return new Map();
+    }
+
+    // Create a map for quick lookup
+    const movieMap = new Map();
+    (data || []).forEach(movie => {
+        movieMap.set(String(movie.tmdb_id), movie);
+    });
+
+    return movieMap;
+};
+
 // =============================================
 // USER MOVIE INTERACTIONS (Watchlist, Liked, Watched)
 // =============================================
 
 // Get user's movie status (watchlist, liked, watched)
+// Gracefully handles missing tables
 export const getUserMovieStatus = async (userId, movieId) => {
     if (!userId) return { inWatchlist: false, isLiked: false, isWatched: false };
 
-    const [watchlist, liked, watched] = await Promise.all([
-        supabase.from('user_watchlist').select('id').eq('user_id', userId).eq('movie_id', movieId).single(),
-        supabase.from('user_liked_movies').select('id').eq('user_id', userId).eq('movie_id', movieId).single(),
-        supabase.from('user_watched_movies').select('id').eq('user_id', userId).eq('movie_id', movieId).single()
-    ]);
+    try {
+        const [watchlist, liked, watched] = await Promise.all([
+            supabase.from('user_watchlist').select('id').eq('user_id', userId).eq('movie_id', movieId).maybeSingle(),
+            supabase.from('user_liked_movies').select('id').eq('user_id', userId).eq('movie_id', movieId).maybeSingle(),
+            supabase.from('user_watched_movies').select('id').eq('user_id', userId).eq('movie_id', movieId).maybeSingle()
+        ]);
 
-    return {
-        inWatchlist: !!watchlist.data,
-        isLiked: !!liked.data,
-        isWatched: !!watched.data
-    };
+        return {
+            inWatchlist: !!watchlist?.data,
+            isLiked: !!liked?.data,
+            isWatched: !!watched?.data
+        };
+    } catch (error) {
+        console.log('User movie status fetch error (tables may not exist):', error.message);
+        return { inWatchlist: false, isLiked: false, isWatched: false };
+    }
 };
 
 // Toggle Watchlist

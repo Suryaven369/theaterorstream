@@ -1,14 +1,25 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useSelector } from "react-redux";
 import moment from "moment";
 import { Link } from "react-router-dom";
 import { FaStar } from "react-icons/fa";
 import { getMovieRatings } from "../lib/supabase";
+import { generateSlugWithId } from "../lib/slugUtils";
 
 const Card = ({ data, trending, index, media_type }) => {
   const imageURL = useSelector((state) => state.movieData.imageURL);
   const mediaType = data.media_type ?? media_type;
   const [tosRating, setTosRating] = useState(null);
+
+  // Generate SEO-friendly slug URL
+  // Format: /movies/greenland-2-840464 or /tv/breaking-bad-1396
+  const movieUrl = useMemo(() => {
+    const title = data?.title || data?.name || '';
+    const year = data?.release_date?.split('-')[0] || data?.first_air_date?.split('-')[0];
+    const slug = generateSlugWithId(title, data.id, year);
+    const basePath = mediaType === 'tv' ? '/tv' : '/movies';
+    return `${basePath}/${slug}`;
+  }, [data, mediaType]);
 
   // Fetch TOS community rating from Supabase
   useEffect(() => {
@@ -43,7 +54,7 @@ const Card = ({ data, trending, index, media_type }) => {
 
   return (
     <Link
-      to={"/" + mediaType + "/" + data.id}
+      to={movieUrl}
       className="group block animate-fadeInUp"
       style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
     >
@@ -71,8 +82,8 @@ const Card = ({ data, trending, index, media_type }) => {
         <div className="absolute top-2 right-2">
           <span
             className={`flex items-center gap-1 px-2 py-0.5 rounded-md backdrop-blur-sm text-xs font-medium ${isTosRating
-                ? 'bg-gradient-to-r from-orange-500/80 to-red-500/80 text-white'
-                : 'bg-black/60 text-yellow-400'
+              ? 'bg-gradient-to-r from-orange-500/80 to-red-500/80 text-white'
+              : 'bg-black/60 text-yellow-400'
               }`}
             title={isTosRating ? `TOS Rating (${tosRating.count} votes)` : 'TMDB Rating'}
           >

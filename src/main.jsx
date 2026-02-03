@@ -11,6 +11,7 @@ import { Provider } from "react-redux";
 import { store } from "./store/store.jsx";
 
 import { AuthProvider } from "./context/AuthContext.jsx";
+import { ToastProvider } from "./components/Toast.jsx";
 
 /**setup axios */
 axios.defaults.baseURL = "https://api.themoviedb.org/3";
@@ -21,9 +22,11 @@ ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <Provider store={store}>
       <AuthProvider>
-        <RouterProvider router={router}>
-          <App />
-        </RouterProvider>
+        <ToastProvider>
+          <RouterProvider router={router}>
+            <App />
+          </RouterProvider>
+        </ToastProvider>
       </AuthProvider>
     </Provider>
   </React.StrictMode>

@@ -13,7 +13,8 @@ VALUES
     ('In Theaters', 'in-theaters', '🎬', 'api', 'now_playing', 2, true, true),
     ('Trending on Netflix', 'netflix-trending', '📺', 'api', 'provider_8', 3, true, true),
     ('Trending on Prime', 'prime-trending', '📦', 'api', 'provider_119', 4, true, true),
-    ('Trending on Hotstar', 'hotstar-trending', '⭐', 'api', 'provider_122', 5, true, true)
+    ('Trending on Hotstar', 'hotstar-trending', '⭐', 'api', 'provider_122', 5, true, true),
+    ('Coming Soon', 'coming-soon', '📅', 'api', 'upcoming', 6, true, true)
 ON CONFLICT (slug) DO NOTHING;
 
 -- Update display order for Editor Pick to be after the defaults
