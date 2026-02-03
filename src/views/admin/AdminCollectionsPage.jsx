@@ -13,7 +13,11 @@ const AdminCollectionsPage = () => {
         name: "",
         description: "",
         slug: "",
-        is_public: true
+        is_public: true,
+        meta_title: "",
+        meta_description: "",
+        keywords: "",
+        cover_image: ""
     });
     const [editingId, setEditingId] = useState(null);
     const [editForm, setEditForm] = useState({});
@@ -54,6 +58,10 @@ const AdminCollectionsPage = () => {
             description: newCollection.description,
             slug: newCollection.slug,
             is_public: newCollection.is_public,
+            meta_title: newCollection.meta_title || newCollection.name,
+            meta_description: newCollection.meta_description || newCollection.description,
+            keywords: newCollection.keywords,
+            cover_image: newCollection.cover_image,
             movie_ids: []
         });
         setNewCollection({ name: "", description: "", slug: "", is_public: true });
@@ -75,7 +83,11 @@ const AdminCollectionsPage = () => {
             name: collection.name,
             description: collection.description || "",
             slug: collection.slug,
-            is_public: collection.is_public
+            is_public: collection.is_public,
+            meta_title: collection.meta_title || "",
+            meta_description: collection.meta_description || "",
+            keywords: collection.keywords || "",
+            cover_image: collection.cover_image || ""
         });
     };
 
@@ -97,6 +109,8 @@ const AdminCollectionsPage = () => {
             {/* Create New Collection */}
             <div className="bg-white/5 rounded-xl p-4 mb-6 border border-white/10">
                 <h3 className="text-sm font-medium text-white mb-3">Create New Collection</h3>
+
+                {/* Basic Info */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                     <input
                         type="text"
@@ -120,6 +134,58 @@ const AdminCollectionsPage = () => {
                     className="w-full bg-black/30 rounded-lg px-4 py-2 text-sm text-white border border-white/10 focus:border-orange-500/50 outline-none mb-3 resize-none"
                     rows={2}
                 />
+
+                {/* SEO Section - Collapsible */}
+                <details className="mb-3">
+                    <summary className="cursor-pointer text-xs text-orange-400 hover:text-orange-300 mb-2 select-none">
+                        🔍 SEO & Social Sharing (optional)
+                    </summary>
+                    <div className="mt-2 p-3 bg-black/20 rounded-lg border border-white/5 space-y-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label className="text-[10px] text-white/50 mb-1 block">Meta Title</label>
+                                <input
+                                    type="text"
+                                    placeholder="Custom title for SEO"
+                                    value={newCollection.meta_title}
+                                    onChange={(e) => setNewCollection({ ...newCollection, meta_title: e.target.value })}
+                                    className="w-full bg-black/30 rounded-lg px-3 py-2 text-sm text-white border border-white/10 focus:border-orange-500/50 outline-none"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-[10px] text-white/50 mb-1 block">Keywords</label>
+                                <input
+                                    type="text"
+                                    placeholder="horror, thriller, 2025"
+                                    value={newCollection.keywords}
+                                    onChange={(e) => setNewCollection({ ...newCollection, keywords: e.target.value })}
+                                    className="w-full bg-black/30 rounded-lg px-3 py-2 text-sm text-white border border-white/10 focus:border-orange-500/50 outline-none"
+                                />
+                            </div>
+                        </div>
+                        <div>
+                            <label className="text-[10px] text-white/50 mb-1 block">Meta Description</label>
+                            <textarea
+                                placeholder="Description for search engines & social sharing"
+                                value={newCollection.meta_description}
+                                onChange={(e) => setNewCollection({ ...newCollection, meta_description: e.target.value })}
+                                className="w-full bg-black/30 rounded-lg px-3 py-2 text-sm text-white border border-white/10 focus:border-orange-500/50 outline-none resize-none"
+                                rows={2}
+                            />
+                        </div>
+                        <div>
+                            <label className="text-[10px] text-white/50 mb-1 block">Cover Image URL</label>
+                            <input
+                                type="text"
+                                placeholder="https://... (custom OG image)"
+                                value={newCollection.cover_image}
+                                onChange={(e) => setNewCollection({ ...newCollection, cover_image: e.target.value })}
+                                className="w-full bg-black/30 rounded-lg px-3 py-2 text-sm text-white border border-white/10 focus:border-orange-500/50 outline-none"
+                            />
+                        </div>
+                    </div>
+                </details>
+
                 <div className="flex items-center justify-between">
                     <label className="flex items-center gap-2 text-sm text-white/60">
                         <input
@@ -159,34 +225,112 @@ const AdminCollectionsPage = () => {
                             {editingId === collection.id ? (
                                 // Edit Mode
                                 <div className="space-y-3">
-                                    <input
-                                        type="text"
-                                        value={editForm.name}
-                                        onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                                        className="w-full bg-black/30 rounded-lg px-3 py-2 text-sm text-white border border-white/10"
-                                    />
-                                    <input
-                                        type="text"
-                                        value={editForm.slug}
-                                        onChange={(e) => setEditForm({ ...editForm, slug: e.target.value })}
-                                        className="w-full bg-black/30 rounded-lg px-3 py-2 text-sm text-white border border-white/10"
-                                    />
-                                    <textarea
-                                        value={editForm.description}
-                                        onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                                        className="w-full bg-black/30 rounded-lg px-3 py-2 text-sm text-white border border-white/10 resize-none"
-                                        rows={2}
-                                    />
+                                    {/* Basic Info */}
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label className="text-[10px] text-white/50 mb-1 block">Name</label>
+                                            <input
+                                                type="text"
+                                                value={editForm.name}
+                                                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                                                className="w-full bg-black/30 rounded-lg px-3 py-2 text-sm text-white border border-white/10 focus:border-orange-500/50 outline-none"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] text-white/50 mb-1 block">Slug</label>
+                                            <input
+                                                type="text"
+                                                value={editForm.slug}
+                                                onChange={(e) => setEditForm({ ...editForm, slug: e.target.value })}
+                                                className="w-full bg-black/30 rounded-lg px-3 py-2 text-sm text-white border border-white/10 focus:border-orange-500/50 outline-none"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-[10px] text-white/50 mb-1 block">Description</label>
+                                        <textarea
+                                            value={editForm.description}
+                                            onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                                            className="w-full bg-black/30 rounded-lg px-3 py-2 text-sm text-white border border-white/10 resize-none focus:border-orange-500/50 outline-none"
+                                            rows={2}
+                                            placeholder="Collection description..."
+                                        />
+                                    </div>
+
+                                    {/* SEO Section */}
+                                    <div className="border-t border-white/10 pt-3 mt-3">
+                                        <h4 className="text-xs font-medium text-orange-400 mb-3 flex items-center gap-2">
+                                            🔍 SEO & Social Sharing
+                                        </h4>
+
+                                        <div className="grid grid-cols-2 gap-2 mb-2">
+                                            <div>
+                                                <label className="text-[10px] text-white/50 mb-1 block">Meta Title</label>
+                                                <input
+                                                    type="text"
+                                                    value={editForm.meta_title}
+                                                    onChange={(e) => setEditForm({ ...editForm, meta_title: e.target.value })}
+                                                    className="w-full bg-black/30 rounded-lg px-3 py-2 text-sm text-white border border-white/10 focus:border-orange-500/50 outline-none"
+                                                    placeholder="Custom meta title for SEO"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] text-white/50 mb-1 block">Keywords</label>
+                                                <input
+                                                    type="text"
+                                                    value={editForm.keywords}
+                                                    onChange={(e) => setEditForm({ ...editForm, keywords: e.target.value })}
+                                                    className="w-full bg-black/30 rounded-lg px-3 py-2 text-sm text-white border border-white/10 focus:border-orange-500/50 outline-none"
+                                                    placeholder="horror, thriller, 2025"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="mb-2">
+                                            <label className="text-[10px] text-white/50 mb-1 block">Meta Description</label>
+                                            <textarea
+                                                value={editForm.meta_description}
+                                                onChange={(e) => setEditForm({ ...editForm, meta_description: e.target.value })}
+                                                className="w-full bg-black/30 rounded-lg px-3 py-2 text-sm text-white border border-white/10 resize-none focus:border-orange-500/50 outline-none"
+                                                rows={2}
+                                                placeholder="Description for search engines & social sharing"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="text-[10px] text-white/50 mb-1 block">Cover Image URL</label>
+                                            <input
+                                                type="text"
+                                                value={editForm.cover_image}
+                                                onChange={(e) => setEditForm({ ...editForm, cover_image: e.target.value })}
+                                                className="w-full bg-black/30 rounded-lg px-3 py-2 text-sm text-white border border-white/10 focus:border-orange-500/50 outline-none"
+                                                placeholder="https://... (custom OG image URL)"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Visibility */}
+                                    <div className="flex items-center gap-2 pt-2">
+                                        <input
+                                            type="checkbox"
+                                            checked={editForm.is_public}
+                                            onChange={(e) => setEditForm({ ...editForm, is_public: e.target.checked })}
+                                            className="w-4 h-4 rounded"
+                                        />
+                                        <span className="text-sm text-white/60">Public collection</span>
+                                    </div>
+
                                     <div className="flex gap-2">
                                         <button
                                             onClick={() => saveEdit(collection.id)}
-                                            className="flex-1 py-2 bg-green-500 text-white rounded-lg text-sm"
+                                            className="flex-1 py-2 bg-green-500 text-white rounded-lg text-sm font-medium hover:bg-green-600 transition-colors"
                                         >
-                                            Save
+                                            💾 Save Changes
                                         </button>
                                         <button
                                             onClick={() => setEditingId(null)}
-                                            className="flex-1 py-2 bg-white/10 text-white rounded-lg text-sm"
+                                            className="flex-1 py-2 bg-white/10 text-white rounded-lg text-sm hover:bg-white/20 transition-colors"
                                         >
                                             Cancel
                                         </button>

@@ -855,14 +855,16 @@ const AdminPanel = ({ initialTab = 'library' }) => {
                     <p className="text-xs text-white/40">Content Management System</p>
                 </div>
 
-                {/* Stats */}
-                <div className="grid grid-cols-5 gap-2 mb-4">
-                    <StatCard label="Total" value={stats.total} />
-                    <StatCard label="Movies" value={stats.movies} />
-                    <StatCard label="TV" value={stats.tv} />
-                    <StatCard label="Featured" value={stats.featured} />
-                    <StatCard label="Active" value={stats.active} />
-                </div>
+                {/* Stats - Only show on dashboard, not on library tab */}
+                {activeTab !== 'library' && (
+                    <div className="grid grid-cols-5 gap-2 mb-4">
+                        <StatCard label="Total" value={stats.total} />
+                        <StatCard label="Movies" value={stats.movies} />
+                        <StatCard label="TV" value={stats.tv} />
+                        <StatCard label="Featured" value={stats.featured} />
+                        <StatCard label="Active" value={stats.active} />
+                    </div>
+                )}
 
                 {/* Tabs */}
                 <Tab tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />

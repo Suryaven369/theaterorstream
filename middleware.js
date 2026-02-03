@@ -106,16 +106,21 @@ export default async function middleware(request) {
             .filter(m => m.poster_path)
             .map(m => m.poster_path);
 
-        // Use first movie poster as OG image, or generate a collage URL
-        // For simplicity, we'll use the first poster. A more advanced version could
-        // use an image generation API to create a collage.
-        const ogImage = posterPaths.length > 0
-            ? `https://image.tmdb.org/t/p/w780${posterPaths[0]}`
-            : 'https://www.theaterorstream.com/og-default.jpg';
+        // Use custom cover_image if set, otherwise first movie poster
+        const ogImage = collection.cover_image
+            || (posterPaths.length > 0 ? `https://image.tmdb.org/t/p/w780${posterPaths[0]}` : null)
+            || 'https://www.theaterorstream.com/og-default.jpg';
 
-        // Build description
-        const description = collection.description
+        // Use custom meta_description if set, otherwise fallback
+        const description = collection.meta_description
+            || collection.description
             || `A curated collection of ${movieCount} ${movieCount === 1 ? 'movie' : 'movies'} by @${username}`;
+
+        // Use custom meta_title if set, otherwise collection name
+        const title = collection.meta_title || collection.name;
+
+        // Keywords for meta tag
+        const keywords = collection.keywords || '';
 
         // Generate HTML with proper OG meta tags
         const html = `<!DOCTYPE html>
@@ -125,14 +130,15 @@ export default async function middleware(request) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   
   <!-- Primary Meta Tags -->
-  <title>${escapeHtml(collection.name)} | TheaterOrStream</title>
-  <meta name="title" content="${escapeHtml(collection.name)} | TheaterOrStream">
+  <title>${escapeHtml(title)} | TheaterOrStream</title>
+  <meta name="title" content="${escapeHtml(title)} | TheaterOrStream">
   <meta name="description" content="${escapeHtml(description)}">
+  ${keywords ? `<meta name="keywords" content="${escapeHtml(keywords)}">` : ''}
   
   <!-- Open Graph / Facebook -->
   <meta property="og:type" content="website">
   <meta property="og:url" content="${url.href}">
-  <meta property="og:title" content="${escapeHtml(collection.name)}">
+  <meta property="og:title" content="${escapeHtml(title)}">
   <meta property="og:description" content="${escapeHtml(description)}">
   <meta property="og:image" content="${ogImage}">
   <meta property="og:image:width" content="780">
@@ -142,7 +148,7 @@ export default async function middleware(request) {
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:url" content="${url.href}">
-  <meta name="twitter:title" content="${escapeHtml(collection.name)}">
+  <meta name="twitter:title" content="${escapeHtml(title)}">
   <meta name="twitter:description" content="${escapeHtml(description)}">
   <meta name="twitter:image" content="${ogImage}">
   
