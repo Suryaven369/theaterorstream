@@ -1,0 +1,20 @@
+# Allow all crawlers
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://www.theaterorstream.com/sitemap.xml
+
+# Disallow admin areas
+Disallow: /admin
+Disallow: /admin/*
+
+# Disallow auth pages
+Disallow: /auth
+Disallow: /onboarding
+
+# Allow static assets
+Allow: /assets/*
+
+# Crawl-delay (be nice to servers)
+Crawl-delay: 1
