@@ -859,6 +859,87 @@ const AdminSectionsPage = () => {
                             {/* Expanded Edit Panel */}
                             {editingSection === section.id && (
                                 <div className="p-4 border-t border-white/5 bg-black/20">
+                                    {/* Section Settings Editor */}
+                                    <div className="mb-6 bg-black/40 p-4 rounded-xl border border-white/10">
+                                        <h4 className="text-xs font-medium text-white/50 uppercase tracking-widest mb-3">Settings & Configuration</h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="text-xs text-white/60 block mb-1">Section Name</label>
+                                                <input
+                                                    type="text"
+                                                    value={section.name}
+                                                    onChange={(e) => {
+                                                        const newSections = sections.map(s => s.id === section.id ? { ...s, name: e.target.value } : s);
+                                                        setSections(newSections);
+                                                        setHasUnsavedChanges(true);
+                                                    }}
+                                                    className="w-full bg-black/30 rounded px-3 py-2 text-sm text-white border border-white/10 focus:border-orange-500/50 outline-none"
+                                                />
+                                            </div>
+                                            <div className="flex gap-4">
+                                                <div>
+                                                    <label className="text-xs text-white/60 block mb-1">Icon</label>
+                                                    <input
+                                                        type="text"
+                                                        value={section.icon}
+                                                        onChange={(e) => {
+                                                            const newSections = sections.map(s => s.id === section.id ? { ...s, icon: e.target.value } : s);
+                                                            setSections(newSections);
+                                                            setHasUnsavedChanges(true);
+                                                        }}
+                                                        className="w-16 bg-black/30 rounded px-3 py-2 text-center text-sm text-white border border-white/10 focus:border-orange-500/50 outline-none"
+                                                    />
+                                                </div>
+                                                <div className="flex-1">
+                                                    <label className="text-xs text-white/60 block mb-1">Limit (Fetch Qty)</label>
+                                                    <input
+                                                        type="number"
+                                                        value={section.max_movies || 10}
+                                                        onChange={(e) => {
+                                                            const newSections = sections.map(s => s.id === section.id ? { ...s, max_movies: parseInt(e.target.value) || 10 } : s);
+                                                            setSections(newSections);
+                                                            setHasUnsavedChanges(true);
+                                                        }}
+                                                        className="w-full bg-black/30 rounded px-3 py-2 text-sm text-white border border-white/10 focus:border-orange-500/50 outline-none"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {section.section_type === 'api' && (
+                                                <div className="md:col-span-2">
+                                                    <label className="text-xs text-white/60 block mb-1">API Source</label>
+                                                    <select
+                                                        value={section.api_source}
+                                                        onChange={(e) => {
+                                                            const newSections = sections.map(s => s.id === section.id ? { ...s, api_source: e.target.value } : s);
+                                                            setSections(newSections);
+                                                            setHasUnsavedChanges(true);
+                                                        }}
+                                                        className="w-full bg-black/30 rounded px-3 py-2 text-sm text-white border border-white/10 focus:border-orange-500/50 outline-none"
+                                                    >
+                                                        <option value="trending">Trending (All)</option>
+                                                        <option value="trending_movies">Trending Movies</option>
+                                                        <option value="trending_tv">Trending TV</option>
+                                                        <option value="now_playing">Now Playing (In Theaters)</option>
+                                                        <option value="popular">Popular Movies</option>
+                                                        <option value="top_rated">Top Rated Movies</option>
+                                                        <option value="upcoming">Upcoming Movies</option>
+                                                        <option value="coming_soon">Coming Soon (Discover)</option>
+                                                        <option value="popular_tv">Popular TV</option>
+                                                        <option value="top_rated_tv">Top Rated TV</option>
+                                                        <option value="airing_today">Airing Today (TV)</option>
+                                                        <option value="on_the_air">On The Air (TV)</option>
+                                                        <option value="provider_8">Netflix</option>
+                                                        <option value="provider_119">Prime Video</option>
+                                                        <option value="provider_337">Disney+</option>
+                                                        <option value="provider_350">Apple TV+</option>
+                                                        <option value="provider_122">Hotstar</option>
+                                                    </select>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
                                     <div className="flex items-center justify-between mb-4">
                                         <h4 className="text-sm font-medium text-white">Add Movies to "{section.name}"</h4>
                                         <div className="flex gap-2">
@@ -866,9 +947,9 @@ const AdminSectionsPage = () => {
                                                 <button
                                                     onClick={() => handleFetchFromApi(section)}
                                                     disabled={fetchingApi === section.id}
-                                                    className="px-4 py-2 rounded-lg text-xs font-medium bg-purple-500 text-white hover:bg-purple-600 transition-colors disabled:opacity-50"
+                                                    className="px-4 py-2 rounded-lg text-xs font-medium bg-purple-500 text-white hover:bg-purple-600 transition-colors disabled:opacity-50 shadow-lg shadow-purple-500/20"
                                                 >
-                                                    {fetchingApi === section.id ? "⏳ Fetching..." : "🔄 Fetch Latest from API"}
+                                                    {fetchingApi === section.id ? "⏳ Fetching..." : "🔄 Refresh & Fetch API"}
                                                 </button>
                                             )}
                                             {section.movies?.length > 0 && (
