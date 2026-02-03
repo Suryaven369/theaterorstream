@@ -455,20 +455,22 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
             if (source === 'trending') {
                 // Use /trending/all/day to match frontend (includes movies AND TV)
                 endpoint = '/trending/all/day';
-            } else if (source === 'upcoming' || source === 'now_playing') {
-                // Use discover endpoint for upcoming AND now_playing to enable popularity sorting and custom dates
+            } else if (source === 'upcoming') {
+                // Use discover endpoint for upcoming to enable popularity sorting
                 useDiscover = true;
                 endpoint = tmdbMediaType === 'movie' ? '/discover/movie' : '/discover/tv';
             } else if (tmdbMediaType === 'movie') {
                 switch (source) {
                     case 'popular': endpoint = '/movie/popular'; break;
                     case 'top_rated': endpoint = '/movie/top_rated'; break;
+                    case 'now_playing': endpoint = '/movie/now_playing'; break;
                     default: endpoint = '/movie/popular';
                 }
             } else { // tv
                 switch (source) {
                     case 'popular': endpoint = '/tv/popular'; break;
                     case 'top_rated': endpoint = '/tv/top_rated'; break;
+                    case 'now_playing': endpoint = '/tv/airing_today'; break;
                     default: endpoint = '/tv/popular';
                 }
             }
@@ -477,7 +479,7 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
             const pagesToFetch = Math.ceil(tmdbResultsLimit / 20);
             const requests = [];
 
-            // If year or country filter is active, OR if it's upcoming/now_playing category, use discover endpoint
+            // If year or country filter is active, OR if it's upcoming category, use discover endpoint
             if ((tmdbYear || tmdbCountry || useDiscover) && source !== 'trending') {
                 for (let i = 0; i < pagesToFetch; i++) {
                     const params = { page: startPage + i };
@@ -486,23 +488,16 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                         endpoint = '/discover/movie';
                         if (tmdbYear) params.primary_release_year = tmdbYear;
                         if (tmdbCountry) params.with_origin_country = tmdbCountry;
-                        if (tmdbRegion && source === 'now_playing') params.region = tmdbRegion;
 
                         // Map source to appropriate sorting
                         switch (source) {
                             case 'popular':
+                            case 'trending':
                                 params.sort_by = 'popularity.desc';
                                 break;
                             case 'top_rated':
                                 params.sort_by = 'vote_average.desc';
                                 params['vote_count.gte'] = 100;
-                                break;
-                            case 'now_playing':
-                                // Custom In Theaters Logic: Last 45 days to Next 2 days, Sorted by Popularity
-                                params.sort_by = 'popularity.desc';
-                                params['primary_release_date.gte'] = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-                                params['primary_release_date.lte'] = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-                                params.with_release_type = '2|3'; // Limited or Theatrical
                                 break;
                             case 'upcoming':
                                 // Get upcoming movies sorted by popularity
@@ -527,11 +522,6 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                                 params.sort_by = 'vote_average.desc';
                                 params['vote_count.gte'] = 100;
                                 break;
-                            case 'now_playing': // For TV this is "Airing Today" context
-                                params.sort_by = 'popularity.desc';
-                                params['air_date.gte'] = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // Last week
-                                params['air_date.lte'] = new Date().toISOString().split('T')[0]; // Today
-                                break;
                             case 'upcoming':
                                 // Get upcoming TV shows sorted by popularity
                                 params.sort_by = 'popularity.desc';
@@ -550,9 +540,10 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                 for (let i = 0; i < pagesToFetch; i++) {
                     const params = { page: startPage + i };
 
-                    // Add region for Now Playing to get accurate theater data (matches frontend)
-                    if (source === 'now_playing' && tmdbRegion) {
-                        params.region = tmdbRegion;
+                    // Add region for Now Playing to get accurate theater data
+                    // Default to US if 'All Regions' is selected for consistent behavior
+                    if (source === 'now_playing') {
+                        params.region = tmdbRegion || 'US';
                     }
 
                     requests.push(axios.get(endpoint, { params }));
