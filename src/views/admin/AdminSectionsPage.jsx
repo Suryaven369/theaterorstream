@@ -656,6 +656,24 @@ const AdminSectionsPage = () => {
                     const regionCount = Object.keys(section.movies_by_region || {}).length;
                     console.log(`  Updating section: ${section.name} (${totalItems} ${contentMode === 'tv' ? 'shows' : 'movies'} across ${regionCount} regions)`);
 
+                    // ========================================================
+                    // OPTIMIZATION: Strip heavy Base64 images before saving section
+                    // We only need TMDB ID + basic info. Images are now in movies_library.
+                    // This creates a lightweight payload for fast saving.
+                    // ========================================================
+                    const optimizedMoviesByRegion = {};
+                    if (section.movies_by_region) {
+                        Object.keys(section.movies_by_region).forEach(code => {
+                            const movies = section.movies_by_region[code] || [];
+                            optimizedMoviesByRegion[code] = movies.map(m => {
+                                // Create a clean copy WITHOUT images/videos arrays
+                                // We keep essential UI data for fast initial render if hydration fails
+                                const { images, videos, credits, similar, recommendations, reviews, ...cleanMovie } = m;
+                                return cleanMovie;
+                            });
+                        });
+                    }
+
                     // Save to appropriate table
                     if (contentMode === 'tv') {
                         // For TV mode - check if this section exists in tv_sections or needs to be created
@@ -664,14 +682,14 @@ const AdminSectionsPage = () => {
                             .from('tv_sections')
                             .select('id')
                             .eq('id', section.id)
-                            .single();
+                            .maybeSingle(); // Changed from single() to maybeSingle() to avoid 406 error
 
                         if (existingSection) {
                             // Update existing tv_sections record
                             const { error } = await supabase
                                 .from('tv_sections')
                                 .update({
-                                    movies_by_region: section.movies_by_region || {},
+                                    movies_by_region: optimizedMoviesByRegion, // Save CLEAN data
                                     is_active: section.is_active,
                                     updated_at: new Date().toISOString()
                                 })
@@ -695,25 +713,28 @@ const AdminSectionsPage = () => {
                                     section_type: section.section_type,
                                     api_source: section.api_source,
                                     display_order: section.display_order,
-                                    movies_by_region: section.movies_by_region || {},
+                                    movies_by_region: optimizedMoviesByRegion, // Save CLEAN data
                                     is_active: section.is_active
                                 });
 
                             if (error) {
-                                console.error('Error creating tv_sections entry:', error.message || error);
-                                toast.error(`Failed to save "${section.name}": ${error.message || 'Unknown error'}`);
-                                // Don't throw - continue with other sections
+                                console.error('Error creating tv_section:', error);
+                                throw error;
                             }
                         }
                     } else {
-                        // Save to homepage_sections
-                        await updateHomepageSection(section.id, {
-                            movies_by_region: section.movies_by_region || {},
+                        // Movies mode - saves to homepage_sections
+                        const { error } = await updateHomepageSection(section.id, {
+                            movies_by_region: optimizedMoviesByRegion, // Save CLEAN data
                             is_active: section.is_active
                         });
+
+                        if (error) throw error;
                     }
                 }
             }
+
+
 
             // Save reorder if changed
             const orderChanged = JSON.stringify(sections.map(s => s.id)) !== JSON.stringify(savedSections.map(s => s.id));
