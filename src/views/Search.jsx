@@ -57,9 +57,6 @@ const Search = () => {
   // Tab state: 'movies' or 'people'
   const [activeTab, setActiveTab] = useState('movies');
 
-  // Search source: 'library' (database) or 'tmdb' (API)
-  const [searchSource, setSearchSource] = useState('library');
-
   // Movies data
   const [movieData, setMovieData] = useState([]);
   const [moviePage, setMoviePage] = useState(1);
@@ -105,46 +102,9 @@ const Search = () => {
     }
   };
 
-  // Fetch movies from TMDB (fallback/expanded search)
-  const fetchMoviesFromTmdb = async (page = 1) => {
-    if (!query) return;
-
-    try {
-      setMoviesLoading(true);
-      const response = await axios.get(`search/multi`, {
-        params: {
-          query: query,
-          page: page,
-        },
-      });
-
-      // Filter to only movies and TV shows
-      const results = (response.data.results || []).filter(
-        item => item.media_type === 'movie' || item.media_type === 'tv'
-      );
-
-      if (page === 1) {
-        setMovieData(results);
-      } else {
-        setMovieData((prev) => [...prev, ...results]);
-      }
-
-      setHasMorePages(response.data.page < response.data.total_pages);
-      console.log(`🌐 Found ${results.length} results from TMDB`);
-    } catch (error) {
-      console.error("Error searching TMDB:", error);
-    } finally {
-      setMoviesLoading(false);
-    }
-  };
-
-  // Fetch movies based on source
+  // Fetch movies (Only DB source now)
   const fetchMovies = async (page = 1) => {
-    if (searchSource === 'library') {
-      await fetchMoviesFromDb(page);
-    } else {
-      await fetchMoviesFromTmdb(page);
-    }
+    await fetchMoviesFromDb(page);
   };
 
   // Fetch profiles from Supabase
@@ -162,7 +122,7 @@ const Search = () => {
     }
   };
 
-  // Fetch data when query or source changes
+  // Fetch data when query changes
   useEffect(() => {
     if (query) {
       setMoviePage(1);
@@ -171,7 +131,7 @@ const Search = () => {
       fetchMovies(1);
       fetchProfiles();
     }
-  }, [location?.search, searchSource]);
+  }, [location?.search]);
 
   // Infinite scroll for movies
   const handleScroll = () => {
@@ -194,7 +154,6 @@ const Search = () => {
   }, [moviesLoading, activeTab, hasMorePages]);
 
   const isLoading = activeTab === 'movies' ? moviesLoading : profilesLoading;
-  const totalResults = activeTab === 'movies' ? movieData.length : profileData.length;
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] pb-20 sm:pb-0">
@@ -229,7 +188,7 @@ const Search = () => {
                 <span className="text-white">Search Movies & People</span>
               )}
             </h1>
-            {activeTab === 'movies' && totalDbResults > 0 && searchSource === 'library' && (
+            {activeTab === 'movies' && totalDbResults > 0 && (
               <p className="text-white/40 text-sm flex items-center gap-2">
                 <FaDatabase className="text-green-400" />
                 {totalDbResults} results in library
@@ -242,7 +201,7 @@ const Search = () => {
         <div className="absolute top-20 right-0 w-96 h-96 bg-yellow-500/10 rounded-full blur-3xl pointer-events-none" />
       </section>
 
-      {/* Tabs & Source Toggle */}
+      {/* Tabs */}
       <section className="px-6 pb-6">
         <div className="container mx-auto">
           <div className="flex flex-wrap items-center gap-4">
@@ -279,50 +238,7 @@ const Search = () => {
                 )}
               </button>
             </div>
-
-            {/* Source Toggle (Movies tab only) */}
-            {activeTab === 'movies' && (
-              <div className="flex gap-2 p-1 bg-white/5 rounded-xl">
-                <button
-                  onClick={() => setSearchSource('library')}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${searchSource === 'library'
-                    ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                    : 'text-white/40 hover:text-white hover:bg-white/5'
-                    }`}
-                >
-                  <FaDatabase className="text-[10px]" />
-                  Library
-                </button>
-                <button
-                  onClick={() => setSearchSource('tmdb')}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${searchSource === 'tmdb'
-                    ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                    : 'text-white/40 hover:text-white hover:bg-white/5'
-                    }`}
-                >
-                  <FaGlobe className="text-[10px]" />
-                  TMDB
-                </button>
-              </div>
-            )}
           </div>
-
-          {/* Source info */}
-          {activeTab === 'movies' && (
-            <p className="text-xs text-white/30 mt-3 flex items-center gap-2">
-              {searchSource === 'library' ? (
-                <>
-                  <FaDatabase className="text-green-400" />
-                  Searching your curated library • Switch to TMDB for broader results
-                </>
-              ) : (
-                <>
-                  <FaGlobe className="text-blue-400" />
-                  Searching all TMDB content • Switch to Library for curated content only
-                </>
-              )}
-            </p>
-          )}
         </div>
       </section>
 
@@ -345,6 +261,7 @@ const Search = () => {
                       vote_average: item.vote_average,
                       release_date: item.release_date || item.first_air_date,
                       overview: item.overview,
+                      images: item.images // Pass images for Base64 support
                     }}
                     media_type={item.media_type || 'movie'}
                     index={index}
@@ -353,28 +270,13 @@ const Search = () => {
               </div>
             ) : !moviesLoading && query ? (
               <div className="text-center py-20">
-                <span className="text-5xl mb-4 block">
-                  {searchSource === 'library' ? '📀' : '🎬'}
-                </span>
-                <p className="text-white/40 text-lg">
-                  {searchSource === 'library'
-                    ? 'No results found in library'
-                    : 'No movies or shows found'}
+                <span className="text-6xl mb-6 block opacity-50">📭</span>
+                <p className="text-white/60 text-xl font-medium">
+                  Title not found
                 </p>
-                <p className="text-white/20 text-sm mt-2">
-                  {searchSource === 'library'
-                    ? 'Try searching TMDB for more results or add content via Admin Panel'
-                    : 'Try searching for something else'}
+                <p className="text-white/30 text-sm mt-2 max-w-md mx-auto">
+                  We are working on adding it to the library soon.
                 </p>
-                {searchSource === 'library' && (
-                  <button
-                    onClick={() => setSearchSource('tmdb')}
-                    className="mt-4 px-4 py-2 bg-blue-500/20 text-blue-400 rounded-lg text-sm font-medium hover:bg-blue-500/30 transition-colors"
-                  >
-                    <FaGlobe className="inline mr-2" />
-                    Search TMDB instead
-                  </button>
-                )}
               </div>
             ) : null
           ) : (
@@ -407,10 +309,7 @@ const Search = () => {
           {activeTab === 'movies' && movieData.length > 0 && !hasMorePages && !moviesLoading && (
             <div className="text-center mt-12 py-4">
               <p className="text-white/30 text-sm">
-                {searchSource === 'library'
-                  ? `All ${movieData.length} library results shown`
-                  : 'No more results'
-                }
+                All library results shown
               </p>
             </div>
           )}
