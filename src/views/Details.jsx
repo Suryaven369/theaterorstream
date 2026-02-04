@@ -304,13 +304,19 @@ const Details = () => {
         </button>
 
         {/* Back Button */}
-        <Link
-          to="/"
+        <button
+          onClick={() => {
+            if (location.key !== "default") {
+              navigate(-1);
+            } else {
+              navigate("/");
+            }
+          }}
           className="absolute top-24 left-6 z-10 flex items-center gap-2 text-white/70 hover:text-white transition-colors"
         >
           <IoArrowBack className="text-xl" />
           <span className="text-sm font-medium">Back</span>
-        </Link>
+        </button>
       </div>
 
       {/* Content - Positioned lower */}
