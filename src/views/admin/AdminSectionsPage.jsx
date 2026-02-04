@@ -350,6 +350,7 @@ const AdminSectionsPage = () => {
                         runtime: fullData.runtime || fullData.episode_run_time?.[0],
                         number_of_seasons: fullData.number_of_seasons,
                         number_of_episodes: fullData.number_of_episodes,
+                        images: fullData.images, // Include Base64 images in section cache
                         order: items.indexOf(item) + 1
                     };
                 } catch (err) {
@@ -515,6 +516,7 @@ const AdminSectionsPage = () => {
                 original_language: fullData.original_language,
                 genres: fullData.genres,
                 runtime: fullData.runtime || fullData.episode_run_time?.[0],
+                images: fullData.images, // Include Base64 images in section cache
                 order: currentMovies.length + 1
             };
 
