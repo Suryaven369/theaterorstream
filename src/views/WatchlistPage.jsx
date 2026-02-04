@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { useSelector } from 'react-redux';
 import { getUserWatchlist, toggleWatchlist } from '../lib/supabase';
 import { FaBookmark, FaTrash } from 'react-icons/fa';
+import ConfirmationModal from '../components/ConfirmationModal';
+
 
 const WatchlistPage = () => {
     const navigate = useNavigate();
@@ -14,6 +16,8 @@ const WatchlistPage = () => {
     const [watchlist, setWatchlist] = useState([]);
     const [loading, setLoading] = useState(true);
     const [removing, setRemoving] = useState(null);
+    const [itemToDelete, setItemToDelete] = useState(null);
+
 
     // Check if viewing own profile
     const isOwnProfile = profile?.username === username;
@@ -39,13 +43,17 @@ const WatchlistPage = () => {
         }
     }, [isAuthenticated, authLoading, isOwnProfile, navigate]);
 
-    const handleRemove = async (movie) => {
+    const confirmRemove = async () => {
+        if (!itemToDelete) return;
+        const movie = itemToDelete;
+
         setRemoving(movie.movie_id);
         const result = await toggleWatchlist(user.id, movie.movie_id, movie.movie_title, movie.poster_path, movie.media_type);
         if (result.success) {
             setWatchlist(prev => prev.filter(m => m.movie_id !== movie.movie_id));
         }
         setRemoving(null);
+        setItemToDelete(null);
     };
 
     if (authLoading || loading) {
@@ -112,7 +120,7 @@ const WatchlistPage = () => {
                                     </div>
                                     {isOwnProfile && (
                                         <button
-                                            onClick={() => handleRemove(movie)}
+                                            onClick={() => setItemToDelete(movie)}
                                             disabled={removing === movie.movie_id}
                                             className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors opacity-0 group-hover:opacity-100"
                                             title="Remove from watchlist"
@@ -148,8 +156,16 @@ const WatchlistPage = () => {
                     </div>
                 )}
             </div>
+            <ConfirmationModal
+                isOpen={!!itemToDelete}
+                onClose={() => setItemToDelete(null)}
+                onConfirm={confirmRemove}
+                title="Remove from Watchlist"
+                message={`Are you sure you want to remove "${itemToDelete?.movie_title}" from your watchlist?`}
+            />
         </div>
     );
 };
 
 export default WatchlistPage;
+

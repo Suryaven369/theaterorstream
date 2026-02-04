@@ -11,6 +11,7 @@ import {
 } from '../lib/supabase';
 import { convertImageToBase64 } from '../utils/imageHelper';
 import { FaTrash, FaLock, FaGlobe, FaFolderOpen, FaArrowLeft, FaPlus, FaSearch, FaCheck, FaTimes, FaEdit, FaSave, FaShare, FaLink, FaTwitter } from 'react-icons/fa';
+import ConfirmationModal from '../components/ConfirmationModal';
 import axios from "axios";
 
 // Helper to create URL-friendly slug
@@ -221,6 +222,7 @@ const CollectionDetails = () => {
     const [collection, setCollection] = useState(null);
     const [loading, setLoading] = useState(true);
     const [removing, setRemoving] = useState(null);
+    const [itemToDelete, setItemToDelete] = useState(null);
 
     // Edit mode state
     const [isEditing, setIsEditing] = useState(false);
@@ -266,8 +268,11 @@ const CollectionDetails = () => {
     // Check if viewing own collection
     const isOwnCollection = user?.id && collection?.user_id === user.id;
 
-    const handleRemove = async (movieId) => {
-        if (!isOwnCollection) return;
+    const confirmRemove = async () => {
+        if (!itemToDelete || !isOwnCollection) return;
+        const movie = itemToDelete;
+        const movieId = movie.movie_id;
+
         setRemoving(movieId);
         const result = await removeFromCollection(collection.id, movieId);
         if (result.success) {
@@ -277,6 +282,7 @@ const CollectionDetails = () => {
             }));
         }
         setRemoving(null);
+        setItemToDelete(null);
     };
 
     // Live search as user types
@@ -653,7 +659,7 @@ const CollectionDetails = () => {
                                             </Link>
                                             {isOwnCollection && (
                                                 <button
-                                                    onClick={() => handleRemove(movie.movie_id)}
+                                                    onClick={() => setItemToDelete(movie)}
                                                     disabled={removing === movie.movie_id}
                                                     className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors opacity-0 group-hover:opacity-100"
                                                     title="Remove from collection"
@@ -827,6 +833,13 @@ const CollectionDetails = () => {
                     </div>
                 )}
             </div>
+            <ConfirmationModal
+                isOpen={!!itemToDelete}
+                onClose={() => setItemToDelete(null)}
+                onConfirm={confirmRemove}
+                title="Remove from Collection"
+                message={`Are you sure you want to remove "${itemToDelete?.movie_title}" from this collection?`}
+            />
         </>
     );
 };

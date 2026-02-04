@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useSelector } from 'react-redux';
 import { getUserWatchedMovies, toggleWatchedMovie, getProfileByUsername } from '../lib/supabase';
 import { FaEye, FaTrash, FaCheckCircle } from 'react-icons/fa';
+import ConfirmationModal from '../components/ConfirmationModal';
 
 const WatchedMoviesPage = () => {
     const navigate = useNavigate();
@@ -15,6 +16,7 @@ const WatchedMoviesPage = () => {
     const [loading, setLoading] = useState(true);
     const [removing, setRemoving] = useState(null);
     const [targetProfile, setTargetProfile] = useState(null);
+    const [itemToDelete, setItemToDelete] = useState(null);
 
     // Check if viewing own profile
     const isOwnProfile = profile?.username === username;
@@ -54,14 +56,17 @@ const WatchedMoviesPage = () => {
         }
     }, [isAuthenticated, authLoading, isOwnProfile, navigate]);
 
-    const handleRemove = async (movie) => {
-        if (!isOwnProfile) return;
+    const confirmDelete = async () => {
+        if (!itemToDelete || !isOwnProfile) return;
+        const movie = itemToDelete;
+
         setRemoving(movie.movie_id);
         const result = await toggleWatchedMovie(user.id, movie.movie_id, movie.movie_title, movie.poster_path, movie.media_type);
         if (result.success && !result.added) {
             setWatchedMovies(prev => prev.filter(m => m.movie_id !== movie.movie_id));
         }
         setRemoving(null);
+        setItemToDelete(null);
     };
 
     if (authLoading || loading) {
@@ -157,7 +162,7 @@ const WatchedMoviesPage = () => {
                                     {/* Actions */}
                                     {isOwnProfile && (
                                         <button
-                                            onClick={() => handleRemove(movie)}
+                                            onClick={() => setItemToDelete(movie)}
                                             disabled={removing === movie.movie_id}
                                             className="p-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors opacity-0 group-hover:opacity-100 shrink-0"
                                             title="Remove from log"
@@ -193,6 +198,13 @@ const WatchedMoviesPage = () => {
                     </div>
                 )}
             </div>
+            <ConfirmationModal
+                isOpen={!!itemToDelete}
+                onClose={() => setItemToDelete(null)}
+                onConfirm={confirmDelete}
+                title="Remove from Log"
+                message={`Are you sure you want to remove "${itemToDelete?.movie_title}" from your watched log?`}
+            />
         </div>
     );
 };
