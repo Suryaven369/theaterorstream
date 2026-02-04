@@ -1971,4 +1971,17 @@ export const checkMoviesInAdvancedLibrary = async (movieIds) => {
     return new Set(data?.map(m => m.id) || []);
 };
 
+// Get global user stats (total users)
+export const getGlobalUserStats = async () => {
+    const { count, error } = await supabase
+        .from('user_profiles')
+        .select('*', { count: 'exact', head: true });
+
+    if (error) {
+        console.error('Error fetching user count:', error);
+        return { totalUsers: 0 };
+    }
+    return { totalUsers: count || 0 };
+};
+
 export default supabase;

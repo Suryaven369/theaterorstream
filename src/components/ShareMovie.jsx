@@ -27,7 +27,7 @@ const MiniTOSCircle = ({ value, label, color }) => (
             {value?.toFixed(1) || '-'}
         </div>
         <span
-            className="text-[9px] uppercase tracking-[0.15em] mt-2 text-center font-extrabold text-white/90 drop-shadow-md"
+            className="text-[8px] uppercase tracking-[0.1em] mt-1.5 text-center font-extrabold text-white/80 drop-shadow-md leading-tight"
         >
             {label}
         </span>
@@ -78,12 +78,12 @@ const ShareableCard = React.forwardRef(({ movieTitle, movieYear, posterUrl, back
             </div>
 
             {/* Content Container */}
-            <div className="relative z-10 h-full flex flex-col p-7 items-center">
+            <div className="relative z-10 h-full flex flex-col p-5 items-center justify-between">
 
-                {/* Header Section - More Compact */}
-                <div className="w-full flex items-start justify-between mb-4">
+                {/* Header Section - Compact */}
+                <div className="w-full flex items-start justify-between mb-2 shrink-0">
                     <div className="flex flex-col flex-1 pr-2">
-                        <span className="text-orange-500 font-extrabold text-[8px] uppercase tracking-[0.5em] mb-1 opacity-70">Rating Card</span>
+                        <span className="text-orange-500 font-extrabold text-[8px] uppercase tracking-[0.4em] mb-1 opacity-80">Rating Card</span>
                         <h2 className="text-white font-black text-2xl leading-[1.1] drop-shadow-2xl mb-1">
                             {movieTitle}
                         </h2>
@@ -137,20 +137,10 @@ const ShareableCard = React.forwardRef(({ movieTitle, movieYear, posterUrl, back
                         <div className="h-[2px] w-14 rounded-full mt-1.5" style={{ backgroundColor: scoreColor }} />
                     </div>
 
-                    {/* Metrics Dashboard - More Compact Grid */}
-                    <div className="w-full bg-black/40 backdrop-blur-xl rounded-2xl p-4 border border-white/10 shadow-2xl">
-                        <div className="grid grid-cols-4 gap-y-4">
-                            {TOS_CATEGORIES.slice(0, 4).map((cat) => (
-                                <MiniTOSCircle
-                                    key={cat.key}
-                                    value={ratings?.[cat.key]}
-                                    label={cat.label}
-                                    color={cat.color}
-                                />
-                            ))}
-                        </div>
-                        <div className="flex justify-center gap-4 mt-4 pt-4 border-t border-white/5">
-                            {TOS_CATEGORIES.slice(4).map((cat) => (
+                    {/* Metrics Dashboard - Flexible Layout */}
+                    <div className="w-full bg-black/40 backdrop-blur-xl rounded-2xl p-3 border border-white/10 shadow-2xl mt-auto">
+                        <div className="flex flex-wrap justify-center gap-x-2 gap-y-3">
+                            {TOS_CATEGORIES.map((cat) => (
                                 <MiniTOSCircle
                                     key={cat.key}
                                     value={ratings?.[cat.key]}
@@ -202,19 +192,35 @@ const ShareMovieModal = ({ isOpen, onClose, movieTitle, movieYear, posterUrl, ba
             if (!url) return null;
             if (url.startsWith('data:')) return url;
 
-            // Use a CORS proxy for TMDB images
-            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+            const blobToDataURL = (blob) => {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                });
+            };
+
+            // 1. Try Direct Fetch (TMDB supports CORS)
+            try {
+                const response = await fetch(url, { mode: 'cors', credentials: 'omit' });
+                if (response.ok) {
+                    const blob = await response.blob();
+                    return await blobToDataURL(blob);
+                }
+            } catch (e) {
+                // Ignore and try proxy
+            }
+
+            // 2. Fallback to reliable proxy
+            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
             const response = await fetch(proxyUrl);
             const blob = await response.blob();
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result);
-                reader.onerror = reject;
-                reader.readAsDataURL(blob);
-            });
+            return await blobToDataURL(blob);
         } catch (error) {
             console.error('Error converting to base64:', error);
-            return null;
+            // Return original URL as last resort (html2canvas might handle it if crossOrigin set)
+            return url;
         }
     };
 
