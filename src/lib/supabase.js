@@ -841,13 +841,90 @@ export const getHomepageSections = async (activeOnly = false) => {
         query = query.eq('is_active', true);
     }
 
-    const { data, error } = await query;
+    const { data: sections, error } = await query;
 
     if (error) {
         console.error('Error fetching homepage sections:', error);
         return [];
     }
-    return data || [];
+
+    if (!sections || sections.length === 0) return [];
+
+    // ============================================================
+    // GLOBAL LIBRARY HYDRATION LOGIC
+    // ============================================================
+    // 1. Collect all unique TMDB IDs from all sections' movies_by_region
+    const tmdbIdsToFetch = new Set();
+
+    sections.forEach(section => {
+        if (!section.movies_by_region) return;
+
+        Object.values(section.movies_by_region).forEach(movieList => {
+            if (!Array.isArray(movieList)) return;
+            movieList.forEach(movie => {
+                // If the movie object is "slim" (missing poster/title), it needs hydration
+                // Or if we just want to enforce Source-of-Truth from library
+                if (movie.tmdb_id) {
+                    tmdbIdsToFetch.add(String(movie.tmdb_id));
+                }
+            });
+        });
+    });
+
+    if (tmdbIdsToFetch.size === 0) return sections; // No movies to hydrate
+
+    // 2. Fetch full details from movies_library
+    // We fetch a bit more info to ensure we can fully reconstruct the UI cards
+    const { data: globalMovies, error: libError } = await supabase
+        .from('movies_library')
+        .select('tmdb_id, title, poster_path, backdrop_path, media_type, release_date, vote_average, overview, genres, runtime, number_of_seasons, number_of_episodes, images')
+        .in('tmdb_id', Array.from(tmdbIdsToFetch));
+
+    if (libError) {
+        console.error('Error fetching global movies for sections:', libError);
+        return sections; // Fallback to raw section data
+    }
+
+    // Map for O(1) lookup
+    const movieMap = new Map();
+    globalMovies?.forEach(m => {
+        movieMap.set(String(m.tmdb_id), m);
+    });
+
+    // 3. Hydrate sections
+    // Replace the section's movie data with the fresh data from library
+    const hydratedSections = sections.map(section => {
+        if (!section.movies_by_region) return section;
+
+        const hydatedMoviesByRegion = {};
+
+        Object.keys(section.movies_by_region).forEach(regionCode => {
+            const rawMovies = section.movies_by_region[regionCode] || [];
+
+            hydatedMoviesByRegion[regionCode] = rawMovies.map(rawMovie => {
+                const globalMovie = movieMap.get(String(rawMovie.tmdb_id));
+
+                if (globalMovie) {
+                    // MERGE: Keep explicit order from section, overwrite details from library
+                    return {
+                        ...rawMovie, // keeps 'order' and any manual overrides
+                        ...globalMovie, // overwrites title, poster, images, etc. from global DB
+                        // Ensure images are properly set if library has them
+                        images: globalMovie.images || rawMovie.images,
+                    };
+                }
+                return rawMovie; // Fallback to embedded data if library missing
+            });
+        });
+
+        return {
+            ...section,
+            movies_by_region: hydatedMoviesByRegion
+        };
+    });
+
+    return hydratedSections;
+
 };
 
 // Create a new homepage section
