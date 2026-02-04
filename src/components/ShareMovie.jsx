@@ -453,4 +453,32 @@ const ShareMovieModal = ({ isOpen, onClose, movieTitle, movieYear, posterUrl, ba
     );
 };
 
+// Share Button Component (to use on Details page)
+export const ShareButton = ({ movieTitle, movieYear, posterUrl, backdropUrl, ratings, imageURL }) => {
+    const [isModalOpen, setIsModalOpen] = useState(false);
+
+    return (
+        <>
+            <button
+                onClick={() => setIsModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 hover:border-green-500/30 hover:bg-green-500/10 text-white/70 hover:text-green-400 transition-all"
+            >
+                <FaShare className="text-sm" />
+                <span className="text-sm font-medium">Share</span>
+            </button>
+
+            <ShareMovieModal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                movieTitle={movieTitle}
+                movieYear={movieYear}
+                posterUrl={posterUrl}
+                backdropUrl={backdropUrl}
+                ratings={ratings}
+                imageURL={imageURL}
+            />
+        </>
+    );
+};
+
 export default ShareMovieModal;
