@@ -44,8 +44,22 @@ const ShareableCard = React.forwardRef(({ movieTitle, movieYear, posterUrl, back
     };
 
     const scoreColor = getScoreColor();
-    const bgImage = backdropBase64 || backdropUrl || posterBase64 || posterUrl; // Prefer backdrop for BG
-    const posterImage = posterBase64 || posterUrl || backdropBase64 || backdropUrl; // Prefer poster for FG
+    // Prefer backdrop for BG
+    let bgImage = backdropBase64 || backdropUrl || posterBase64 || posterUrl;
+    // Prefer poster for FG
+    let posterImage = posterBase64 || posterUrl || backdropBase64 || backdropUrl;
+
+    // Cache-bust URLs if they are not base64 to ensure fresh CORS headers for html2canvas
+    // This fixes the "missing image" issue if browser cached the image previously without CORS
+    const cacheBuster = `?t=${Date.now()}`;
+
+    if (bgImage && !bgImage.startsWith('data:')) {
+        bgImage = bgImage.includes('?') ? `${bgImage}&t=${Date.now()}` : `${bgImage}${cacheBuster}`;
+    }
+
+    if (posterImage && !posterImage.startsWith('data:')) {
+        posterImage = posterImage.includes('?') ? `${posterImage}&t=${Date.now()}` : `${posterImage}${cacheBuster}`;
+    }
 
     // Get verdict text
     const getVerdict = () => {
@@ -96,16 +110,16 @@ const ShareableCard = React.forwardRef(({ movieTitle, movieYear, posterUrl, back
 
                     {/* Poster Image - Shadowed and Clean */}
                     <div className="relative group perspective">
-                        <div className="w-48 rounded-xl overflow-hidden shadow-2xl border border-white/10 relative z-10 transform transition-transform">
+                        <div className="w-48 min-h-[280px] bg-gray-900 rounded-xl overflow-hidden shadow-2xl border border-white/10 relative z-10 transform transition-transform">
                             {posterImage ? (
                                 <img
                                     src={posterImage}
                                     alt={movieTitle}
-                                    className="w-full h-auto object-cover"
+                                    className="w-full h-full object-cover"
                                     crossOrigin="anonymous"
                                 />
                             ) : (
-                                <div className="w-full h-72 bg-gray-800 flex items-center justify-center">
+                                <div className="w-full h-full flex items-center justify-center">
                                     <span className="text-4xl">🎬</span>
                                 </div>
                             )}
@@ -225,8 +239,8 @@ const ShareMovieModal = ({ isOpen, onClose, movieTitle, movieYear, posterUrl, ba
                 if (b64) setPosterBase64(b64);
             }
 
-            // Small delay to ensure renders
-            await new Promise(resolve => setTimeout(resolve, 300));
+            // Waiting longer for image rendering
+            await new Promise(resolve => setTimeout(resolve, 800));
 
             const canvas = await html2canvas(cardRef.current, {
                 backgroundColor: '#000000',
