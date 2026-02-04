@@ -5,8 +5,12 @@ import { Link } from "react-router-dom";
 import { FaStar } from "react-icons/fa";
 import { generateSlugWithId } from "../lib/slugUtils";
 
+// Fallback TMDB image URL if Redux store hasn't loaded yet
+const FALLBACK_IMAGE_URL = "https://image.tmdb.org/t/p/original";
+
 const Card = ({ data, trending, index, media_type }) => {
-  const imageURL = useSelector((state) => state.movieData.imageURL);
+  const reduxImageURL = useSelector((state) => state.movieData.imageURL);
+  const imageURL = reduxImageURL || FALLBACK_IMAGE_URL;
   const mediaType = data.media_type ?? media_type;
 
   // Generate SEO-friendly slug URL
@@ -25,6 +29,25 @@ const Card = ({ data, trending, index, media_type }) => {
   const displayRating = tosRating ? tosRating.score : (data.vote_average || 0);
   const isTosRating = tosRating !== null;
 
+  // Construct image source with proper fallbacks
+  const getImageSrc = () => {
+    // Priority 1: Base64 image (works offline, fastest)
+    if (data.images?.poster_base64) {
+      return data.images.poster_base64;
+    }
+    // Priority 2: TMDB poster path
+    if (data.poster_path) {
+      // Handle both full URLs and relative paths
+      if (data.poster_path.startsWith('http')) {
+        return data.poster_path;
+      }
+      return `${imageURL}${data.poster_path}`;
+    }
+    return null;
+  };
+
+  const imageSrc = getImageSrc();
+
   return (
     <Link
       to={movieUrl}
@@ -34,18 +57,22 @@ const Card = ({ data, trending, index, media_type }) => {
       <div className="relative overflow-hidden rounded-xl bg-white/5 card-hover">
         {/* Image */}
         <div className="aspect-[2/3] overflow-hidden">
-          {(data.images && data.images.poster_base64) || data?.poster_path ? (
+          {imageSrc ? (
             <img
-              src={data.images && data.images.poster_base64 ? data.images.poster_base64 : imageURL + data?.poster_path}
+              src={imageSrc}
               alt={data?.title || data?.name}
               className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
               loading="lazy"
+              onError={(e) => {
+                // Hide broken images gracefully
+                e.target.style.display = 'none';
+                e.target.nextSibling?.classList?.remove('hidden');
+              }}
             />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-white/20 text-xs">
-              No image
-            </div>
-          )}
+          ) : null}
+          <div className={`w-full h-full flex items-center justify-center text-white/20 text-xs bg-gradient-to-br from-gray-800 to-gray-900 ${imageSrc ? 'hidden absolute inset-0' : ''}`}>
+            🎬
+          </div>
         </div>
 
         {/* Gradient overlay on hover */}
