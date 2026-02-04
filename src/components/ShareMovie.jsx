@@ -13,21 +13,21 @@ const TOS_CATEGORIES = [
     { key: "cinematicQuality", label: "Visuals", color: "#f59e0b" },
 ];
 
-// Mini TOS Rating Circle for share card
+// Mini TOS Rating Circle for share card - Clean and Readable
 const MiniTOSCircle = ({ value, label, color }) => (
-    <div className="flex flex-col items-center justify-center p-1">
+    <div className="flex flex-col items-center justify-center p-1 min-w-[64px]">
         <div
-            className="w-14 h-14 rounded-full flex items-center justify-center text-lg font-black border-[3px] bg-gray-900 shadow-xl"
+            className="w-12 h-12 rounded-full flex items-center justify-center text-base font-black border-2 bg-black/40 backdrop-blur-sm"
             style={{
                 borderColor: color,
                 color: '#ffffff',
-                boxShadow: `0 0 15px ${color}50`
+                textShadow: '0 2px 4px rgba(0,0,0,0.5)'
             }}
         >
             {value?.toFixed(1) || '-'}
         </div>
         <span
-            className="text-[10px] uppercase tracking-wider mt-2 text-center font-bold leading-none text-white/90 shadow-black drop-shadow-md"
+            className="text-[9px] uppercase tracking-[0.15em] mt-2 text-center font-extrabold text-white/90 drop-shadow-md"
         >
             {label}
         </span>
@@ -78,69 +78,68 @@ const ShareableCard = React.forwardRef(({ movieTitle, movieYear, posterUrl, back
             </div>
 
             {/* Content Container */}
-            <div className="relative z-10 h-full flex flex-col p-8 items-center">
+            <div className="relative z-10 h-full flex flex-col p-7 items-center">
 
-                {/* Header Section - Better Spacing */}
-                <div className="w-full flex items-start justify-between mb-8">
+                {/* Header Section - More Compact */}
+                <div className="w-full flex items-start justify-between mb-4">
                     <div className="flex flex-col flex-1 pr-2">
-                        <span className="text-orange-500 font-extrabold text-[9px] uppercase tracking-[0.4em] mb-1.5 opacity-80">Rating Card</span>
-                        <h2 className="text-white font-black text-2xl leading-none drop-shadow-2xl mb-1">
+                        <span className="text-orange-500 font-extrabold text-[8px] uppercase tracking-[0.5em] mb-1 opacity-70">Rating Card</span>
+                        <h2 className="text-white font-black text-2xl leading-[1.1] drop-shadow-2xl mb-1">
                             {movieTitle}
                         </h2>
-                        <span className="text-white/40 text-xs font-semibold">EST. {movieYear || '2024'}</span>
+                        <span className="text-white/40 text-[10px] font-bold uppercase tracking-widest">{movieYear || '2024'}</span>
                     </div>
                     <div className="flex flex-col items-end">
-                        <div className="bg-white/10 p-2 rounded-xl backdrop-blur-md border border-white/20 shadow-xl">
+                        <div className="bg-white/10 px-2 py-1.5 rounded-lg backdrop-blur-md border border-white/10">
                             <span className="text-orange-500 font-black text-xs tracking-tighter">TOS</span>
                         </div>
                     </div>
                 </div>
 
                 {/* Visual Content Area */}
-                <div className="flex-1 w-full flex flex-col items-center justify-center gap-4">
+                <div className="flex-1 w-full flex flex-col items-center justify-center gap-2">
 
                     {/* Poster - Centerpiece */}
-                    <div className="relative mb-8">
-                        {/* Glow behind poster */}
+                    <div className="relative mb-4">
+                        {/* Dramatic Glow */}
                         <div
-                            className="absolute -inset-4 rounded-3xl blur-[60px] opacity-40 z-0"
+                            className="absolute -inset-6 rounded-3xl blur-[50px] opacity-30 z-0"
                             style={{ backgroundColor: scoreColor }}
                         />
 
-                        <div className="w-44 h-[260px] bg-black/60 rounded-2xl overflow-hidden shadow-[0_25px_60px_rgba(0,0,0,0.9)] border border-white/10 relative z-10">
+                        <div className="w-40 h-[240px] bg-black/60 rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.8)] border border-white/10 relative z-10 transition-transform hover:scale-105 duration-500">
                             {posterDisplay ? (
                                 <img
                                     src={posterDisplay}
                                     alt=""
-                                    className="w-full h-full object-cover rounded-2xl"
+                                    className="w-full h-full object-cover"
                                     crossOrigin="anonymous"
                                 />
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center bg-gray-900">
-                                    <span className="text-4xl">🎬</span>
+                                    <span className="text-4xl text-white/20 font-black">?</span>
                                 </div>
                             )}
                         </div>
                     </div>
 
-                    {/* Score Highlight - Fixed Line Position */}
-                    <div className="flex flex-col items-center mb-8">
-                        <div className="flex items-baseline gap-1 relative">
-                            <span className="text-7xl font-black tracking-tighter" style={{
-                                color: scoreColor,
-                                textShadow: `0 0 30px ${scoreColor}50`
+                    {/* Score Highlight - Improved Spacing */}
+                    <div className="flex flex-col items-center mb-4">
+                        <div className="flex items-baseline gap-1.5">
+                            <span className="text-6xl font-black tracking-tighter text-white" style={{
+                                textShadow: `0 0 20px ${scoreColor}80`
                             }}>
                                 {(overallScore || 0).toFixed(1)}
                             </span>
-                            <span className="text-white/20 text-xl font-bold">/10</span>
+                            <span className="text-white/20 text-lg font-bold">/10</span>
                         </div>
-                        {/* Underline with better separation */}
-                        <div className="h-[3px] w-12 rounded-full mt-2" style={{ backgroundColor: scoreColor }} />
+                        {/* Better Underline */}
+                        <div className="h-[2px] w-14 rounded-full mt-1.5" style={{ backgroundColor: scoreColor }} />
                     </div>
 
-                    {/* Metrics Dashboard */}
-                    <div className="w-full bg-black/60 backdrop-blur-2xl rounded-3xl p-5 border border-white/10 shadow-2xl">
-                        <div className="grid grid-cols-4 gap-y-4 gap-x-1">
+                    {/* Metrics Dashboard - More Compact Grid */}
+                    <div className="w-full bg-black/40 backdrop-blur-xl rounded-2xl p-4 border border-white/10 shadow-2xl">
+                        <div className="grid grid-cols-4 gap-y-4">
                             {TOS_CATEGORIES.slice(0, 4).map((cat) => (
                                 <MiniTOSCircle
                                     key={cat.key}
@@ -150,7 +149,7 @@ const ShareableCard = React.forwardRef(({ movieTitle, movieYear, posterUrl, back
                                 />
                             ))}
                         </div>
-                        <div className="flex justify-center gap-8 mt-5 pt-5 border-t border-white/10">
+                        <div className="flex justify-center gap-4 mt-4 pt-4 border-t border-white/5">
                             {TOS_CATEGORIES.slice(4).map((cat) => (
                                 <MiniTOSCircle
                                     key={cat.key}
@@ -165,8 +164,8 @@ const ShareableCard = React.forwardRef(({ movieTitle, movieYear, posterUrl, back
                 </div>
 
                 {/* Footer Branding */}
-                <div className="w-full flex items-center justify-center mt-6">
-                    <p className="text-white/20 text-[8px] font-black tracking-[0.5em] uppercase">
+                <div className="w-full flex items-center justify-center pt-4">
+                    <p className="text-white/10 text-[7px] font-bold tracking-[0.6em] uppercase">
                         theaterorstream.com
                     </p>
                 </div>
