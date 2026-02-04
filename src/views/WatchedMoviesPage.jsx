@@ -119,12 +119,12 @@ const WatchedMoviesPage = () => {
                                     className="group flex items-center gap-4 sm:gap-6 p-4 rounded-xl bg-[#1a1a1a] border border-white/5 hover:border-green-500/30 transition-all"
                                 >
                                     {/* Timestamp Column */}
-                                    <div className="flex flex-col items-end min-w-[80px] sm:min-w-[100px] border-r border-white/10 pr-4 sm:pr-6 shrink-0">
-                                        <span className="text-lg sm:text-xl font-bold text-green-400 font-mono">
-                                            {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    <div className="flex flex-col items-end min-w-[100px] sm:min-w-[120px] border-r border-white/10 pr-4 sm:pr-6 shrink-0">
+                                        <span className="text-sm sm:text-base font-bold text-green-400 font-mono uppercase tracking-wider text-right leading-tight">
+                                            {date.toLocaleDateString([], { month: 'short', day: '2-digit', year: 'numeric' })}
                                         </span>
-                                        <span className="text-[10px] sm:text-xs font-medium text-white/40 uppercase tracking-wider">
-                                            {date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+                                        <span className="text-xs sm:text-sm font-medium text-white/40 mt-1">
+                                            {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                         </span>
                                     </div>
 
