@@ -6,8 +6,10 @@ import {
     getCollectionBySlug,
     removeFromCollection,
     addMoviesToCollection,
-    updateUserCollection
+    updateUserCollection,
+    saveFullMovieToLibrary
 } from '../lib/supabase';
+import { convertImageToBase64 } from '../utils/imageHelper';
 import { FaTrash, FaLock, FaGlobe, FaFolderOpen, FaArrowLeft, FaPlus, FaSearch, FaCheck, FaTimes, FaEdit, FaSave, FaShare, FaLink, FaTwitter } from 'react-icons/fa';
 import axios from "axios";
 
@@ -318,15 +320,84 @@ const CollectionDetails = () => {
         if (selectedMovies.length === 0 || !collection) return;
 
         setAddingMovies(true);
-        const result = await addMoviesToCollection(collection.id, selectedMovies);
 
-        if (result.success) {
-            await loadCollection();
-            closeAddModal();
-        } else {
-            console.error("Failed to add movies:", result.error);
-            alert(`Failed to add movies: ${result.error?.message || 'Unknown error'}`);
+        try {
+            // Fetch full details for each selected movie and save to library (including images)
+            const processedMovies = [];
+
+            for (const movie of selectedMovies) {
+                try {
+                    console.log(`fetching full details for ${movie.title || movie.name}`);
+                    const mediaType = movie.media_type || 'movie';
+                    const endpoint = mediaType === 'tv' ? `/tv/${movie.id}` : `/movie/${movie.id}`;
+
+                    const { data: fullData } = await axios.get(endpoint, {
+                        params: { append_to_response: 'credits,videos,images,release_dates,keywords,similar,recommendations,reviews' }
+                    });
+
+                    // Optimization: Convert images to Base64
+                    try {
+                        if (fullData.poster_path) {
+                            const posterUrl = `https://image.tmdb.org/t/p/w342${fullData.poster_path}`;
+                            const posterBase64 = await convertImageToBase64(posterUrl);
+                            if (posterBase64) {
+                                if (!fullData.images) fullData.images = {};
+                                fullData.images.poster_base64 = posterBase64;
+                            }
+                        }
+                        if (fullData.backdrop_path) {
+                            const backdropUrl = `https://image.tmdb.org/t/p/w780${fullData.backdrop_path}`;
+                            const backdropBase64 = await convertImageToBase64(backdropUrl);
+                            if (backdropBase64) {
+                                if (!fullData.images) fullData.images = {};
+                                fullData.images.backdrop_base64 = backdropBase64;
+                            }
+                        }
+                    } catch (e) { console.warn("Image conversion failed", e); }
+
+                    // Process Cast Images (Top 10)
+                    try {
+                        if (fullData.credits?.cast?.length > 0) {
+                            const topCast = fullData.credits.cast.slice(0, 10);
+                            await Promise.all(topCast.map(async (actor) => {
+                                if (actor.profile_path) {
+                                    try {
+                                        const profileUrl = `https://image.tmdb.org/t/p/w185${actor.profile_path}`;
+                                        const profileBase64 = await convertImageToBase64(profileUrl);
+                                        if (profileBase64) actor.profile_base64 = profileBase64;
+                                    } catch (e) { }
+                                }
+                            }));
+                        }
+                    } catch (e) { console.warn("Cast image conversion failed", e); }
+
+                    // Save to library
+                    await saveFullMovieToLibrary(fullData);
+                    processedMovies.push(fullData);
+
+                } catch (error) {
+                    console.error(`Failed to process movie ${movie.id}`, error);
+                    // Fallback: use selected movie data (might be partial) but save loop
+                    processedMovies.push(movie);
+                }
+            }
+
+            // Link to collection
+            const result = await addMoviesToCollection(collection.id, processedMovies);
+
+            if (result.success) {
+                await loadCollection();
+                closeAddModal();
+            } else {
+                console.error("Failed to add movies:", result.error);
+                alert(`Failed to add movies: ${result.error?.message || 'Unknown error'}`);
+            }
+
+        } catch (error) {
+            console.error("Batch add failed", error);
+            alert("Something went wrong while adding movies.");
         }
+
         setAddingMovies(false);
     };
 
