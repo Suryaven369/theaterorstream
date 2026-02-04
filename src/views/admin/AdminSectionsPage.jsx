@@ -446,9 +446,15 @@ const AdminSectionsPage = () => {
         setHasUnsavedChanges(true);
     };
 
-    // Add movie to section - STAGES locally, doesn't save to DB yet
+    // Processing state for specific sections (loader)
+    const [processingSectionId, setProcessingSectionId] = useState(null);
+    const [addingMovieId, setAddingMovieId] = useState(null);
+
+    // Add movie to section - AUTO SAVES to DB
     const handleAddMovie = async (sectionId, movie) => {
         try {
+            setProcessingSectionId(sectionId); // Start loading section
+            setAddingMovieId(movie.id); // Start loading specific movie card
             const mediaType = movie.media_type || "movie";
             console.log(`📥 Fetching full data for: ${movie.title || movie.name}`);
 
@@ -461,7 +467,6 @@ const AdminSectionsPage = () => {
 
             // =========================================================
             // OPTIMIZATION: Convert images to Base64 for DB storage
-            // This ensures images load even if TMDB is restricted
             // =========================================================
             try {
                 // Use w342 for posters (good balance of quality/size)
@@ -487,7 +492,7 @@ const AdminSectionsPage = () => {
                 console.warn('Failed to process offline images:', imgError);
             }
 
-            // Save to library (this is fine to do immediately)
+            // Save to library (immediate)
             await saveFullMovieToLibrary(fullData);
             console.log(`✓ Saved to library: ${fullData.title || fullData.name}`);
 
@@ -500,6 +505,7 @@ const AdminSectionsPage = () => {
             if (currentMovies.some(m => m.tmdb_id === movie.id)) {
                 console.log('Movie already in section');
                 toast.warning('Movie is already in this section');
+                setProcessingSectionId(null);
                 return;
             }
 
@@ -516,30 +522,59 @@ const AdminSectionsPage = () => {
                 original_language: fullData.original_language,
                 genres: fullData.genres,
                 runtime: fullData.runtime || fullData.episode_run_time?.[0],
-                images: fullData.images, // Include Base64 images in section cache
+                images: fullData.images,
                 order: currentMovies.length + 1
             };
 
-            // Update locally (staged) - add to SELECTED region
-            setSections(prev => prev.map(s => {
-                if (s.id !== sectionId) return s;
-                return {
-                    ...s,
-                    movies_by_region: {
-                        ...s.movies_by_region,
-                        [regionCode]: [...(s.movies_by_region?.[regionCode] || []), newMovie]
-                    }
-                };
-            }));
-            setHasUnsavedChanges(true);
+            // Calculate updated section data
+            const updatedMoviesByRegion = {
+                ...section.movies_by_region,
+                [regionCode]: [...(section.movies_by_region?.[regionCode] || []), newMovie]
+            };
+
+            const updatedSection = {
+                ...section,
+                movies_by_region: updatedMoviesByRegion
+            };
+
+            // Update locally
+            setSections(prev => prev.map(s => s.id === sectionId ? updatedSection : s));
+
+            // AUTO SAVE: Save this specific section immediately
+            // Optimization: Strip heavy images before saving section
+            const optimizedMoviesByRegion = {};
+            Object.keys(updatedMoviesByRegion).forEach(code => {
+                const movies = updatedMoviesByRegion[code] || [];
+                optimizedMoviesByRegion[code] = movies.map(m => {
+                    const { images, videos, credits, similar, recommendations, reviews, ...cleanMovie } = m;
+                    return cleanMovie;
+                });
+            });
+
+            if (contentMode === 'tv') {
+                await supabase.from('tv_sections')
+                    .update({
+                        movies_by_region: optimizedMoviesByRegion,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', sectionId);
+            } else {
+                await updateHomepageSection(sectionId, {
+                    movies_by_region: optimizedMoviesByRegion
+                });
+            }
+
             setSearchQuery("");
             setSearchResults([]);
-            console.log(`✅ Staged movie "${newMovie.title}" - Click SAVE to publish`);
-            toast.success(`Added "${newMovie.title}" - Click Save to publish`);
+            console.log(`✅ Auto-saved movie "${newMovie.title}"`);
+            toast.success(`Added & Saved "${newMovie.title}"`);
 
         } catch (error) {
             console.error("Error adding movie:", error);
             toast.error("Failed to add movie");
+        } finally {
+            setProcessingSectionId(null); // Stop loading
+            setAddingMovieId(null);
         }
     };
 
@@ -1253,22 +1288,35 @@ const AdminSectionsPage = () => {
                                         <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-3">
                                             {searchResults.map((movie) => {
                                                 const alreadyAdded = section.movies?.some(m => m.tmdb_id === movie.id);
+                                                const isAddingThis = addingMovieId === movie.id && processingSectionId === section.id;
+
                                                 return (
                                                     <div
                                                         key={movie.id}
-                                                        onClick={() => !alreadyAdded && handleAddMovie(section.id, movie)}
-                                                        className={`relative cursor-pointer group ${alreadyAdded ? "opacity-50 cursor-not-allowed" : "hover:scale-105 transition-transform"}`}
+                                                        onClick={() => !alreadyAdded && !processingSectionId && handleAddMovie(section.id, movie)}
+                                                        className={`relative cursor-pointer group rounded-lg overflow-hidden ${alreadyAdded ? "opacity-50 cursor-not-allowed" : "hover:scale-105 transition-transform"} ${isAddingThis ? "ring-2 ring-orange-500 scale-95" : ""}`}
                                                     >
                                                         <img
                                                             src={movie.poster_path ? `https://image.tmdb.org/t/p/w154${movie.poster_path}` : "/placeholder.png"}
                                                             alt={movie.title || movie.name}
-                                                            className="w-full rounded-lg border border-white/10"
+                                                            className="w-full h-full object-cover"
                                                         />
-                                                        <div className={`absolute inset-0 flex items-center justify-center bg-black/60 rounded-lg transition-opacity ${alreadyAdded ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
-                                                            <span className="text-white text-2xl font-bold">{alreadyAdded ? "✓" : "+"}</span>
+
+                                                        {/* Overlay for Add/Added status */}
+                                                        <div className={`absolute inset-0 flex items-center justify-center bg-black/60 transition-opacity ${alreadyAdded || isAddingThis ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
+                                                            {isAddingThis ? (
+                                                                <div className="flex flex-col items-center">
+                                                                    <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mb-1"></div>
+                                                                    <span className="text-[10px] text-orange-400 font-bold">SAVING</span>
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-white text-3xl font-bold">{alreadyAdded ? "✓" : "+"}</span>
+                                                            )}
                                                         </div>
-                                                        <div className="text-[10px] text-white/60 mt-1 truncate text-center">{movie.title || movie.name}</div>
-                                                        <div className="text-[9px] text-white/40 text-center">{movie.media_type === 'tv' ? 'TV' : 'Movie'}</div>
+
+                                                        <div className="absolute bottom-0 left-0 right-0 p-1 bg-gradient-to-t from-black/90 to-transparent">
+                                                            <div className="text-[10px] text-white/90 truncate text-center font-medium">{movie.title || movie.name}</div>
+                                                        </div>
                                                     </div>
                                                 );
                                             })}
