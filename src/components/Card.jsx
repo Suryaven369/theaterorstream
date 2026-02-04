@@ -63,7 +63,7 @@ const Card = ({ data, trending, index, media_type }) => {
         <div className="aspect-[2/3] overflow-hidden">
           {data?.poster_path ? (
             <img
-              src={imageURL + data?.poster_path}
+              src={data.images && data.images.poster_base64 ? data.images.poster_base64 : imageURL + data?.poster_path}
               alt={data?.title || data?.name}
               className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
               loading="lazy"

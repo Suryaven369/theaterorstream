@@ -264,7 +264,7 @@ const Details = () => {
         <div className="absolute inset-0">
           {data?.backdrop_path && (
             <img
-              src={imageURL + data?.backdrop_path}
+              src={data.images && data.images.backdrop_base64 ? data.images.backdrop_base64 : imageURL + data?.backdrop_path}
               className="w-full h-full object-cover object-top"
               alt={data?.title || data?.name}
             />
@@ -305,7 +305,7 @@ const Details = () => {
             <div className="w-48 md:w-64 lg:w-full mx-auto lg:mx-0 rounded-2xl overflow-hidden shadow-2xl">
               {data?.poster_path ? (
                 <img
-                  src={imageURL + data?.poster_path}
+                  src={data.images && data.images.poster_base64 ? data.images.poster_base64 : imageURL + data?.poster_path}
                   className="w-full aspect-[2/3] object-cover"
                   alt={data?.title || data?.name}
                 />
