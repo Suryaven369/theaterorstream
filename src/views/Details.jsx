@@ -459,7 +459,7 @@ const Details = () => {
                         className="flex-shrink-0 flex items-center gap-2 bg-white/5 rounded-full pr-3"
                       >
                         <img
-                          src={imageURL + actor.profile_path}
+                          src={actor.profile_base64 ? actor.profile_base64 : imageURL + actor.profile_path}
                           className="w-10 h-10 rounded-full object-cover"
                           alt={actor.name}
                         />

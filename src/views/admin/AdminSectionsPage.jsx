@@ -492,6 +492,39 @@ const AdminSectionsPage = () => {
                 console.warn('Failed to process offline images:', imgError);
             }
 
+            // =========================================================
+            // OPTIMIZATION: Process Cast Images (Top 10)
+            // =========================================================
+            try {
+                if (fullData.credits?.cast?.length > 0) {
+                    console.log('  Processing cast images...');
+                    const topCast = fullData.credits.cast.slice(0, 10); // Limit to top 10 to save space
+
+                    await Promise.all(topCast.map(async (actor) => {
+                        if (actor.profile_path) {
+                            try {
+                                const profileUrl = `https://image.tmdb.org/t/p/w185${actor.profile_path}`; // Small size is enough
+                                const profileBase64 = await convertImageToBase64(profileUrl);
+                                if (profileBase64) {
+                                    actor.profile_base64 = profileBase64;
+                                }
+                            } catch (e) {
+                                console.warn(`Failed to process cast image for ${actor.name}`, e);
+                            }
+                        }
+                    }));
+
+                    // Update the cast in fullData with the modified objects (that now have base64)
+                    // Note: Since we modified objects in the array reference, this might technically be done, 
+                    // but let's be explicit if we sliced/mapped.
+                    // Actually, map doesn't mutate, so we need to put them back.
+                    // But here I used map just to trigger async work. The objects inside `topCast` are refs to `fullData.credits.cast` objects.
+                    // So mutating `actor` inside map DOES mutate `fullData.credits.cast`. 
+                }
+            } catch (castError) {
+                console.warn('Failed to process cast images:', castError);
+            }
+
             // Save to library (immediate)
             await saveFullMovieToLibrary(fullData);
             console.log(`✓ Saved to library: ${fullData.title || fullData.name}`);
