@@ -61,7 +61,7 @@ const Card = ({ data, trending, index, media_type }) => {
       <div className="relative overflow-hidden rounded-xl bg-white/5 card-hover">
         {/* Image */}
         <div className="aspect-[2/3] overflow-hidden">
-          {data?.poster_path ? (
+          {(data.images && data.images.poster_base64) || data?.poster_path ? (
             <img
               src={data.images && data.images.poster_base64 ? data.images.poster_base64 : imageURL + data?.poster_path}
               alt={data?.title || data?.name}
