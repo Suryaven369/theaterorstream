@@ -458,6 +458,34 @@ const AdminSectionsPage = () => {
             });
             const fullData = detailResponse.data;
 
+            // =========================================================
+            // OPTIMIZATION: Convert images to Base64 for DB storage
+            // This ensures images load even if TMDB is restricted
+            // =========================================================
+            try {
+                // Use w342 for posters (good balance of quality/size)
+                if (fullData.poster_path) {
+                    const posterUrl = `https://image.tmdb.org/t/p/w342${fullData.poster_path}`;
+                    const posterBase64 = await convertImageToBase64(posterUrl);
+                    if (posterBase64) {
+                        if (!fullData.images) fullData.images = {};
+                        fullData.images.poster_base64 = posterBase64;
+                    }
+                }
+
+                // Use w780 for backdrops
+                if (fullData.backdrop_path) {
+                    const backdropUrl = `https://image.tmdb.org/t/p/w780${fullData.backdrop_path}`;
+                    const backdropBase64 = await convertImageToBase64(backdropUrl);
+                    if (backdropBase64) {
+                        if (!fullData.images) fullData.images = {};
+                        fullData.images.backdrop_base64 = backdropBase64;
+                    }
+                }
+            } catch (imgError) {
+                console.warn('Failed to process offline images:', imgError);
+            }
+
             // Save to library (this is fine to do immediately)
             await saveFullMovieToLibrary(fullData);
             console.log(`✓ Saved to library: ${fullData.title || fullData.name}`);
