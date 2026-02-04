@@ -144,9 +144,17 @@ const ShareableCard = React.forwardRef(({ movieTitle, movieYear, posterUrl, back
                         </div>
                     </div>
 
-                    {/* TOS Rating Grid */}
-                    <div className="w-full bg-black/40 backdrop-blur-md rounded-2xl p-4 border border-white/5 shadow-lg">
-                        <div className="flex justify-between items-end">
+                    {/* TOS Rating Grid - High Visibility */}
+                    <div className="w-full bg-black/80 backdrop-blur-xl rounded-2xl p-5 border border-white/20 shadow-2xl mt-2">
+                        {/* Header for section */}
+                        <div className="flex items-center justify-center mb-3">
+                            <div className="h-[1px] w-8 bg-white/20"></div>
+                            <span className="mx-2 text-[10px] font-bold text-white/60 uppercase tracking-[0.2em]">Detailed Breakdown</span>
+                            <div className="h-[1px] w-8 bg-white/20"></div>
+                        </div>
+
+                        {/* Grid Layout - 4 Top, 3 Bottom */}
+                        <div className="flex justify-between items-start mb-4 px-1">
                             {TOS_CATEGORIES.slice(0, 4).map((cat) => (
                                 <MiniTOSCircle
                                     key={cat.key}
@@ -156,7 +164,7 @@ const ShareableCard = React.forwardRef(({ movieTitle, movieYear, posterUrl, back
                                 />
                             ))}
                         </div>
-                        <div className="flex justify-around items-end mt-3 px-4">
+                        <div className="flex justify-center gap-6 items-start px-2">
                             {TOS_CATEGORIES.slice(4).map((cat) => (
                                 <MiniTOSCircle
                                     key={cat.key}
