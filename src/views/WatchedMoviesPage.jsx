@@ -85,7 +85,7 @@ const WatchedMoviesPage = () => {
 
     return (
         <div className="min-h-screen bg-[#0a0a0a] pt-24 pb-12 px-4">
-            <div className="max-w-5xl mx-auto">
+            <div className="max-w-3xl mx-auto">
                 {/* Header */}
                 <div className="flex items-center justify-between mb-8">
                     <div>
@@ -102,60 +102,76 @@ const WatchedMoviesPage = () => {
                             <div className="bg-green-500/20 p-2 rounded-lg">
                                 <FaCheckCircle className="text-green-500 text-2xl" />
                             </div>
-                            {isOwnProfile ? 'Watched Movies' : `@${username}'s Watched Movies`}
+                            {isOwnProfile ? 'Watched Log' : `@${username}'s Watched Log`}
                         </h1>
-                        <p className="text-white/50 mt-1 ml-12">{watchedMovies.length} movies watched</p>
+                        <p className="text-white/50 mt-1 ml-12">{watchedMovies.length} entries</p>
                     </div>
                 </div>
 
-                {/* Grid */}
+                {/* Log List */}
                 {watchedMovies.length > 0 ? (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                        {watchedMovies.map((movie) => (
-                            <div
-                                key={movie.id}
-                                className="group relative rounded-xl overflow-hidden bg-[#1a1a1a] border border-white/5 hover:border-green-500/30 transition-all"
-                            >
-                                <Link to={`/${movie.media_type || 'movie'}/${movie.movie_id}`}>
-                                    <div className="aspect-[2/3] relative">
-                                        {movie.poster_path ? (
-                                            <img
-                                                src={movie.poster_path.startsWith('http') ? movie.poster_path : `${imageURL}${movie.poster_path}`}
-                                                alt={movie.movie_title}
-                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                            />
-                                        ) : (
-                                            <div className="w-full h-full bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
-                                                <span className="text-4xl">🎬</span>
-                                            </div>
-                                        )}
-                                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <div className="space-y-4">
+                        {watchedMovies.map((movie) => {
+                            const date = new Date(movie.watched_at || movie.created_at);
+                            return (
+                                <div
+                                    key={movie.id}
+                                    className="group flex items-center gap-4 sm:gap-6 p-4 rounded-xl bg-[#1a1a1a] border border-white/5 hover:border-green-500/30 transition-all"
+                                >
+                                    {/* Timestamp Column */}
+                                    <div className="flex flex-col items-end min-w-[80px] sm:min-w-[100px] border-r border-white/10 pr-4 sm:pr-6 shrink-0">
+                                        <span className="text-lg sm:text-xl font-bold text-green-400 font-mono">
+                                            {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                        <span className="text-[10px] sm:text-xs font-medium text-white/40 uppercase tracking-wider">
+                                            {date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+                                        </span>
                                     </div>
-                                </Link>
-                                <div className="p-3 flex items-start justify-between gap-2">
-                                    <div className="flex-1 min-w-0">
-                                        <h3 className="text-sm font-medium text-white truncate">{movie.movie_title}</h3>
-                                        <p className="text-xs text-white/40">
-                                            Watched {new Date(movie.watched_at || movie.created_at).toLocaleDateString()}
-                                        </p>
+
+                                    {/* Content */}
+                                    <div className="flex items-center gap-4 flex-1 min-w-0">
+                                        <Link to={`/${movie.media_type || 'movie'}/${movie.movie_id}`} className="shrink-0">
+                                            {movie.poster_path ? (
+                                                <img
+                                                    src={movie.poster_path.startsWith('http') ? movie.poster_path : `${imageURL}${movie.poster_path}`}
+                                                    alt={movie.movie_title}
+                                                    className="w-10 h-16 sm:w-12 sm:h-20 object-cover rounded bg-white/10 hover:opacity-80 transition-opacity"
+                                                />
+                                            ) : (
+                                                <div className="w-10 h-16 sm:w-12 sm:h-20 bg-white/10 rounded flex items-center justify-center text-lg">🎬</div>
+                                            )}
+                                        </Link>
+                                        <div className="min-w-0 flex-1">
+                                            <Link
+                                                to={`/${movie.media_type || 'movie'}/${movie.movie_id}`}
+                                                className="text-base sm:text-lg font-bold text-white hover:text-green-400 transition-colors block truncate"
+                                            >
+                                                {movie.movie_title}
+                                            </Link>
+                                            <p className="text-xs text-white/30 hidden sm:block mt-1">
+                                                Marked as watched
+                                            </p>
+                                        </div>
                                     </div>
+
+                                    {/* Actions */}
                                     {isOwnProfile && (
                                         <button
                                             onClick={() => handleRemove(movie)}
                                             disabled={removing === movie.movie_id}
-                                            className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors opacity-0 group-hover:opacity-100"
-                                            title="Remove from watched"
+                                            className="p-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors opacity-0 group-hover:opacity-100 shrink-0"
+                                            title="Remove from log"
                                         >
                                             {removing === movie.movie_id ? (
-                                                <div className="w-3 h-3 border border-red-400 border-t-transparent rounded-full animate-spin" />
+                                                <div className="w-4 h-4 border border-red-400 border-t-transparent rounded-full animate-spin" />
                                             ) : (
-                                                <FaTrash className="text-xs" />
+                                                <FaTrash />
                                             )}
                                         </button>
                                     )}
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 ) : (
                     <div className="text-center py-20 rounded-2xl bg-[#1a1a1a] border border-white/5">
