@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import Card from "../components/Card";
 import { FaGlobe, FaChevronDown, FaCalendarAlt } from "react-icons/fa";
 import { Link } from "react-router-dom";
-import { supabase } from "../lib/supabase";
+import { supabase, getTVSections } from "../lib/supabase";
 import { generateSlugWithId } from "../lib/slugUtils";
 
 // Available regions for content filtering
@@ -44,36 +44,8 @@ const TVSeries = () => {
             console.log("📺 Fetching TV sections from database...");
 
             try {
-                // First try to fetch from tv_sections table
-                let { data: sections, error } = await supabase
-                    .from('tv_sections')
-                    .select('*')
-                    .eq('is_active', true)
-                    .order('display_order', { ascending: true });
-
-                // If tv_sections doesn't exist or is empty, fall back to homepage_sections
-                if (error || !sections || sections.length === 0) {
-                    console.log("📺 tv_sections not found, falling back to homepage_sections...");
-
-                    const { data: homepageSections, error: hpError } = await supabase
-                        .from('homepage_sections')
-                        .select('*')
-                        .eq('is_active', true)
-                        .order('display_order', { ascending: true });
-
-                    if (!hpError && homepageSections) {
-                        // Filter sections that have TV content
-                        sections = homepageSections.filter(s => {
-                            const hasTV = s.api_source?.includes('tv') ||
-                                s.name?.toLowerCase().includes('tv') ||
-                                s.name?.toLowerCase().includes('series') ||
-                                s.name?.toLowerCase().includes('netflix') ||
-                                s.name?.toLowerCase().includes('prime') ||
-                                s.name?.toLowerCase().includes('hotstar');
-                            return hasTV;
-                        });
-                    }
-                }
+                // Use centralized fetching with hydration
+                const sections = await getTVSections(true);
 
                 // Count total TV shows across all regions
                 const totalShows = sections?.reduce((acc, s) => {
@@ -223,7 +195,8 @@ const TVSeries = () => {
                                                                         release_date: show.release_date || show.first_air_date,
                                                                         overview: show.overview,
                                                                         genres: show.genres,
-                                                                        runtime: show.runtime
+                                                                        runtime: show.runtime,
+                                                                        images: show.images // Pass images for Base64 support
                                                                     }}
                                                                     media_type={show.media_type || "tv"}
                                                                     index={index}

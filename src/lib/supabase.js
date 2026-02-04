@@ -988,6 +988,95 @@ export const deleteHomepageSection = async (id) => {
     return { success: true };
 };
 
+// Get all TV sections (ordered by display_order)
+// Hydrates from movies_library for full details + images
+export const getTVSections = async (activeOnly = false) => {
+    let query = supabase
+        .from('tv_sections')
+        .select('*')
+        .order('display_order', { ascending: true });
+
+    if (activeOnly) {
+        query = query.eq('is_active', true);
+    }
+
+    const { data: sections, error } = await query;
+
+    if (error) {
+        console.error('Error fetching tv sections:', error);
+        return [];
+    }
+
+    if (!sections || sections.length === 0) return [];
+
+    // ============================================================
+    // GLOBAL LIBRARY HYDRATION LOGIC (Unified for TV)
+    // ============================================================
+    const tmdbIdsToFetch = new Set();
+
+    sections.forEach(section => {
+        if (!section.movies_by_region) return;
+
+        Object.values(section.movies_by_region).forEach(movieList => {
+            if (!Array.isArray(movieList)) return;
+            movieList.forEach(movie => {
+                if (movie.tmdb_id) {
+                    tmdbIdsToFetch.add(String(movie.tmdb_id));
+                }
+            });
+        });
+    });
+
+    if (tmdbIdsToFetch.size === 0) return sections;
+
+    // Fetch full details from movies_library
+    const { data: globalMovies, error: libError } = await supabase
+        .from('movies_library')
+        .select('tmdb_id, title, poster_path, backdrop_path, media_type, release_date, vote_average, overview, genres, runtime, number_of_seasons, number_of_episodes, images')
+        .in('tmdb_id', Array.from(tmdbIdsToFetch));
+
+    if (libError) {
+        console.error('Error fetching global movies for TV sections:', libError);
+        return sections;
+    }
+
+    const movieMap = new Map();
+    globalMovies?.forEach(m => {
+        movieMap.set(String(m.tmdb_id), m);
+    });
+
+    // Hydrate sections
+    const hydratedSections = sections.map(section => {
+        if (!section.movies_by_region) return section;
+
+        const hydatedMoviesByRegion = {};
+
+        Object.keys(section.movies_by_region).forEach(regionCode => {
+            const rawMovies = section.movies_by_region[regionCode] || [];
+
+            hydatedMoviesByRegion[regionCode] = rawMovies.map(rawMovie => {
+                const globalMovie = movieMap.get(String(rawMovie.tmdb_id));
+
+                if (globalMovie) {
+                    return {
+                        ...rawMovie,
+                        ...globalMovie,
+                        images: globalMovie.images || rawMovie.images,
+                    };
+                }
+                return rawMovie;
+            });
+        });
+
+        return {
+            ...section,
+            movies_by_region: hydatedMoviesByRegion
+        };
+    });
+
+    return hydratedSections;
+};
+
 // Toggle section active status
 export const toggleHomepageSectionActive = async (id) => {
     // First get current status

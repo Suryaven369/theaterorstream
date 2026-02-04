@@ -189,7 +189,8 @@ const Home = () => {
                                     release_date: movie.release_date,
                                     overview: movie.overview,
                                     genres: movie.genres,
-                                    runtime: movie.runtime
+                                    runtime: movie.runtime,
+                                    images: movie.images // Pass images for Base64 support
                                   }}
                                   media_type={movie.media_type || "movie"}
                                   index={index}
