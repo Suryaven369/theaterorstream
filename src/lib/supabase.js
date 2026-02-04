@@ -1391,6 +1391,7 @@ const createSlug = (text) => {
 };
 
 // Get collection by SEO-friendly slug (matches against slugified name)
+// Now hydrates movie data from global movies_library for full poster/image support
 export const getCollectionBySlug = async (slug) => {
     // Fetch all collections and find matching slug
     const { data: collections, error } = await supabase
@@ -1419,6 +1420,48 @@ export const getCollectionBySlug = async (slug) => {
             .single();
 
         collection.user_profiles = profile;
+    }
+
+    // ============================================================
+    // HYDRATE COLLECTION MOVIES FROM GLOBAL LIBRARY
+    // ============================================================
+    if (collection.collection_movies && collection.collection_movies.length > 0) {
+        // Collect all movie IDs
+        const movieIds = collection.collection_movies.map(m => String(m.movie_id));
+
+        // Fetch full details from movies_library
+        const { data: libraryMovies, error: libError } = await supabase
+            .from('movies_library')
+            .select('tmdb_id, title, poster_path, backdrop_path, media_type, release_date, vote_average, overview, genres, runtime, images')
+            .in('tmdb_id', movieIds);
+
+        if (!libError && libraryMovies && libraryMovies.length > 0) {
+            // Create lookup map
+            const movieMap = new Map();
+            libraryMovies.forEach(m => {
+                movieMap.set(String(m.tmdb_id), m);
+            });
+
+            // Hydrate collection_movies with library data
+            collection.collection_movies = collection.collection_movies.map(collMovie => {
+                const libraryMovie = movieMap.get(String(collMovie.movie_id));
+                if (libraryMovie) {
+                    return {
+                        ...collMovie,
+                        poster_path: libraryMovie.poster_path || collMovie.poster_path,
+                        backdrop_path: libraryMovie.backdrop_path,
+                        title: libraryMovie.title || collMovie.movie_title,
+                        vote_average: libraryMovie.vote_average,
+                        release_date: libraryMovie.release_date,
+                        overview: libraryMovie.overview,
+                        genres: libraryMovie.genres,
+                        runtime: libraryMovie.runtime,
+                        images: libraryMovie.images, // Includes base64 images
+                    };
+                }
+                return collMovie;
+            });
+        }
     }
 
     return collection;

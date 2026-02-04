@@ -41,11 +41,12 @@ const PosterCollage = ({ movies, imageURL, size = 'large' }) => {
         <div className={`${sizeClasses} rounded-2xl overflow-hidden grid grid-cols-2 gap-0.5 bg-white/10 shadow-lg`}>
             {posters.map((movie, index) => (
                 <div key={movie.movie_id || index} className="relative overflow-hidden">
-                    {movie.poster_path ? (
+                    {(movie.images?.poster_base64 || movie.poster_path) ? (
                         <img
-                            src={`${imageURL}${movie.poster_path}`}
+                            src={movie.images?.poster_base64 || `${imageURL}${movie.poster_path}`}
                             alt=""
                             className="w-full h-full object-cover"
+                            loading="lazy"
                         />
                     ) : (
                         <div className="w-full h-full bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center">
@@ -625,11 +626,12 @@ const CollectionDetails = () => {
                                 >
                                     <Link to={`/${movie.media_type || 'movie'}/${movie.movie_id}`}>
                                         <div className="aspect-[2/3] relative">
-                                            {movie.poster_path ? (
+                                            {(movie.images?.poster_base64 || movie.poster_path) ? (
                                                 <img
-                                                    src={`${imageURL}${movie.poster_path}`}
-                                                    alt={movie.movie_title}
+                                                    src={movie.images?.poster_base64 || `${imageURL}${movie.poster_path}`}
+                                                    alt={movie.movie_title || movie.title}
                                                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                                    loading="lazy"
                                                 />
                                             ) : (
                                                 <div className="w-full h-full bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">

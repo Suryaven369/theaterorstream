@@ -1,15 +1,13 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useMemo } from "react";
 import { useSelector } from "react-redux";
 import moment from "moment";
 import { Link } from "react-router-dom";
 import { FaStar } from "react-icons/fa";
-import { getMovieRatings } from "../lib/supabase";
 import { generateSlugWithId } from "../lib/slugUtils";
 
 const Card = ({ data, trending, index, media_type }) => {
   const imageURL = useSelector((state) => state.movieData.imageURL);
   const mediaType = data.media_type ?? media_type;
-  const [tosRating, setTosRating] = useState(null);
 
   // Generate SEO-friendly slug URL
   // Format: /movies/greenland-2-840464 or /tv/breaking-bad-1396
@@ -21,34 +19,9 @@ const Card = ({ data, trending, index, media_type }) => {
     return `${basePath}/${slug}`;
   }, [data, mediaType]);
 
-  // Fetch TOS community rating from Supabase
-  useEffect(() => {
-    const fetchTosRating = async () => {
-      if (!data?.id) return;
-
-      try {
-        const ratings = await getMovieRatings(data.id.toString());
-        if (ratings && ratings.totalRatings > 0) {
-          // Calculate average from all categories
-          const categories = ['acting', 'screenplay', 'sound', 'direction', 'entertainment', 'pacing', 'cinematography'];
-          const validRatings = categories.filter(cat => ratings[cat] !== null && ratings[cat] !== undefined);
-          if (validRatings.length > 0) {
-            const avg = validRatings.reduce((sum, cat) => sum + ratings[cat], 0) / validRatings.length;
-            setTosRating({
-              score: avg,
-              count: ratings.totalRatings
-            });
-          }
-        }
-      } catch (error) {
-        // Silently fail, will use TMDB rating
-      }
-    };
-
-    fetchTosRating();
-  }, [data?.id]);
-
-  // Determine which rating to display
+  // Use pre-loaded TOS rating if available, otherwise TMDB rating
+  // TOS rating can be passed via data.tos_rating from hydrated sections
+  const tosRating = data.tos_rating || null;
   const displayRating = tosRating ? tosRating.score : (data.vote_average || 0);
   const isTosRating = tosRating !== null;
 
