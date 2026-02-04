@@ -11,7 +11,7 @@ export const navigation = [
     icon: <MdHomeFilled />,
   },
   {
-    label: "TV Series",
+    label: "Series",
     href: "tv-series",
     icon: <FaTv />,
   },

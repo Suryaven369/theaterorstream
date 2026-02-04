@@ -1,224 +1,261 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
 import Card from "../components/Card";
-import { FaGlobe, FaChevronDown, FaFire, FaTv } from "react-icons/fa";
-import { useSelector } from "react-redux";
+import { FaGlobe, FaChevronDown } from "react-icons/fa";
+import { supabase } from "../lib/supabase";
 
-// Available regions
+// Available regions for content filtering - matching Home.jsx
 const REGIONS = [
     { code: "IN", name: "India", flag: "🇮🇳" },
     { code: "US", name: "United States", flag: "🇺🇸" },
     { code: "GB", name: "United Kingdom", flag: "🇬🇧" },
     { code: "CA", name: "Canada", flag: "🇨🇦" },
     { code: "AU", name: "Australia", flag: "🇦🇺" },
-];
-
-// TV Genre categories with icons
-const TV_CATEGORIES = [
-    { id: null, name: "All Shows", emoji: "📺" },
-    { id: 18, name: "Drama", emoji: "🎭" },
-    { id: 35, name: "Comedy", emoji: "😂" },
-    { id: 80, name: "Crime", emoji: "🔍" },
-    { id: 10765, name: "Sci-Fi & Fantasy", emoji: "🚀" },
-    { id: 10759, name: "Action & Adventure", emoji: "💥" },
-    { id: 9648, name: "Mystery", emoji: "🕵️" },
-    { id: 10751, name: "Family", emoji: "👨‍👩‍👧‍👦" },
-    { id: 10764, name: "Reality", emoji: "📹" },
-    { id: 99, name: "Documentary", emoji: "🎬" },
-    { id: 16, name: "Animation", emoji: "🎨" },
-    { id: 10767, name: "Talk Shows", emoji: "🎤" },
+    { code: "DE", name: "Germany", flag: "🇩🇪" },
+    { code: "FR", name: "France", flag: "🇫🇷" },
+    { code: "JP", name: "Japan", flag: "🇯🇵" },
+    { code: "KR", name: "South Korea", flag: "🇰🇷" },
+    { code: "BR", name: "Brazil", flag: "🇧🇷" },
 ];
 
 const TVSeries = () => {
-    const [selectedRegion, setSelectedRegion] = useState(REGIONS[0]);
-    const [isRegionOpen, setIsRegionOpen] = useState(false);
-    const [selectedCategory, setSelectedCategory] = useState(TV_CATEGORIES[0]);
-    const [trending, setTrending] = useState([]);
-    const [categoryShows, setCategoryShows] = useState([]);
-    const [loadingTrending, setLoadingTrending] = useState(true);
-    const [loadingCategory, setLoadingCategory] = useState(true);
-
-    // Fetch Trending TV Shows
-    const fetchTrending = async () => {
-        try {
-            setLoadingTrending(true);
-            const response = await axios.get("/trending/tv/week");
-            setTrending(response.data.results.slice(0, 10));
-        } catch (error) {
-            console.log("Error fetching trending:", error);
-        } finally {
-            setLoadingTrending(false);
+    // Load saved region from localStorage or default to India
+    const [selectedRegion, setSelectedRegion] = useState(() => {
+        const saved = localStorage.getItem('selectedRegion');
+        if (saved) {
+            const found = REGIONS.find(r => r.code === saved);
+            return found || REGIONS[0];
         }
-    };
+        return REGIONS[0];
+    });
+    const [isRegionOpen, setIsRegionOpen] = useState(false);
+    const [tvSections, setTvSections] = useState([]);
+    const [loadingSections, setLoadingSections] = useState(true);
 
-    // Fetch shows by category/genre
-    const fetchCategoryShows = async () => {
-        try {
-            setLoadingCategory(true);
-            const params = { language: "en-US", page: 1, sort_by: "popularity.desc" };
+    // ============================================
+    // FETCH TV SECTIONS FROM DATABASE
+    // Uses tv_sections table (mirrors homepage_sections for TV)
+    // Falls back to homepage_sections if tv_sections doesn't exist
+    // ============================================
+    useEffect(() => {
+        const fetchTvSections = async () => {
+            setLoadingSections(true);
+            console.log("📺 Fetching TV sections from database...");
 
-            let endpoint = "/discover/tv";
-            if (selectedCategory.id) {
-                params.with_genres = selectedCategory.id;
+            try {
+                // First try to fetch from tv_sections table
+                let { data: sections, error } = await supabase
+                    .from('tv_sections')
+                    .select('*')
+                    .eq('is_active', true)
+                    .order('display_order', { ascending: true });
+
+                // If tv_sections doesn't exist or is empty, fall back to homepage_sections
+                // and filter for TV content
+                if (error || !sections || sections.length === 0) {
+                    console.log("📺 tv_sections not found, falling back to homepage_sections...");
+
+                    const { data: homepageSections, error: hpError } = await supabase
+                        .from('homepage_sections')
+                        .select('*')
+                        .eq('is_active', true)
+                        .order('display_order', { ascending: true });
+
+                    if (!hpError && homepageSections) {
+                        // Filter sections that have TV content (api_source contains 'tv' or manual with TV shows)
+                        sections = homepageSections.filter(s => {
+                            const hasTV = s.api_source?.includes('tv') ||
+                                s.name?.toLowerCase().includes('tv') ||
+                                s.name?.toLowerCase().includes('series') ||
+                                s.name?.toLowerCase().includes('netflix') ||
+                                s.name?.toLowerCase().includes('prime') ||
+                                s.name?.toLowerCase().includes('hotstar');
+                            return hasTV;
+                        });
+                    }
+                }
+
+                // Count total TV shows across all regions
+                const totalShows = sections?.reduce((acc, s) => {
+                    const regionShows = Object.values(s.movies_by_region || {}).flat();
+                    return acc + regionShows.length;
+                }, 0) || 0;
+
+                console.log(`✅ Loaded ${sections?.length || 0} TV sections with ${totalShows} shows across all regions`);
+                setTvSections(sections || []);
+            } catch (err) {
+                console.error("Error fetching TV sections:", err);
+                setTvSections([]);
             }
 
-            const response = await axios.get(endpoint, { params });
-            setCategoryShows(response.data.results.slice(0, 20));
-        } catch (error) {
-            console.log("Error fetching category shows:", error);
-        } finally {
-            setLoadingCategory(false);
-        }
+            setLoadingSections(false);
+        };
+        fetchTvSections();
+    }, []); // Only fetch once on mount
+
+    const handleRegionSelect = (region) => {
+        setSelectedRegion(region);
+        localStorage.setItem('selectedRegion', region.code);
+        setIsRegionOpen(false);
     };
 
-    useEffect(() => {
-        fetchTrending();
-    }, []);
-
-    useEffect(() => {
-        fetchCategoryShows();
-    }, [selectedCategory]);
-
     return (
-        <div className="min-h-screen bg-[#0a0a0a] pt-20 sm:pt-24 pb-24 lg:pb-12">
-            <div className="container mx-auto px-4 sm:px-8 md:pl-12 lg:pl-16">
-                {/* Header */}
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 mb-8 sm:mb-10">
-                    <div>
-                        <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2">
-                            Discover <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-500">TV Series</span>
-                        </h1>
-                        <p className="text-sm sm:text-base text-white/50">Binge-worthy shows trending worldwide</p>
+        <div className="min-h-screen bg-[#0a0a0a] pb-20 lg:pb-0">
+            {/* Header Section with Region */}
+            <section className="pt-20 sm:pt-24 pb-6 sm:pb-8 px-4 sm:px-8 md:pl-12 lg:pl-16">
+                <div className="container mx-auto">
+                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                        <div>
+                            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-1 sm:mb-2">
+                                <span className="text-gradient">Series</span> <span className="text-white/60">& Shows</span>
+                            </h1>
+                            <p className="text-sm sm:text-base text-white/50">Trending TV shows on streaming platforms</p>
+                        </div>
+
+                        {/* Region Selector */}
+                        <div className="relative">
+                            <button
+                                onClick={() => setIsRegionOpen(!isRegionOpen)}
+                                className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:border-purple-500/30 transition-all"
+                            >
+                                <FaGlobe className="text-purple-400 text-sm" />
+                                <span className="text-xl">{selectedRegion.flag}</span>
+                                <span className="text-white text-sm font-medium">{selectedRegion.name}</span>
+                                <FaChevronDown className={`text-white/50 text-xs transition-transform ${isRegionOpen ? "rotate-180" : ""}`} />
+                            </button>
+
+                            {isRegionOpen && (
+                                <div className="absolute top-full right-0 mt-2 w-52 py-2 rounded-xl bg-[#1a1a1a] border border-white/10 shadow-2xl z-50 animate-fadeIn">
+                                    {REGIONS.map((region) => (
+                                        <button
+                                            key={region.code}
+                                            onClick={() => handleRegionSelect(region)}
+                                            className={`w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white/5 transition-colors text-sm ${selectedRegion.code === region.code ? "bg-purple-500/10 text-purple-400" : "text-white"
+                                                }`}
+                                        >
+                                            <span className="text-lg">{region.flag}</span>
+                                            <span className="font-medium">{region.name}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
+                </div>
+            </section>
 
-                    {/* Region Selector */}
-                    <div className="relative">
-                        <button
-                            onClick={() => setIsRegionOpen(!isRegionOpen)}
-                            className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm hover:border-purple-500/30 transition-all"
-                        >
-                            <span className="text-xl">{selectedRegion.flag}</span>
-                            <span className="font-medium hidden sm:inline">{selectedRegion.name}</span>
-                            <FaChevronDown className={`text-xs text-white/50 transition-transform ${isRegionOpen ? 'rotate-180' : ''}`} />
-                        </button>
+            {/* Main Content */}
+            <section className="px-4 sm:px-8 md:pl-12 lg:pl-16 pb-8">
+                <div className="container mx-auto">
+                    <div className="space-y-8 sm:space-y-12">
 
-                        {isRegionOpen && (
-                            <div className="absolute top-full mt-2 right-0 bg-[#1a1a1a] border border-white/10 rounded-xl overflow-hidden z-20 min-w-[180px] shadow-2xl animate-fade-in">
-                                {REGIONS.map((region) => (
-                                    <button
-                                        key={region.code}
-                                        onClick={() => {
-                                            setSelectedRegion(region);
-                                            setIsRegionOpen(false);
-                                        }}
-                                        className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-white/5 transition-colors ${selectedRegion.code === region.code ? 'bg-purple-500/10 text-purple-400' : 'text-white/70'
-                                            }`}
-                                    >
-                                        <span className="text-lg">{region.flag}</span>
-                                        <span>{region.name}</span>
-                                    </button>
+                        {/* Loading Skeleton */}
+                        {loadingSections && (
+                            <div className="space-y-8">
+                                {[1, 2, 3, 4].map((i) => (
+                                    <div key={i}>
+                                        <div className="flex items-center gap-3 mb-6">
+                                            <div className="w-10 h-10 rounded-lg bg-white/5 animate-pulse" />
+                                            <div className="w-32 h-6 rounded bg-white/5 animate-pulse" />
+                                        </div>
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                            {[1, 2, 3, 4, 5].map((j) => (
+                                                <div key={j} className="aspect-[2/3] rounded-xl bg-white/5 animate-pulse" />
+                                            ))}
+                                        </div>
+                                    </div>
                                 ))}
+                            </div>
+                        )}
+
+                        {/* TV Sections from Database */}
+                        {!loadingSections && tvSections
+                            .filter(section => {
+                                // Only show sections that have content for the selected region
+                                const regionShows = section.movies_by_region?.[selectedRegion.code] || [];
+                                return regionShows.length > 0;
+                            })
+                            .map((section) => (
+                                <div key={section.id}>
+                                    <div className="flex items-center gap-3 mb-6 group">
+                                        {/* Icon with shiny background */}
+                                        <div className="relative p-2 rounded-xl bg-white/5 border border-white/10 overflow-hidden">
+                                            <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                                            <span className="relative text-xl sm:text-2xl drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]">{section.icon}</span>
+                                        </div>
+
+                                        {/* Section Title with Gradient and Animation */}
+                                        <div className="flex flex-col">
+                                            <h2 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-white group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-purple-200 group-hover:via-purple-400 group-hover:to-pink-500 transition-all duration-300">
+                                                {section.name}
+                                            </h2>
+                                            {section.description && (
+                                                <span className="text-xs sm:text-sm text-white/40 font-medium tracking-wide">
+                                                    {section.description}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Get shows for the selected region */}
+                                    {(() => {
+                                        const regionShows = section.movies_by_region?.[selectedRegion.code] || [];
+
+                                        if (regionShows.length > 0) {
+                                            return (
+                                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 sm:gap-6 px-1">
+                                                    {regionShows.slice(0, section.max_movies || 10).map((show, index) => (
+                                                        <div key={show.tmdb_id} className="transform hover:scale-105 transition-transform duration-300">
+                                                            <Card
+                                                                data={{
+                                                                    id: show.tmdb_id,
+                                                                    title: show.title,
+                                                                    poster_path: show.poster_path,
+                                                                    backdrop_path: show.backdrop_path,
+                                                                    media_type: show.media_type || 'tv',
+                                                                    vote_average: show.vote_average,
+                                                                    release_date: show.release_date || show.first_air_date,
+                                                                    overview: show.overview,
+                                                                    genres: show.genres,
+                                                                    runtime: show.runtime
+                                                                }}
+                                                                media_type={show.media_type || "tv"}
+                                                                index={index}
+                                                            />
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            );
+                                        }
+                                        return null;
+                                    })()}
+                                </div>
+                            ))}
+
+                        {/* No sections message */}
+                        {!loadingSections && !tvSections.some(s => (s.movies_by_region?.[selectedRegion.code] || []).length > 0) && (
+                            <div className="text-center py-16 px-6">
+                                <div className="text-5xl mb-4">{selectedRegion.flag}</div>
+                                <h3 className="text-xl font-semibold text-white mb-2">No TV content for {selectedRegion.name}</h3>
+                                <p className="text-white/50 text-sm max-w-md mx-auto mb-6">
+                                    There are no TV series sections available for this region yet.
+                                    Try selecting a different region or add content via the Admin Panel.
+                                </p>
+                                <div className="flex flex-wrap justify-center gap-2">
+                                    {REGIONS.filter(r => r.code !== selectedRegion.code).slice(0, 3).map(region => (
+                                        <button
+                                            key={region.code}
+                                            onClick={() => handleRegionSelect(region)}
+                                            className="px-4 py-2 rounded-lg bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition-colors text-sm"
+                                        >
+                                            {region.flag} {region.name}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                         )}
                     </div>
                 </div>
-
-                {/* Trending Section */}
-                <section className="mb-10 sm:mb-14">
-                    <div className="flex items-center gap-3 mb-6 group">
-                        {/* Icon with shiny background */}
-                        <div className="relative p-2 rounded-xl bg-white/5 border border-white/10 overflow-hidden">
-                            <div className="absolute inset-0 bg-gradient-to-br from-orange-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                            <FaFire className="relative text-xl sm:text-2xl text-orange-500 drop-shadow-[0_0_8px_rgba(249,115,22,0.4)]" />
-                        </div>
-                        <h2 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-white group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-orange-400 group-hover:to-red-500 transition-all duration-300">
-                            Trending This Week
-                        </h2>
-                    </div>
-
-                    {loadingTrending ? (
-                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-4 sm:gap-6 px-1">
-                            {[...Array(7)].map((_, i) => (
-                                <div key={i} className="animate-pulse">
-                                    <div className="aspect-[2/3] bg-white/5 rounded-xl" />
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-4 sm:gap-6 px-1">
-                            {trending.map((show, index) => (
-                                <div key={show.id} className="transform hover:scale-105 transition-transform duration-300">
-                                    <Card data={show} media_type="tv" index={index} trending={true} mini={true} />
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </section>
-
-                {/* Category Filter Section */}
-                <section>
-                    <div className="flex items-center gap-3 mb-6 group">
-                        <div className="relative p-2 rounded-xl bg-white/5 border border-white/10 overflow-hidden">
-                            <div className="absolute inset-0 bg-gradient-to-br from-purple-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                            <span className="relative text-xl sm:text-2xl drop-shadow-[0_0_8px_rgba(168,85,247,0.4)]">📂</span>
-                        </div>
-                        <h2 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-white group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-purple-400 group-hover:to-pink-500 transition-all duration-300">
-                            Browse by Category
-                        </h2>
-                    </div>
-
-                    {/* Category Pills - Horizontal scroll on mobile */}
-                    <div className="flex gap-2 overflow-x-auto pb-4 mb-8 scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap">
-                        {TV_CATEGORIES.map((category) => (
-                            <button
-                                key={category.id || 'all'}
-                                onClick={() => setSelectedCategory(category)}
-                                className={`flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${selectedCategory.id === category.id
-                                    ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-500/25 scale-105'
-                                    : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white border border-white/10 hover:border-white/20'
-                                    }`}
-                            >
-                                <span className="text-base">{category.emoji}</span>
-                                <span className="whitespace-nowrap">{category.name}</span>
-                            </button>
-                        ))}
-                    </div>
-
-                    {/* Category Shows Grid */}
-                    <div className="mb-6 px-1">
-                        <p className="text-sm font-medium text-white/50 flex items-center gap-2">
-                            <span className="text-lg">{selectedCategory.emoji}</span>
-                            {selectedCategory.name}
-                            <span className="w-1 h-1 rounded-full bg-white/30"></span>
-                            {categoryShows.length} shows
-                        </p>
-                    </div>
-
-                    {loadingCategory ? (
-                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-4 sm:gap-6 px-1">
-                            {[...Array(14)].map((_, i) => (
-                                <div key={i} className="animate-pulse">
-                                    <div className="aspect-[2/3] bg-white/5 rounded-xl" />
-                                </div>
-                            ))}
-                        </div>
-                    ) : categoryShows.length > 0 ? (
-                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-4 sm:gap-6 px-1">
-                            {categoryShows.map((show, index) => (
-                                <div key={show.id} className="transform hover:scale-105 transition-transform duration-300">
-                                    <Card data={show} media_type="tv" index={index} mini={true} />
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="text-center py-20 bg-white/5 rounded-2xl border border-white/10">
-                            <div className="text-4xl mb-3">😕</div>
-                            <h3 className="text-lg font-medium text-white mb-1">No shows found</h3>
-                            <p className="text-white/40 text-sm">Try selecting a different category</p>
-                        </div>
-                    )}
-                </section>
-            </div>
+            </section>
         </div>
     );
 };

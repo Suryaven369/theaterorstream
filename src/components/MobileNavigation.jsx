@@ -10,7 +10,7 @@ const MobileNavigation = () => {
   // Define mobile nav items - matching desktop navigation
   const navItems = [
     { href: "/", icon: IoHome, label: "Home" },
-    { href: "/tv-series", icon: IoTv, label: "TV Shows" },
+    { href: "/tv-series", icon: IoTv, label: "Series" },
     { href: "/upcoming", icon: IoCalendar, label: "Soon" },
     { href: "/search", icon: IoSearch, label: "Search" },
   ];
@@ -41,8 +41,8 @@ const MobileNavigation = () => {
                 key={nav.label}
                 to={nav.href}
                 className={`flex flex-col items-center justify-center min-w-[56px] py-2 px-2 rounded-xl transition-all duration-200 ${isActive
-                    ? "text-orange-400"
-                    : "text-white/50 active:text-white active:scale-95"
+                  ? "text-orange-400"
+                  : "text-white/50 active:text-white active:scale-95"
                   }`}
               >
                 <Icon className={`text-lg mb-0.5 transition-transform ${isActive ? 'scale-110' : ''}`} />

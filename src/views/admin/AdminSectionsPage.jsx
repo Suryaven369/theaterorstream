@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import axios from "axios";
 import {
+    supabase,
     getHomepageSections,
     createHomepageSection,
     updateHomepageSection,
@@ -80,6 +81,9 @@ const AdminSectionsPage = () => {
     // Region selection for API fetches
     const [selectedRegion, setSelectedRegion] = useState(REGIONS[0]); // Default India
 
+    // Content mode: 'movies' or 'tv' - for managing different section types
+    const [contentMode, setContentMode] = useState('movies');
+
     // Track if there are unsaved changes
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -88,16 +92,46 @@ const AdminSectionsPage = () => {
     const containerRef = useRef(null);
     const scrollPositionRef = useRef(0);
 
-    // Load sections from DB
+    // Load sections from DB based on content mode
     const loadSections = useCallback(async (preserveScroll = false) => {
         if (preserveScroll && containerRef.current) {
             scrollPositionRef.current = containerRef.current.scrollTop;
         }
 
         setLoading(true);
-        const data = await getHomepageSections();
-        setSavedSections(data || []);
-        setSections(data || []);
+
+        // Load from appropriate table based on content mode
+        const tableName = contentMode === 'tv' ? 'tv_sections' : 'homepage_sections';
+
+        try {
+            // For TV mode, try tv_sections first, fall back to homepage_sections
+            let data;
+            if (contentMode === 'tv') {
+                const { data: tvData, error: tvError } = await supabase
+                    .from('tv_sections')
+                    .select('*')
+                    .order('display_order', { ascending: true });
+
+                if (!tvError && tvData && tvData.length > 0) {
+                    data = tvData;
+                } else {
+                    // Fall back to homepage_sections but filter for TV
+                    data = await getHomepageSections();
+                    // You may want to filter or mark these
+                }
+            } else {
+                data = await getHomepageSections();
+            }
+
+            setSavedSections(data || []);
+            setSections(data || []);
+        } catch (err) {
+            console.error('Error loading sections:', err);
+            const data = await getHomepageSections();
+            setSavedSections(data || []);
+            setSections(data || []);
+        }
+
         setHasUnsavedChanges(false);
         setLoading(false);
 
@@ -107,11 +141,11 @@ const AdminSectionsPage = () => {
                 containerRef.current.scrollTop = scrollPositionRef.current;
             });
         }
-    }, []);
+    }, [contentMode]);
 
     useEffect(() => {
         loadSections();
-    }, [loadSections]);
+    }, [loadSections, contentMode]);
 
     // Live search with debounce
     useEffect(() => {
@@ -131,8 +165,10 @@ const AdminSectionsPage = () => {
             const response = await axios.get("/search/multi", {
                 params: { query, page: 1 }
             });
+            // Filter results based on content mode
+            const targetType = contentMode === 'tv' ? 'tv' : 'movie';
             const results = response.data.results
-                ?.filter(r => r.media_type === "movie" || r.media_type === "tv")
+                ?.filter(r => r.media_type === targetType)
                 .slice(0, 12) || [];
             setSearchResults(results);
         } catch (error) {
@@ -154,93 +190,124 @@ const AdminSectionsPage = () => {
         return { todayStr, threeMonthsStr, sixMonthsStr };
     };
 
-    // Fetch movies from API for a section - STAGES changes locally
+    // Fetch content from API for a section - STAGES changes locally
     const handleFetchFromApi = async (section) => {
         setFetchingApi(section.id);
         try {
-            let endpoint = API_ENDPOINTS[section.api_source] || "/trending/all/week";
+            let endpoint = "/trending/all/week";
             let params = { page: 1 };
             const { todayStr, sixMonthsStr } = getDateFilters();
             const regionCode = selectedRegion.code;
             const regionLanguages = REGION_LANGUAGES[regionCode] || 'en';
 
-            console.log(`🌍 Fetching for region: ${selectedRegion.name} (${regionCode})`);
+            console.log(`🌍 Fetching for region: ${selectedRegion.name} (${regionCode}), Mode: ${contentMode}`);
 
-            // Handle different API sources with region support
-            if (section.api_source === 'now_playing') {
-                // Now Playing - uses region parameter
-                params = {
-                    region: regionCode,
-                    page: 1
-                };
-            } else if (section.api_source === 'upcoming') {
-                // Upcoming - official TMDB endpoint with region
-                params = {
-                    region: regionCode,
-                    page: 1
-                };
-            } else if (section.api_source === 'coming_soon') {
-                // Coming Soon - use discover for more control
-                endpoint = "/discover/movie";
-                params = {
-                    region: regionCode,
-                    'primary_release_date.gte': todayStr,
-                    'primary_release_date.lte': sixMonthsStr,
-                    sort_by: 'popularity.desc',
-                    with_original_language: regionLanguages,
-                    page: 1
-                };
-            } else if (section.api_source?.startsWith("provider_")) {
-                const providerId = section.api_source.split("_")[1];
-                params = {
-                    with_watch_providers: providerId,
-                    watch_region: regionCode,
-                    sort_by: "popularity.desc",
-                    page: 1
-                };
-            } else if (['popular', 'top_rated'].includes(section.api_source)) {
-                // Popular/Top Rated - add region
-                params = {
-                    region: regionCode,
-                    page: 1
-                };
-            } else if (['airing_today', 'on_the_air'].includes(section.api_source)) {
-                // TV endpoints - use timezone based on region
-                params = {
-                    page: 1,
-                    // Note: TMDB TV endpoints don't support region, but we can filter by language
-                };
+            // ============================================
+            // TV MODE: Override ALL endpoints to fetch TV content
+            // ============================================
+            if (contentMode === 'tv') {
+                console.log(`📺 TV Mode active - forcing TV endpoints`);
+
+                if (section.api_source?.startsWith("provider_")) {
+                    // Streaming provider - use /discover/tv
+                    const providerId = section.api_source.split("_")[1];
+                    endpoint = "/discover/tv";
+                    params = {
+                        with_watch_providers: providerId,
+                        watch_region: regionCode,
+                        sort_by: "popularity.desc",
+                        page: 1
+                    };
+                } else if (section.api_source === 'trending' || section.api_source === 'trending_tv' || section.api_source === 'trending_movies') {
+                    // Trending - use TV trending
+                    endpoint = "/trending/tv/week";
+                    params = { page: 1 };
+                } else if (section.api_source === 'popular' || section.api_source === 'popular_tv') {
+                    endpoint = "/tv/popular";
+                    params = { page: 1 };
+                } else if (section.api_source === 'top_rated' || section.api_source === 'top_rated_tv') {
+                    endpoint = "/tv/top_rated";
+                    params = { page: 1 };
+                } else if (section.api_source === 'airing_today') {
+                    endpoint = "/tv/airing_today";
+                    params = { page: 1 };
+                } else if (section.api_source === 'on_the_air') {
+                    endpoint = "/tv/on_the_air";
+                    params = { page: 1 };
+                } else {
+                    // Default for TV mode - trending TV
+                    endpoint = "/trending/tv/week";
+                    params = { page: 1 };
+                }
+            } else {
+                // ============================================
+                // MOVIES MODE: Use movie endpoints
+                // ============================================
+                endpoint = API_ENDPOINTS[section.api_source] || "/trending/movie/week";
+
+                if (section.api_source === 'now_playing') {
+                    params = { region: regionCode, page: 1 };
+                } else if (section.api_source === 'upcoming') {
+                    params = { region: regionCode, page: 1 };
+                } else if (section.api_source === 'coming_soon') {
+                    endpoint = "/discover/movie";
+                    params = {
+                        region: regionCode,
+                        'primary_release_date.gte': todayStr,
+                        'primary_release_date.lte': sixMonthsStr,
+                        sort_by: 'popularity.desc',
+                        with_original_language: regionLanguages,
+                        page: 1
+                    };
+                } else if (section.api_source?.startsWith("provider_")) {
+                    const providerId = section.api_source.split("_")[1];
+                    endpoint = "/discover/movie";
+                    params = {
+                        with_watch_providers: providerId,
+                        watch_region: regionCode,
+                        sort_by: "popularity.desc",
+                        page: 1
+                    };
+                } else if (['popular', 'top_rated'].includes(section.api_source)) {
+                    params = { region: regionCode, page: 1 };
+                }
             }
 
-            console.log(`🔄 Fetching ${section.api_source} from: ${endpoint}`, params);
-            const response = await axios.get(endpoint, { params });
-            let movies = response.data.results?.slice(0, section.max_movies || 10) || [];
+            // Determine media type based on content mode
+            const defaultMediaType = contentMode === 'tv' ? 'tv' : 'movie';
 
-            // Filter for upcoming
-            if (section.api_source === 'upcoming' || section.api_source === 'coming_soon') {
+            console.log(`🔄 Fetching ${section.api_source} from: ${endpoint} (mediaType: ${defaultMediaType})`, params);
+
+            const response = await axios.get(endpoint, { params });
+            let items = response.data.results?.slice(0, section.max_movies || 10) || [];
+
+            // Filter for upcoming (movies only)
+            if (contentMode !== 'tv' && (section.api_source === 'upcoming' || section.api_source === 'coming_soon')) {
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
-                movies = movies.filter(movie => {
-                    const releaseDate = new Date(movie.release_date);
+                items = items.filter(item => {
+                    const releaseDate = new Date(item.release_date);
                     return releaseDate >= today;
                 });
             }
 
-            console.log(`📦 Found ${movies.length} movies for ${section.name}`);
+            console.log(`📦 Found ${items.length} ${defaultMediaType === 'tv' ? 'TV shows' : 'movies'} for ${section.name}`);
 
-            // Save each movie to library and prepare section data
-            const movieDataPromises = movies.map(async (movie) => {
-                const mediaType = movie.media_type || "movie";
+            // Save each item to library and prepare section data
+            const itemDataPromises = items.map(async (item) => {
+                const mediaType = item.media_type || defaultMediaType;
                 try {
-                    const detailEndpoint = mediaType === "tv" ? `/tv/${movie.id}` : `/movie/${movie.id}`;
+                    const detailEndpoint = mediaType === "tv" ? `/tv/${item.id}` : `/movie/${item.id}`;
                     const detailResponse = await axios.get(detailEndpoint, {
                         params: { append_to_response: 'credits,videos,images,release_dates,keywords' }
                     });
                     const fullData = detailResponse.data;
-                    await saveFullMovieToLibrary(fullData);
+
+                    // Save to library with correct media_type
+                    await saveFullMovieToLibrary(fullData, { media_type: mediaType });
 
                     return {
-                        tmdb_id: movie.id,
+                        tmdb_id: item.id,
                         title: fullData.title || fullData.name,
                         poster_path: fullData.poster_path,
                         backdrop_path: fullData.backdrop_path,
@@ -252,28 +319,29 @@ const AdminSectionsPage = () => {
                         original_language: fullData.original_language,
                         genres: fullData.genres,
                         runtime: fullData.runtime || fullData.episode_run_time?.[0],
-                        order: movies.indexOf(movie) + 1
+                        number_of_seasons: fullData.number_of_seasons,
+                        number_of_episodes: fullData.number_of_episodes,
+                        order: items.indexOf(item) + 1
                     };
                 } catch (err) {
-                    console.log(`⚠️ Fallback for ${movie.title || movie.name}`);
+                    console.log(`⚠️ Fallback for ${item.title || item.name}`);
                     return {
-                        tmdb_id: movie.id,
-                        title: movie.title || movie.name,
-                        poster_path: movie.poster_path,
-                        backdrop_path: movie.backdrop_path,
+                        tmdb_id: item.id,
+                        title: item.title || item.name,
+                        poster_path: item.poster_path,
+                        backdrop_path: item.backdrop_path,
                         media_type: mediaType,
-                        release_date: movie.release_date || movie.first_air_date,
-                        vote_average: movie.vote_average,
-                        overview: movie.overview,
-                        order: movies.indexOf(movie) + 1
+                        release_date: item.release_date || item.first_air_date,
+                        vote_average: item.vote_average,
+                        overview: item.overview,
+                        order: items.indexOf(item) + 1
                     };
                 }
             });
 
-            const movieData = await Promise.all(movieDataPromises);
+            const itemData = await Promise.all(itemDataPromises);
 
-            // Update locally (staged) - save movies BY REGION
-            // movies_by_region: { IN: [...], US: [...], etc }
+            // Update locally (staged) - save items BY REGION
             setSections(prev => prev.map(s => {
                 if (s.id !== section.id) return s;
                 const existingMoviesByRegion = s.movies_by_region || {};
@@ -281,17 +349,17 @@ const AdminSectionsPage = () => {
                     ...s,
                     movies_by_region: {
                         ...existingMoviesByRegion,
-                        [selectedRegion.code]: movieData
+                        [selectedRegion.code]: itemData
                     }
                 };
             }));
             setHasUnsavedChanges(true);
-            console.log(`✅ Staged ${movieData.length} movies for "${section.name}" in ${selectedRegion.name} region`);
-            toast.success(`Saved ${movieData.length} movies for ${selectedRegion.flag} ${selectedRegion.name}`);
+            console.log(`✅ Staged ${itemData.length} ${defaultMediaType === 'tv' ? 'TV shows' : 'movies'} for "${section.name}" in ${selectedRegion.name} region`);
+            toast.success(`Saved ${itemData.length} ${defaultMediaType === 'tv' ? 'TV shows' : 'movies'} for ${selectedRegion.flag} ${selectedRegion.name}`);
 
         } catch (error) {
             console.error("Error fetching from API:", error);
-            toast.error("Failed to fetch movies. Check console for details.");
+            toast.error("Failed to fetch content. Check console for details.");
         }
         setFetchingApi(null);
     };
@@ -300,8 +368,29 @@ const AdminSectionsPage = () => {
     const handleCreateSection = async () => {
         if (!newSection.name.trim()) return;
         const slug = newSection.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-        await createHomepageSection({ ...newSection, slug });
-        toast.success(`Section "${newSection.name}" created!`);
+
+        if (contentMode === 'tv') {
+            // Create in tv_sections table
+            const { error } = await supabase
+                .from('tv_sections')
+                .insert({
+                    ...newSection,
+                    slug,
+                    display_order: sections.length + 1,
+                    movies_by_region: {}
+                });
+
+            if (error) {
+                console.error('Error creating TV section:', error);
+                toast.error('Failed to create TV section');
+                return;
+            }
+            toast.success(`TV Section "${newSection.name}" created!`);
+        } else {
+            await createHomepageSection({ ...newSection, slug });
+            toast.success(`Section "${newSection.name}" created!`);
+        }
+
         setNewSection({ name: "", icon: "🎬", section_type: "manual", max_movies: 10 });
         await loadSections(true);
     };
@@ -490,7 +579,8 @@ const AdminSectionsPage = () => {
     const handleSaveChanges = async () => {
         setSaving(true);
         try {
-            console.log('💾 Saving all changes to database...');
+            const tableName = contentMode === 'tv' ? 'tv_sections' : 'homepage_sections';
+            console.log(`💾 Saving all changes to ${tableName}...`);
 
             // Find changed sections and save them
             for (const section of sections) {
@@ -502,15 +592,67 @@ const AdminSectionsPage = () => {
                 const activeChanged = section.is_active !== savedVersion.is_active;
 
                 if (moviesByRegionChanged || activeChanged) {
-                    // Count total movies across all regions
-                    const totalMovies = Object.values(section.movies_by_region || {}).reduce((acc, arr) => acc + (arr?.length || 0), 0);
+                    // Count total items across all regions
+                    const totalItems = Object.values(section.movies_by_region || {}).reduce((acc, arr) => acc + (arr?.length || 0), 0);
                     const regionCount = Object.keys(section.movies_by_region || {}).length;
-                    console.log(`  Updating section: ${section.name} (${totalMovies} movies across ${regionCount} regions)`);
+                    console.log(`  Updating section: ${section.name} (${totalItems} ${contentMode === 'tv' ? 'shows' : 'movies'} across ${regionCount} regions)`);
 
-                    await updateHomepageSection(section.id, {
-                        movies_by_region: section.movies_by_region || {},
-                        is_active: section.is_active
-                    });
+                    // Save to appropriate table
+                    if (contentMode === 'tv') {
+                        // For TV mode - check if this section exists in tv_sections or needs to be created
+                        // First try to update, if not found, insert
+                        const { data: existingSection, error: checkError } = await supabase
+                            .from('tv_sections')
+                            .select('id')
+                            .eq('id', section.id)
+                            .single();
+
+                        if (existingSection) {
+                            // Update existing tv_sections record
+                            const { error } = await supabase
+                                .from('tv_sections')
+                                .update({
+                                    movies_by_region: section.movies_by_region || {},
+                                    is_active: section.is_active,
+                                    updated_at: new Date().toISOString()
+                                })
+                                .eq('id', section.id);
+
+                            if (error) {
+                                console.error('Error updating tv_sections:', error);
+                                throw error;
+                            }
+                        } else {
+                            // Section doesn't exist in tv_sections - need to create it
+                            // This happens when falling back to homepage_sections
+                            console.log(`  Creating new TV section for: ${section.name}`);
+                            const { error } = await supabase
+                                .from('tv_sections')
+                                .insert({
+                                    name: section.name,
+                                    slug: section.slug || section.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+                                    icon: section.icon,
+                                    description: section.description,
+                                    section_type: section.section_type,
+                                    api_source: section.api_source,
+                                    display_order: section.display_order,
+                                    movies_by_region: section.movies_by_region || {},
+                                    is_active: section.is_active
+                                });
+
+                            if (error) {
+                                console.error('Error creating tv_sections entry:', error.message || error);
+                                toast.error(`Failed to save "${section.name}": ${error.message || 'Unknown error'}`);
+                                // Don't throw - continue with other sections
+                            }
+                        }
+                    } else {
+                        // Save to homepage_sections
+                        await updateHomepageSection(section.id, {
+                            movies_by_region: section.movies_by_region || {},
+                            is_active: section.is_active
+                        });
+                    }
                 }
             }
 
@@ -518,13 +660,23 @@ const AdminSectionsPage = () => {
             const orderChanged = JSON.stringify(sections.map(s => s.id)) !== JSON.stringify(savedSections.map(s => s.id));
             if (orderChanged) {
                 console.log('  Updating section order...');
-                await reorderHomepageSections(sections.map(s => s.id));
+                if (contentMode === 'tv') {
+                    // Reorder tv_sections
+                    for (let i = 0; i < sections.length; i++) {
+                        await supabase
+                            .from('tv_sections')
+                            .update({ display_order: i + 1 })
+                            .eq('id', sections[i].id);
+                    }
+                } else {
+                    await reorderHomepageSections(sections.map(s => s.id));
+                }
             }
 
             // Reload from DB to confirm
             await loadSections(true);
             console.log('✅ All changes saved and published!');
-            toast.success('Changes saved and published to the homepage!');
+            toast.success(`Changes saved and published to the ${contentMode === 'tv' ? 'Series page' : 'Homepage'}!`);
 
         } catch (error) {
             console.error('Error saving changes:', error);
@@ -565,36 +717,73 @@ const AdminSectionsPage = () => {
 
     return (
         <div className="p-6 h-full overflow-auto" ref={containerRef}>
-            {/* Header with Save Button */}
-            <div className="mb-6 flex items-start justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold text-white">📐 Homepage Sections</h1>
-                    <p className="text-white/50 text-sm">Manage sections displayed on the homepage. Changes are staged locally until you click Save.</p>
+            {/* Header with Save Button and Content Mode Toggle */}
+            <div className="mb-6 flex flex-col gap-4">
+                <div className="flex items-start justify-between">
+                    <div>
+                        <h1 className="text-2xl font-bold text-white">
+                            {contentMode === 'movies' ? '🎬 Movie Sections' : '📺 TV Series Sections'}
+                        </h1>
+                        <p className="text-white/50 text-sm">
+                            Manage {contentMode === 'movies' ? 'movie' : 'TV series'} sections displayed on the {contentMode === 'movies' ? 'homepage' : 'Series page'}. Changes are staged locally until you click Save.
+                        </p>
+                    </div>
+
+                    {/* Save/Discard Buttons */}
+                    <div className="flex items-center gap-3">
+                        {hasUnsavedChanges && (
+                            <>
+                                <span className="text-yellow-400 text-sm animate-pulse">● Unsaved changes</span>
+                                <button
+                                    onClick={handleDiscardChanges}
+                                    className="px-4 py-2 rounded-lg text-sm font-medium bg-white/10 text-white/70 hover:bg-white/20 transition-colors"
+                                >
+                                    Discard
+                                </button>
+                            </>
+                        )}
+                        <button
+                            onClick={handleSaveChanges}
+                            disabled={!hasUnsavedChanges || saving}
+                            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${hasUnsavedChanges
+                                ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 shadow-lg shadow-green-500/20'
+                                : 'bg-white/10 text-white/30 cursor-not-allowed'
+                                }`}
+                        >
+                            {saving ? '⏳ Saving...' : '💾 Save & Publish'}
+                        </button>
+                    </div>
                 </div>
 
-                {/* Save/Discard Buttons */}
-                <div className="flex items-center gap-3">
-                    {hasUnsavedChanges && (
-                        <>
-                            <span className="text-yellow-400 text-sm animate-pulse">● Unsaved changes</span>
-                            <button
-                                onClick={handleDiscardChanges}
-                                className="px-4 py-2 rounded-lg text-sm font-medium bg-white/10 text-white/70 hover:bg-white/20 transition-colors"
-                            >
-                                Discard
-                            </button>
-                        </>
-                    )}
-                    <button
-                        onClick={handleSaveChanges}
-                        disabled={!hasUnsavedChanges || saving}
-                        className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${hasUnsavedChanges
-                            ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 shadow-lg shadow-green-500/20'
-                            : 'bg-white/10 text-white/30 cursor-not-allowed'
-                            }`}
-                    >
-                        {saving ? '⏳ Saving...' : '💾 Save & Publish'}
-                    </button>
+                {/* Content Mode Toggle - Movies / TV */}
+                <div className="flex items-center gap-2">
+                    <span className="text-white/40 text-sm mr-2">Content Type:</span>
+                    <div className="flex gap-1 p-1 bg-white/5 rounded-xl">
+                        <button
+                            onClick={() => setContentMode('movies')}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${contentMode === 'movies'
+                                ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg shadow-orange-500/20'
+                                : 'text-white/50 hover:text-white hover:bg-white/5'
+                                }`}
+                        >
+                            🎬 Movies
+                        </button>
+                        <button
+                            onClick={() => setContentMode('tv')}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${contentMode === 'tv'
+                                ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg shadow-purple-500/20'
+                                : 'text-white/50 hover:text-white hover:bg-white/5'
+                                }`}
+                        >
+                            📺 TV Series
+                        </button>
+                    </div>
+                    <span className="text-xs text-white/30 ml-3">
+                        {contentMode === 'movies'
+                            ? 'Managing sections for the In Theaters / Homepage'
+                            : 'Managing sections for the Series page'
+                        }
+                    </span>
                 </div>
             </div>
 

@@ -333,6 +333,13 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
     const [librarySearch, setLibrarySearch] = useState('');
     const [loading, setLoading] = useState(false);
 
+    // Library filter state (NEW)
+    const [libraryMediaFilter, setLibraryMediaFilter] = useState('all'); // 'all', 'movie', 'tv'
+    const [librarySortBy, setLibrarySortBy] = useState('created_at'); // 'created_at', 'popularity', 'vote_average', 'release_date', 'title'
+    const [librarySortOrder, setLibrarySortOrder] = useState('desc'); // 'asc', 'desc'
+    const [libraryFeaturedFilter, setLibraryFeaturedFilter] = useState('all'); // 'all', 'featured', 'not_featured'
+    const [libraryActiveFilter, setLibraryActiveFilter] = useState('all'); // 'all', 'active', 'hidden'
+
     // TMDB state
     const [tmdbSource, setTmdbSource] = useState('now_playing');
     const [tmdbMovies, setTmdbMovies] = useState([]);
@@ -438,8 +445,69 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
 
     const loadLibrary = async () => {
         setLoading(true);
-        const data = librarySearch ? await searchMoviesLibrary(librarySearch) : await getMoviesLibrary({ limit: 200 });
-        setLibrary(data);
+        try {
+            let data;
+            if (librarySearch) {
+                data = await searchMoviesLibrary(librarySearch);
+            } else {
+                data = await getMoviesLibrary({ limit: 500 }); // Get more for client-side filtering
+            }
+
+            // Apply client-side filters for quick response
+            let filtered = data || [];
+
+            // Media type filter
+            if (libraryMediaFilter !== 'all') {
+                filtered = filtered.filter(m => m.media_type === libraryMediaFilter);
+            }
+
+            // Featured filter
+            if (libraryFeaturedFilter === 'featured') {
+                filtered = filtered.filter(m => m.featured === true);
+            } else if (libraryFeaturedFilter === 'not_featured') {
+                filtered = filtered.filter(m => m.featured !== true);
+            }
+
+            // Active filter
+            if (libraryActiveFilter === 'active') {
+                filtered = filtered.filter(m => m.is_active === true);
+            } else if (libraryActiveFilter === 'hidden') {
+                filtered = filtered.filter(m => m.is_active === false);
+            }
+
+            // Client-side sorting
+            filtered.sort((a, b) => {
+                let aVal, bVal;
+                switch (librarySortBy) {
+                    case 'popularity':
+                        aVal = a.popularity || 0;
+                        bVal = b.popularity || 0;
+                        break;
+                    case 'vote_average':
+                        aVal = a.vote_average || 0;
+                        bVal = b.vote_average || 0;
+                        break;
+                    case 'release_date':
+                        aVal = new Date(a.release_date || 0).getTime();
+                        bVal = new Date(b.release_date || 0).getTime();
+                        break;
+                    case 'title':
+                        aVal = (a.title || '').toLowerCase();
+                        bVal = (b.title || '').toLowerCase();
+                        return librarySortOrder === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+                    case 'created_at':
+                    default:
+                        aVal = new Date(a.created_at || 0).getTime();
+                        bVal = new Date(b.created_at || 0).getTime();
+                        break;
+                }
+                return librarySortOrder === 'asc' ? aVal - bVal : bVal - aVal;
+            });
+
+            setLibrary(filtered);
+        } catch (error) {
+            console.error('Error loading library:', error);
+        }
         setLoading(false);
     };
 
@@ -921,6 +989,104 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                             />
                             <button onClick={loadLibrary} className="px-3 py-2 text-xs bg-white/10 text-white rounded">Search</button>
                             <button onClick={() => { setLibrarySearch(''); loadData(); }} className="px-3 py-2 text-xs bg-white/5 text-white/50 rounded">Clear</button>
+                        </div>
+
+                        {/* Advanced Filters */}
+                        <div className="bg-white/[0.02] rounded-lg p-3 mb-4 border border-white/5">
+                            <div className="flex flex-wrap items-center gap-3">
+                                {/* Media Type Filter */}
+                                <div className="flex gap-1">
+                                    {[
+                                        { id: 'all', label: '📚 All', count: stats.total },
+                                        { id: 'movie', label: '🎬 Movies', count: stats.movies },
+                                        { id: 'tv', label: '📺 TV', count: stats.tv }
+                                    ].map(opt => (
+                                        <button
+                                            key={opt.id}
+                                            onClick={() => { setLibraryMediaFilter(opt.id); loadLibrary(); }}
+                                            className={`px-2 py-1 text-[10px] rounded transition-colors ${libraryMediaFilter === opt.id
+                                                ? 'bg-orange-500/30 text-orange-300 border border-orange-500/50'
+                                                : 'bg-white/5 text-white/50 hover:bg-white/10 border border-white/10'}`}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <div className="w-px h-4 bg-white/10" />
+
+                                {/* Sort Controls */}
+                                <div className="flex items-center gap-2">
+                                    <select
+                                        value={librarySortBy}
+                                        onChange={(e) => { setLibrarySortBy(e.target.value); loadLibrary(); }}
+                                        className="bg-white/5 rounded px-2 py-1 text-[10px] text-white border border-white/10"
+                                    >
+                                        <option value="created_at">Date Added</option>
+                                        <option value="popularity">Popularity</option>
+                                        <option value="vote_average">Rating</option>
+                                        <option value="release_date">Release Date</option>
+                                        <option value="title">Title</option>
+                                    </select>
+                                    <button
+                                        onClick={() => { setLibrarySortOrder(librarySortOrder === 'desc' ? 'asc' : 'desc'); loadLibrary(); }}
+                                        className="px-2 py-1 text-[10px] rounded bg-white/5 text-white/50 border border-white/10 hover:bg-white/10"
+                                        title={librarySortOrder === 'desc' ? 'Descending' : 'Ascending'}
+                                    >
+                                        {librarySortOrder === 'desc' ? '↓' : '↑'}
+                                    </button>
+                                </div>
+
+                                <div className="w-px h-4 bg-white/10" />
+
+                                {/* Featured Filter */}
+                                <div className="flex gap-1">
+                                    {[
+                                        { id: 'all', label: 'All' },
+                                        { id: 'featured', label: '⭐ Featured' },
+                                        { id: 'not_featured', label: 'Not Featured' }
+                                    ].map(opt => (
+                                        <button
+                                            key={opt.id}
+                                            onClick={() => { setLibraryFeaturedFilter(opt.id); loadLibrary(); }}
+                                            className={`px-2 py-1 text-[10px] rounded transition-colors ${libraryFeaturedFilter === opt.id
+                                                ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/40'
+                                                : 'bg-white/5 text-white/40 hover:bg-white/10 border border-white/10'}`}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <div className="w-px h-4 bg-white/10" />
+
+                                {/* Active Filter */}
+                                <div className="flex gap-1">
+                                    {[
+                                        { id: 'all', label: 'All' },
+                                        { id: 'active', label: '✓ Active' },
+                                        { id: 'hidden', label: '✗ Hidden' }
+                                    ].map(opt => (
+                                        <button
+                                            key={opt.id}
+                                            onClick={() => { setLibraryActiveFilter(opt.id); loadLibrary(); }}
+                                            className={`px-2 py-1 text-[10px] rounded transition-colors ${libraryActiveFilter === opt.id
+                                                ? opt.id === 'hidden' ? 'bg-red-500/20 text-red-300 border border-red-500/40' : 'bg-green-500/20 text-green-300 border border-green-500/40'
+                                                : 'bg-white/5 text-white/40 hover:bg-white/10 border border-white/10'}`}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Results count */}
+                            <div className="mt-2 text-[10px] text-white/30">
+                                Showing {library.length} items
+                                {libraryMediaFilter !== 'all' && ` (${libraryMediaFilter})`}
+                                {libraryFeaturedFilter !== 'all' && ` • ${libraryFeaturedFilter}`}
+                                {libraryActiveFilter !== 'all' && ` • ${libraryActiveFilter}`}
+                            </div>
                         </div>
                         {loading ? (
                             <div className="text-center py-8 text-white/40 text-sm">Loading...</div>

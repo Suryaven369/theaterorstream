@@ -1498,16 +1498,24 @@ export const getUserRatingsCount = async (userId) => {
 // ADVANCED MOVIES LIBRARY - Full TMDB Data
 // =============================================
 
-// Save full movie details to the existing movies_library table
+// Save full movie/TV details to the existing movies_library table
 // This now uses a single table with JSONB columns for detailed data
+// Enhanced to properly handle TV series with all fields
 export const saveFullMovieToLibrary = async (movieData, additionalData = {}) => {
     // Determine the ID: prefer passed ID, then stringified ID from object
     const tmdbId = movieData.id.toString();
 
+    // Determine if this is a TV show based on data properties
+    const isTV = !!(movieData.first_air_date || movieData.number_of_seasons || movieData.episode_run_time);
+    const mediaType = additionalData.media_type || (isTV ? 'tv' : 'movie');
+
+    // Extract genre IDs for efficient filtering
+    const genreIds = movieData.genres?.map(g => g.id).filter(Boolean) || [];
+
     // Prepare the record with all detailed data
     const movieRecord = {
         tmdb_id: tmdbId,
-        media_type: 'movie',
+        media_type: mediaType,
         title: movieData.title || movieData.name,
         original_title: movieData.original_title || movieData.original_name,
         overview: movieData.overview,
@@ -1523,26 +1531,39 @@ export const saveFullMovieToLibrary = async (movieData, additionalData = {}) => 
 
         // JSONB Fields for Lists
         genres: movieData.genres,
+        genre_ids: genreIds,  // Extract for efficient filtering
         production_companies: movieData.production_companies,
         production_countries: movieData.production_countries,
         spoken_languages: movieData.spoken_languages,
+
+        // TV Series specific fields
+        first_air_date: movieData.first_air_date,
+        last_air_date: movieData.last_air_date,
+        number_of_seasons: movieData.number_of_seasons,
+        number_of_episodes: movieData.number_of_episodes,
+        networks: movieData.networks,
+        in_production: movieData.in_production,
+        episode_run_time: movieData.episode_run_time,
+        origin_country: movieData.origin_country,
+        original_language: movieData.original_language,
 
         // New Detailed JSONB Fields
         credits: movieData.credits,                // Contains cast and crew
         videos: movieData.videos?.results || [],   // Trailers, teasers
         images: movieData.images,                         // Posters, backdrops
         reviews: movieData.reviews?.results || [], // TMDB user reviews
-        similar_movies: movieData.similar?.results || [], // Similar movies
-        recommendations: movieData.recommendations?.results || [], // Recommended movies
-        keywords: movieData.keywords?.keywords || [], // Keywords
+        similar_movies: movieData.similar?.results || movieData.similar || [], // Similar movies/TV
+        recommendations: movieData.recommendations?.results || movieData.recommendations || [], // Recommended
+        keywords: movieData.keywords?.keywords || movieData.keywords?.results || [], // Keywords
         release_dates_data: movieData.release_dates?.results || [], // Certifications and dates
 
         // Additional Info
-        imdb_id: movieData.imdb_id,
+        imdb_id: movieData.imdb_id || movieData.external_ids?.imdb_id,
         homepage: movieData.homepage,
         budget: movieData.budget,
         revenue: movieData.revenue,
         belongs_to_collection: movieData.belongs_to_collection,
+        adult: movieData.adult || false,
 
         // Meta
         is_active: true,

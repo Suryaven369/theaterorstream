@@ -1,0 +1,184 @@
+# API & Admin Panel Optimization - Implementation Plan
+
+## ✅ COMPLETED
+
+### Phase 1: Database Schema Updates
+- [x] Created `supabase_production_optimization.sql` with:
+  - TV series columns (first_air_date, networks, seasons, episodes, etc.)
+  - Optimized indexes for filtering (media_type, genres, popularity, etc.)
+  - Genre lookup table with TMDB genre IDs
+  - **TV sections table** (`tv_sections`) for dedicated TV management
+  - Search function `search_movies_library` for efficient filtering
+  - `extract_genre_ids()` function for extracting genre IDs from JSONB
+  - **Default TV sections**: Trending TV Shows, Netflix, Prime, Hotstar, etc.
+
+### Phase 2: Production-Ready Content API
+- [x] Created `src/lib/contentApi.js` with:
+  - Caching layer with configurable TTLs
+  - `getMoviesFromDb()` - Paginated, filtered queries
+  - `getTVSeriesFromDb()` - TV-specific queries
+  - `getTrendingTVFromDb()` - Trending TV shows
+  - `getTVByGenreFromDb()` - Filter by genre
+  - `getHomepageSectionsOptimized()` - Cached section queries
+  - `searchContentFromDb()` - Database-driven search
+  - `getExploreContent()` - Category and genre filtering
+  - Genre constants (MOVIE_GENRES, TV_GENRES)
+
+### Phase 3: Frontend Updates - Database-Driven
+
+#### TVSeries.jsx ✅ (Now "Series" page)
+- **Completely rewritten** to match Home.jsx structure
+- Fetches sections from `tv_sections` table (falls back to `homepage_sections`)
+- Region selector with support for 10 regions
+- Displays sections: Trending TV, Netflix, Prime, Hotstar, etc.
+- Same grid layout and styling as homepage
+
+#### Navigation Updates ✅
+- Renamed "TV Series" → "Series" in desktop navigation
+- Renamed "TV Shows" → "Series" in mobile navigation
+- Route remains `/tv-series` for URL stability
+
+#### Search.jsx ✅
+- Added database as primary search source
+- Source toggle (Library vs TMDB) 
+- Falls back to TMDB for broader search
+- Clear indication of data source
+
+#### Explore.jsx ✅
+- Database as primary source with TMDB fallback
+- Source toggle UI
+- Genre filtering with pills
+- Support for all explore categories (popular, top_rated, trending, etc.)
+
+### Phase 4: Admin Panel Optimization
+
+#### Library Tab ✅
+- Added comprehensive filtering:
+  - Media type filter (All/Movies/TV)
+  - Sort by (Date Added, Popularity, Rating, Release Date, Title)
+  - Sort order toggle (Asc/Desc)
+  - Featured filter (All/Featured/Not Featured)
+  - Active filter (All/Active/Hidden)
+- Results count indicator with applied filters
+- Increased fetch limit to 500 for better filtering
+
+#### AdminSectionsPage ✅ (Major Update)
+- **Added Movies/TV toggle** at the top of the page
+- Toggle switches between managing:
+  - 🎬 **Movies** → Sections for the homepage/In Theaters
+  - 📺 **TV Series** → Sections for the Series page
+- Loads from appropriate table based on mode:
+  - Movies mode → `homepage_sections`
+  - TV mode → `tv_sections`
+- Dynamic page title and description based on mode
+
+#### saveFullMovieToLibrary() ✅
+- Enhanced to properly detect and save TV series
+- Extracts genre_ids for efficient filtering
+- Saves all TV-specific fields (seasons, episodes, networks, etc.)
+- Supports origin_country, original_language, adult flag
+
+---
+
+## 📋 REMAINING / OPTIONAL
+
+### Database (REQUIRED)
+- [ ] Run `supabase_production_optimization.sql` in Supabase SQL Editor
+- [ ] This will create the `tv_sections` table with default sections
+- [ ] Backfill genre_ids for existing records
+
+### Optional Enhancements
+- [ ] Add bulk operations UI (feature/hide multiple items)
+- [ ] Export/Import functionality for library
+- [ ] Add caching indicators in admin
+- [ ] Real-time sync status for homepage sections
+
+---
+
+## Files Changed
+
+### New Files
+1. `supabase_production_optimization.sql` - Schema updates with TV sections
+
+### Modified Files
+1. `src/views/TVSeries.jsx` - **Complete rewrite** - Database-driven, matches Home.jsx
+2. `src/views/Search.jsx` - Dual-source search
+3. `src/views/Explore.jsx` - Database-driven explore
+4. `src/views/AdminPanel.jsx` - Enhanced library filters
+5. `src/views/admin/AdminSectionsPage.jsx` - **Movies/TV toggle** added
+6. `src/lib/supabase.js` - Enhanced saveFullMovieToLibrary()
+7. `src/constants/navigation.jsx` - Renamed "TV Series" → "Series"
+8. `src/components/MobileNavigation.jsx` - Renamed "TV Shows" → "Series"
+
+---
+
+## Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      FRONTEND PAGES                         │
+├─────────────────────────────────────────────────────────────┤
+│  Home.jsx          │  TVSeries.jsx       │  Explore.jsx     │
+│  (In Theaters)     │  (Series)           │  (Browse)        │
+│  ↓                 │  ↓                  │  ↓               │
+│  homepage_sections │  tv_sections        │  movies_library  │
+└────────────────────┴────────────────────┴───────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────┐
+│                      ADMIN PANEL                            │
+├─────────────────────────────────────────────────────────────┤
+│  AdminSectionsPage.jsx                                      │
+│  ┌──────────────┬──────────────┐                           │
+│  │ 🎬 Movies    │ 📺 TV Series │  ← Toggle between modes    │
+│  └──────────────┴──────────────┘                           │
+│  ↓ Movies mode          ↓ TV mode                          │
+│  homepage_sections      tv_sections                        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## How to Use
+
+### For Frontend (Database-Driven)
+```javascript
+import { 
+    getMoviesFromDb, 
+    getTVSeriesFromDb, 
+    searchContentFromDb,
+    getExploreContent 
+} from './lib/contentApi';
+
+// Get movies with filters
+const { data, total } = await getMoviesFromDb({
+    mediaType: 'movie',
+    genreIds: [28, 12], // Action, Adventure
+    minRating: 7.0,
+    sortBy: 'popularity',
+    limit: 20
+});
+
+// Search content
+const results = await searchContentFromDb('inception');
+```
+
+### For Admin (TMDB Import still works)
+- Browse TMDB tab still uses TMDB API for importing
+- Bulk Import uses TMDB for fetching and saves to database
+- Library tab shows database content with filters
+- **Sections tab**: Use Movies/TV toggle to manage either page's sections
+
+### Run SQL Script
+1. Go to your [Supabase Dashboard](https://app.supabase.com)
+2. Open your project
+3. Go to **SQL Editor**
+4. Create a new query
+5. Paste the contents of `supabase_production_optimization.sql`
+6. Click **Run**
+
+This will:
+- Add TV-specific columns to movies_library
+- Create optimized indexes
+- Create the `tv_sections` table
+- Insert default TV sections (Trending, Netflix, Prime, Hotstar)
+- Create the search function
