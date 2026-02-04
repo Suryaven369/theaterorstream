@@ -12,7 +12,7 @@ const VideoPlay = ({ data, close, media_type }) => {
 
   // Get key from either local data or fetched data
   const videoKey = hasVideos
-    ? data.videos[0]?.key
+    ? (data.videos.results ? data.videos.results[0]?.key : data.videos[0]?.key)
     : videoData?.results?.[0]?.key;
 
   return (

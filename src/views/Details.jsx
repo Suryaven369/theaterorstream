@@ -76,10 +76,10 @@ const Details = () => {
             setCastData(dbData.credits);
           } else {
             // If DB entry exists but no credits (legacy?), try fetch credits
-            // try {
-            //   const castRes = await axios.get(`/${mediaType}/${movieId}/credits`);
-            //   setCastData(castRes.data);
-            // } catch (e) { console.error("Credits fetch fail", e); }
+            try {
+              const castRes = await axios.get(`/${mediaType}/${movieId}/credits`);
+              setCastData(castRes.data);
+            } catch (e) { console.error("Credits fetch fail", e); }
           }
         } else {
           // 2. Fallback to API if not in DB
