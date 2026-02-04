@@ -15,17 +15,22 @@ const TOS_CATEGORIES = [
 
 // Mini TOS Rating Circle for share card
 const MiniTOSCircle = ({ value, label, color }) => (
-    <div className="flex flex-col items-center">
+    <div className="flex flex-col items-center justify-center p-1">
         <div
-            className="w-9 h-9 rounded-full flex items-center justify-center text-[10px] font-bold border-2 bg-black/50 backdrop-blur-md"
+            className="w-14 h-14 rounded-full flex items-center justify-center text-lg font-black border-[3px] bg-gray-900 shadow-xl"
             style={{
                 borderColor: color,
-                color: color
+                color: '#ffffff',
+                boxShadow: `0 0 15px ${color}50`
             }}
         >
             {value?.toFixed(1) || '-'}
         </div>
-        <span className="text-[8px] text-white/90 mt-1 text-center leading-tight font-medium shadow-black drop-shadow-md">{label}</span>
+        <span
+            className="text-[10px] uppercase tracking-wider mt-2 text-center font-bold leading-none text-white/90 shadow-black drop-shadow-md"
+        >
+            {label}
+        </span>
     </div>
 );
 
@@ -44,117 +49,94 @@ const ShareableCard = React.forwardRef(({ movieTitle, movieYear, posterUrl, back
     };
 
     const scoreColor = getScoreColor();
-    // Prefer backdrop for BG
-    let bgImage = backdropBase64 || backdropUrl || posterBase64 || posterUrl;
-    // Prefer poster for FG
-    let posterImage = posterBase64 || posterUrl || backdropBase64 || backdropUrl;
 
-    // Cache-bust URLs if they are not base64 to ensure fresh CORS headers for html2canvas
-    // This fixes the "missing image" issue if browser cached the image previously without CORS
-    const cacheBuster = `?t=${Date.now()}`;
-
-    if (bgImage && !bgImage.startsWith('data:')) {
-        bgImage = bgImage.includes('?') ? `${bgImage}&t=${Date.now()}` : `${bgImage}${cacheBuster}`;
-    }
-
-    if (posterImage && !posterImage.startsWith('data:')) {
-        posterImage = posterImage.includes('?') ? `${posterImage}&t=${Date.now()}` : `${posterImage}${cacheBuster}`;
-    }
-
-    // Get verdict text
-    const getVerdict = () => {
-        if (percentage >= 70) return "🎬 Theater";
-        if (percentage >= 50) return "📺 Stream";
-        return "⏭️ Skip";
-    };
+    // Prioritize Base64 strings passed from parent to ensure CORS isn't an issue during capture
+    const bgImage = backdropBase64 || posterBase64 || backdropUrl || posterUrl;
+    const posterDisplay = posterBase64 || posterUrl || backdropBase64 || backdropUrl;
 
     return (
         <div
             ref={ref}
-            className="w-[360px] h-[640px] bg-black relative overflow-hidden flex flex-col"
-            style={{ fontFamily: 'Inter, sans-serif' }}
+            className="w-[360px] h-[640px] bg-[#050505] relative overflow-hidden flex flex-col"
+            style={{ fontFamily: "'Inter', sans-serif" }}
         >
-            {/* Background - Blurred */}
+            {/* Background - Blurred Art */}
             <div className="absolute inset-0 z-0">
                 {bgImage ? (
                     <img
                         src={bgImage}
-                        alt="Background"
-                        className="w-full h-full object-cover opacity-60 blur-xl scale-110"
+                        alt=""
+                        className="w-full h-full object-cover opacity-30 blur-[40px] scale-150"
                         crossOrigin="anonymous"
                     />
                 ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-gray-900 via-purple-900 to-black" />
+                    <div className="w-full h-full bg-gradient-to-br from-gray-900 via-black to-gray-900" />
                 )}
-                {/* Dark overlay for readability */}
-                <div className="absolute inset-0 bg-black/40" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black/60" />
             </div>
 
             {/* Content Container */}
-            <div className="relative z-10 h-full flex flex-col p-6 items-center justify-between">
+            <div className="relative z-10 h-full flex flex-col p-7 items-center">
 
-                {/* Header */}
-                <div className="w-full flex items-center justify-between mb-2">
-                    <div className="flex flex-col">
-                        <span className="text-white/60 text-[10px] uppercase tracking-widest">Review</span>
-                        <span className="text-white font-bold text-lg leading-tight drop-shadow-lg">{movieTitle}</span>
-                        <span className="text-white/50 text-xs">{movieYear || '2024'}</span>
+                {/* Header Section */}
+                <div className="w-full flex items-start justify-between mb-6">
+                    <div className="flex flex-col flex-1 pr-4">
+                        <span className="text-orange-500 font-bold text-[10px] uppercase tracking-[0.3em] mb-1">Review Details</span>
+                        <h2 className="text-white font-black text-2xl leading-[1.1] drop-shadow-2xl">
+                            {movieTitle}
+                        </h2>
+                        <span className="text-white/40 text-xs mt-1 font-medium italic">Released {movieYear || '2024'}</span>
                     </div>
-                    <div className="bg-white/10 p-1 rounded-lg backdrop-blur-sm">
-                        <span className="text-orange-500 font-extrabold text-sm tracking-tighter">TOS</span>
+                    <div className="flex flex-col items-end">
+                        <div className="bg-white/10 p-2 rounded-xl backdrop-blur-md border border-white/10 shadow-lg">
+                            <span className="text-orange-500 font-black text-xs tracking-tighter">TOS</span>
+                        </div>
                     </div>
                 </div>
 
-                {/* Main Card Content */}
-                <div className="flex-1 flex flex-col items-center justify-center w-full gap-6">
+                {/* Visual Content Area */}
+                <div className="flex-1 w-full flex flex-col items-center justify-center gap-2">
 
-                    {/* Poster Image - Shadowed and Clean */}
-                    <div className="relative group perspective">
-                        <div className="w-48 min-h-[280px] bg-gray-900 rounded-xl overflow-hidden shadow-2xl border border-white/10 relative z-10 transform transition-transform">
-                            {posterImage ? (
+                    {/* Poster - Centerpiece */}
+                    <div className="relative mb-6">
+                        <div className="w-44 h-[260px] bg-black/40 rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.8)] border border-white/10 relative z-10">
+                            {posterDisplay ? (
                                 <img
-                                    src={posterImage}
-                                    alt={movieTitle}
+                                    src={posterDisplay}
+                                    alt=""
                                     className="w-full h-full object-cover"
                                     crossOrigin="anonymous"
                                 />
                             ) : (
-                                <div className="w-full h-full flex items-center justify-center">
-                                    <span className="text-4xl">🎬</span>
+                                <div className="w-full h-full flex items-center justify-center bg-gray-900">
+                                    <span className="text-3xl">🎬</span>
                                 </div>
                             )}
                         </div>
-                        {/* Glow effect behind poster */}
+                        {/* Dramatic Glow */}
                         <div
-                            className="absolute inset-0 rounded-xl blur-2xl opacity-50 z-0 scale-95 translate-y-4"
+                            className="absolute inset-0 rounded-2xl blur-[60px] opacity-30 z-0 scale-110 translate-y-4"
                             style={{ backgroundColor: scoreColor }}
                         />
                     </div>
 
-                    {/* Main Score & Verdict */}
-                    <div className="flex flex-col items-center gap-2">
-                        <div className="flex items-center gap-3 bg-black/60 backdrop-blur-md px-6 py-3 rounded-full border border-white/10 shadow-xl">
-                            <span className="text-3xl font-black" style={{ color: scoreColor }}>
+                    {/* Score Highlight */}
+                    <div className="flex flex-col items-center mb-6">
+                        <div className="flex items-baseline gap-1">
+                            <span className="text-7xl font-black tracking-tighter" style={{
+                                color: scoreColor,
+                                textShadow: `0 0 40px ${scoreColor}40`
+                            }}>
                                 {(overallScore || 0).toFixed(1)}
                             </span>
-                            <div className="h-8 w-[1px] bg-white/20"></div>
-                            <span className="text-white font-bold text-lg tracking-wide uppercase">
-                                {getVerdict()}
-                            </span>
+                            <span className="text-white/20 text-xl font-bold">/10</span>
                         </div>
+                        <div className="h-1 w-12 rounded-full mt-1" style={{ backgroundColor: scoreColor }} />
                     </div>
 
-                    {/* TOS Rating Grid - High Visibility */}
-                    <div className="w-full bg-black/80 backdrop-blur-xl rounded-2xl p-5 border border-white/20 shadow-2xl mt-2">
-                        {/* Header for section */}
-                        <div className="flex items-center justify-center mb-3">
-                            <div className="h-[1px] w-8 bg-white/20"></div>
-                            <span className="mx-2 text-[10px] font-bold text-white/60 uppercase tracking-[0.2em]">Detailed Breakdown</span>
-                            <div className="h-[1px] w-8 bg-white/20"></div>
-                        </div>
-
-                        {/* Grid Layout - 4 Top, 3 Bottom */}
-                        <div className="flex justify-between items-start mb-4 px-1">
+                    {/* Metrics Dashboard */}
+                    <div className="w-full bg-white/[0.03] backdrop-blur-2xl rounded-3xl p-5 border border-white/10 shadow-2xl">
+                        <div className="grid grid-cols-4 gap-y-5 gap-x-2">
                             {TOS_CATEGORIES.slice(0, 4).map((cat) => (
                                 <MiniTOSCircle
                                     key={cat.key}
@@ -164,7 +146,7 @@ const ShareableCard = React.forwardRef(({ movieTitle, movieYear, posterUrl, back
                                 />
                             ))}
                         </div>
-                        <div className="flex justify-center gap-6 items-start px-2">
+                        <div className="flex justify-center gap-8 mt-5 pt-5 border-t border-white/5">
                             {TOS_CATEGORIES.slice(4).map((cat) => (
                                 <MiniTOSCircle
                                     key={cat.key}
@@ -178,11 +160,15 @@ const ShareableCard = React.forwardRef(({ movieTitle, movieYear, posterUrl, back
 
                 </div>
 
-                {/* Footer */}
-                <div className="w-full text-center mt-4 pt-4 border-t border-white/10">
-                    <p className="text-white/40 text-[10px] tracking-widest uppercase">
-                        Read full review at <span className="text-orange-400 font-bold">theaterorstream.com</span>
-                    </p>
+                {/* Footer Branding */}
+                <div className="w-full flex items-center justify-center pt-6">
+                    <div className="flex items-center gap-2">
+                        <div className="h-[1px] w-6 bg-white/10"></div>
+                        <p className="text-white/20 text-[9px] font-bold tracking-[0.4em] uppercase">
+                            theaterorstream.com
+                        </p>
+                        <div className="h-[1px] w-6 bg-white/10"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -237,7 +223,7 @@ const ShareMovieModal = ({ isOpen, onClose, movieTitle, movieYear, posterUrl, ba
         setGenerating(true);
 
         try {
-            // Convert images first
+            // Convert images first to avoid CORS issues during canvas capture
             if (!backdropBase64 && fullBackdropUrl) {
                 const b64 = await convertToBase64(fullBackdropUrl);
                 if (b64) setBackdropBase64(b64);
@@ -247,18 +233,19 @@ const ShareMovieModal = ({ isOpen, onClose, movieTitle, movieYear, posterUrl, ba
                 if (b64) setPosterBase64(b64);
             }
 
-            // Waiting longer for image rendering
-            await new Promise(resolve => setTimeout(resolve, 800));
+            // Give extra time for the browser to render the blurred backgrounds and high-res poster
+            await new Promise(resolve => setTimeout(resolve, 1500));
 
             const canvas = await html2canvas(cardRef.current, {
-                backgroundColor: '#000000',
-                scale: 2,
+                backgroundColor: '#050505',
+                scale: 2, // High resolution
                 useCORS: true,
                 allowTaint: true,
                 logging: false,
+                imageTimeout: 0, // No timeout for images
             });
 
-            const imageUrl = canvas.toDataURL('image/png');
+            const imageUrl = canvas.toDataURL('image/png', 1.0);
             setShareImage(imageUrl);
         } catch (error) {
             console.error('Error generating image:', error);
