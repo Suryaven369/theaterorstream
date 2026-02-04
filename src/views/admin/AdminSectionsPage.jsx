@@ -299,7 +299,7 @@ const AdminSectionsPage = () => {
                 try {
                     const detailEndpoint = mediaType === "tv" ? `/tv/${item.id}` : `/movie/${item.id}`;
                     const detailResponse = await axios.get(detailEndpoint, {
-                        params: { append_to_response: 'credits,videos,images,release_dates,keywords' }
+                        params: { append_to_response: 'credits,videos,images,release_dates,keywords,similar,recommendations,reviews' }
                     });
                     const fullData = detailResponse.data;
 
@@ -425,7 +425,7 @@ const AdminSectionsPage = () => {
             // Fetch full movie details
             const detailEndpoint = mediaType === "tv" ? `/tv/${movie.id}` : `/movie/${movie.id}`;
             const detailResponse = await axios.get(detailEndpoint, {
-                params: { append_to_response: 'credits,videos,images,release_dates,keywords' }
+                params: { append_to_response: 'credits,videos,images,release_dates,keywords,similar,recommendations,reviews' }
             });
             const fullData = detailResponse.data;
 

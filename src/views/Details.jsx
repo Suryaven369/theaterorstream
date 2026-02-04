@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useParams, Link, useLocation } from "react-router-dom";
-import useFetchDetails from "../hooks/useFetchDetails";
+
 import useReviewAnalysis from "../hooks/useReviewAnalysis";
 import { useSelector } from "react-redux";
 import moment from "moment";
@@ -11,7 +11,7 @@ import axios from "axios";
 import { FaStar, FaClock, FaCalendar, FaPlay } from "react-icons/fa";
 import { IoArrowBack } from "react-icons/io5";
 import UserRatingSystem, { RatingModal } from "../components/UserRatingSystem";
-import { getMovieRatings, getUserRatingForMovie } from "../lib/supabase";
+import { getMovieRatings, getUserRatingForMovie, getAdvancedMovieFromLibrary } from "../lib/supabase";
 import { ShareButton } from "../components/ShareMovie";
 import ParentGuide from "../components/ParentGuide";
 import VibeChart from "../components/VibeChart";
@@ -53,9 +53,52 @@ const Details = () => {
   const [userRating, setUserRating] = useState(null);
   const imageURL = useSelector((state) => state.movieData.imageURL);
 
-  // Use the extracted movieId and mediaType for API calls
-  const { data } = useFetchDetails(`/${mediaType}/${movieId}`);
-  const { data: castData } = useFetchDetails(`/${mediaType}/${movieId}/credits`);
+  // Fetch Details from DB or API
+  const [data, setData] = useState(null);
+  const [castData, setCastData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchDetails = async () => {
+      if (!movieId) return;
+      setLoading(true);
+
+      try {
+        // 1. Try DB first
+        console.log(`Fetching details for ${movieId} (${mediaType})`);
+        const { success, data: dbData } = await getAdvancedMovieFromLibrary(movieId);
+
+        if (success && dbData) {
+          console.log("Loaded from DB:", dbData);
+          setData(dbData);
+          // In DB, cast is in 'credits' field
+          if (dbData.credits) {
+            setCastData(dbData.credits);
+          } else {
+            // If DB entry exists but no credits (legacy?), try fetch credits
+            // try {
+            //   const castRes = await axios.get(`/${mediaType}/${movieId}/credits`);
+            //   setCastData(castRes.data);
+            // } catch (e) { console.error("Credits fetch fail", e); }
+          }
+        } else {
+          // 2. Fallback to API if not in DB
+          console.log("Not found in DB, falling back to API");
+          const response = await axios.get(`/${mediaType}/${movieId}`);
+          setData(response.data);
+
+          const castResponse = await axios.get(`/${mediaType}/${movieId}/credits`);
+          setCastData(castResponse.data);
+        }
+      } catch (error) {
+        console.error("Error fetching details:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDetails();
+  }, [movieId, mediaType]);
 
   const [playVideo, setPlayVideo] = useState(false);
   const [playVideoId, setPlayVideoId] = useState("");
