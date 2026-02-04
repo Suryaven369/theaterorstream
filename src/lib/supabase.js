@@ -313,6 +313,61 @@ export const getMovieRatings = async (movieId) => {
     return aggregates;
 };
 
+// Get aggregate ratings for multiple movies in batch (optimized)
+// Returns a Map of movieId -> { score, count }
+export const getBatchMovieRatings = async (movieIds) => {
+    if (!movieIds || movieIds.length === 0) return new Map();
+
+    const { data, error } = await supabase
+        .from('ratings')
+        .select('movie_id, acting, screenplay, sound, direction, entertainment, pacing, cinematography')
+        .in('movie_id', movieIds.map(id => String(id)));
+
+    if (error) {
+        console.error('Error fetching batch ratings:', error);
+        return new Map();
+    }
+
+    if (!data || data.length === 0) return new Map();
+
+    // Group ratings by movie_id
+    const ratingsByMovie = new Map();
+    data.forEach(rating => {
+        const movieId = String(rating.movie_id);
+        if (!ratingsByMovie.has(movieId)) {
+            ratingsByMovie.set(movieId, []);
+        }
+        ratingsByMovie.get(movieId).push(rating);
+    });
+
+    // Calculate aggregates for each movie
+    const result = new Map();
+    const categories = ['acting', 'screenplay', 'sound', 'direction', 'entertainment', 'pacing', 'cinematography'];
+
+    ratingsByMovie.forEach((ratings, movieId) => {
+        let totalSum = 0;
+        let totalCount = 0;
+
+        categories.forEach(cat => {
+            const validRatings = ratings.filter(r => r[cat] !== null && r[cat] !== undefined);
+            if (validRatings.length > 0) {
+                const catAvg = validRatings.reduce((sum, r) => sum + r[cat], 0) / validRatings.length;
+                totalSum += catAvg;
+                totalCount++;
+            }
+        });
+
+        if (totalCount > 0) {
+            result.set(movieId, {
+                score: totalSum / totalCount,
+                count: ratings.length
+            });
+        }
+    });
+
+    return result;
+};
+
 // Get a specific user's rating for a movie
 export const getUserRatingForMovie = async (userId, movieId) => {
     if (!userId || userId === 'anonymous') return null;
@@ -891,8 +946,11 @@ export const getHomepageSections = async (activeOnly = false) => {
         movieMap.set(String(m.tmdb_id), m);
     });
 
-    // 3. Hydrate sections
-    // Replace the section's movie data with the fresh data from library
+    // 3. Batch fetch TOS ratings for all movies (SINGLE query)
+    const ratingsMap = await getBatchMovieRatings(Array.from(tmdbIdsToFetch));
+
+    // 4. Hydrate sections
+    // Replace the section's movie data with the fresh data from library + TOS ratings
     const hydratedSections = sections.map(section => {
         if (!section.movies_by_region) return section;
 
@@ -903,6 +961,7 @@ export const getHomepageSections = async (activeOnly = false) => {
 
             hydatedMoviesByRegion[regionCode] = rawMovies.map(rawMovie => {
                 const globalMovie = movieMap.get(String(rawMovie.tmdb_id));
+                const tosRating = ratingsMap.get(String(rawMovie.tmdb_id));
 
                 if (globalMovie) {
                     // MERGE: Keep explicit order from section, overwrite details from library
@@ -911,9 +970,14 @@ export const getHomepageSections = async (activeOnly = false) => {
                         ...globalMovie, // overwrites title, poster, images, etc. from global DB
                         // Ensure images are properly set if library has them
                         images: globalMovie.images || rawMovie.images,
+                        // Attach TOS rating if available
+                        tos_rating: tosRating || null,
                     };
                 }
-                return rawMovie; // Fallback to embedded data if library missing
+                return {
+                    ...rawMovie,
+                    tos_rating: tosRating || null,
+                }; // Fallback to embedded data if library missing
             });
         });
 
