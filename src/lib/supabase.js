@@ -441,6 +441,23 @@ export const submitRating = async (movieId, movieTitle, ratings, userId = 'anony
     }
 };
 
+// Get all ratings by a specific user (for profile feed)
+export const getAllUserRatings = async (userId) => {
+    if (!userId) return [];
+
+    const { data, error } = await supabase
+        .from('ratings')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('Error fetching user ratings:', error);
+        return [];
+    }
+    return data || [];
+};
+
 // Submit a new review or reply
 export const submitReview = async (movieId, movieTitle, reviewText, userId = 'anonymous', username = 'Anonymous User', parentId = null) => {
     const { data, error } = await supabase

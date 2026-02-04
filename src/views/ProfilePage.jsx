@@ -11,9 +11,10 @@ import {
     getUserLikedMovies,
     getUserRatingsCount,
     getProfileByUsername,
-    getUserCollections
+    getUserCollections,
+    getUserWatchedMovies
 } from '../lib/supabase';
-import { FaUserPlus, FaUserCheck, FaBookmark, FaStar, FaHeart, FaFolder } from 'react-icons/fa';
+import { FaUserPlus, FaUserCheck, FaBookmark, FaStar, FaHeart, FaFolder, FaEye } from 'react-icons/fa';
 
 // Avatar options
 const AVATARS = {
@@ -54,6 +55,7 @@ const ProfilePage = () => {
     const [ratingsCount, setRatingsCount] = useState(0);
     const [likedCount, setLikedCount] = useState(0);
     const [collectionsCount, setCollectionsCount] = useState(0);
+    const [watchedCount, setWatchedCount] = useState(0);
 
     // Edit state
     const [isEditing, setIsEditing] = useState(false);
@@ -69,65 +71,61 @@ const ProfilePage = () => {
         const loadProfile = async () => {
             setLoadingProfile(true);
 
+            let targetUserId = null;
+            let targetProfile = null;
+
             if (isOwnProfile) {
-                // Viewing own profile
+                targetProfile = currentUserProfile;
+                targetUserId = user?.id;
                 setViewedProfile(currentUserProfile);
-                if (user?.id) {
-                    // Load own stats
-                    const [watchlist, ratingsCount, likedMovies, userCollections] = await Promise.all([
-                        getUserWatchlist(user.id),
-                        getUserRatingsCount(user.id),
-                        getUserLikedMovies(user.id),
-                        getUserCollections(user.id)
-                    ]);
-                    setWatchlistCount(watchlist.length);
-                    setRatingsCount(ratingsCount);
-                    setLikedCount(likedMovies.length);
-                    setCollectionsCount(userCollections.length);
-
-                    // Load followers/following
-                    const [followersData, followingData] = await Promise.all([
-                        getUserFollowers(user.id),
-                        getUserFollowing(user.id)
-                    ]);
-                    setFollowers(followersData);
-                    setFollowing(followingData);
-                }
             } else {
-                // Viewing someone else's profile
-                const profileData = await getProfileByUsername(username);
-                setViewedProfile(profileData);
+                targetProfile = await getProfileByUsername(username);
+                targetUserId = targetProfile?.id;
+                setViewedProfile(targetProfile);
 
-                if (profileData?.id) {
-                    // Load their stats
-                    const [watchlist, ratingsCount, likedMovies, userCollections] = await Promise.all([
-                        getUserWatchlist(profileData.id),
-                        getUserRatingsCount(profileData.id),
-                        getUserLikedMovies(profileData.id),
-                        getUserCollections(profileData.id)
-                    ]);
-                    setWatchlistCount(watchlist.length);
-                    setRatingsCount(ratingsCount);
-                    setLikedCount(likedMovies.length);
-
-                    // Filter public collections count
-                    const publicCollections = userCollections.filter(c => c.is_public);
-                    setCollectionsCount(publicCollections.length);
-
-                    // Load followers/following
-                    const [followersData, followingData] = await Promise.all([
-                        getUserFollowers(profileData.id),
-                        getUserFollowing(profileData.id)
-                    ]);
-                    setFollowers(followersData);
-                    setFollowing(followingData);
-
-                    // Check if current user follows this profile
-                    if (user?.id) {
-                        const following = await checkIsFollowing(user.id, profileData.id);
-                        setIsFollowingUser(following);
-                    }
+                // Check follow status
+                if (targetUserId && user?.id) {
+                    const following = await checkIsFollowing(user.id, targetUserId);
+                    setIsFollowingUser(following);
                 }
+            }
+
+            if (targetUserId) {
+                // Determine if we should show private data
+                const isOwner = user?.id === targetUserId;
+
+                const [
+                    watchlist,
+                    ratingsCount,
+                    likedMovies,
+                    userCollections,
+                    watchedMovies,
+                    followersData,
+                    followingData
+                ] = await Promise.all([
+                    getUserWatchlist(targetUserId),
+                    getUserRatingsCount(targetUserId),
+                    getUserLikedMovies(targetUserId),
+                    getUserCollections(targetUserId),
+                    getUserWatchedMovies(targetUserId),
+                    getUserFollowers(targetUserId),
+                    getUserFollowing(targetUserId)
+                ]);
+
+                setWatchlistCount(watchlist.length);
+                setRatingsCount(ratingsCount);
+                setLikedCount(likedMovies.length);
+
+                // Filter collections
+                const visibleCollections = isOwner
+                    ? userCollections
+                    : userCollections.filter(c => c.is_public);
+                setCollectionsCount(visibleCollections.length);
+
+                setFollowers(followersData);
+                setFollowing(followingData);
+
+                setWatchedCount(watchedMovies.length);
             }
 
             setLoadingProfile(false);
@@ -368,35 +366,52 @@ const ProfilePage = () => {
                                 </div>
 
                                 {/* Stats Grid */}
-                                <div className="grid grid-cols-2 gap-4 mb-6 animate-fadeIn">
+                                <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8 animate-fadeIn">
+                                    <Link
+                                        to={`/${displayProfile?.username}/watched`}
+                                        className="bg-white/5 rounded-xl p-4 text-center hover:bg-white/10 transition-colors group"
+                                    >
+                                        <FaEye className="text-green-400 mx-auto mb-2 text-xl group-hover:scale-110 transition-transform" />
+                                        <p className="text-2xl font-bold text-white max-sm:text-lg">{watchedCount}</p>
+                                        <p className="text-xs text-white/40">Watched</p>
+                                    </Link>
                                     <Link
                                         to={`/${displayProfile?.username}/watchlist`}
                                         className="bg-white/5 rounded-xl p-4 text-center hover:bg-white/10 transition-colors group"
                                     >
                                         <FaBookmark className="text-yellow-400 mx-auto mb-2 text-xl group-hover:scale-110 transition-transform" />
-                                        <p className="text-2xl font-bold text-white">{watchlistCount}</p>
+                                        <p className="text-2xl font-bold text-white max-sm:text-lg">{watchlistCount}</p>
                                         <p className="text-xs text-white/40">Watchlist</p>
                                     </Link>
-
                                     <Link
                                         to={`/${displayProfile?.username}/collections`}
                                         className="bg-white/5 rounded-xl p-4 text-center hover:bg-white/10 transition-colors group"
                                     >
                                         <FaFolder className="text-purple-400 mx-auto mb-2 text-xl group-hover:scale-110 transition-transform" />
-                                        <p className="text-2xl font-bold text-white">{collectionsCount}</p>
+                                        <p className="text-2xl font-bold text-white max-sm:text-lg">{collectionsCount}</p>
                                         <p className="text-xs text-white/40">Collections</p>
                                     </Link>
-
                                     <div className="bg-white/5 rounded-xl p-4 text-center">
                                         <FaStar className="text-orange-400 mx-auto mb-2 text-xl" />
-                                        <p className="text-2xl font-bold text-white">{ratingsCount}</p>
+                                        <p className="text-2xl font-bold text-white max-sm:text-lg">{ratingsCount}</p>
                                         <p className="text-xs text-white/40">Ratings</p>
                                     </div>
                                     <div className="bg-white/5 rounded-xl p-4 text-center">
                                         <FaHeart className="text-red-400 mx-auto mb-2 text-xl" />
-                                        <p className="text-2xl font-bold text-white">{likedCount}</p>
+                                        <p className="text-2xl font-bold text-white max-sm:text-lg">{likedCount}</p>
                                         <p className="text-xs text-white/40">Liked</p>
                                     </div>
+                                    <Link
+                                        to={`/${displayProfile?.username}/activity`}
+                                        className="bg-white/5 rounded-xl p-4 text-center hover:bg-white/10 transition-colors group flex flex-col justify-center items-center"
+                                    >
+                                        <div className="w-8 h-8 rounded-full bg-orange-500/20 flex items-center justify-center mb-2 group-hover:bg-orange-500/30 transition-colors">
+                                            <svg className="w-4 h-4 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                        </div>
+                                        <p className="text-sm font-medium text-white group-hover:text-orange-400 transition-colors">View Activity</p>
+                                    </Link>
                                 </div>
 
                                 {/* Account Info (Moved here) */}

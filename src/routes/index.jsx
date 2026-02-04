@@ -17,8 +17,9 @@ import ProfilePage from "../views/ProfilePage";
 import WatchlistPage from "../views/WatchlistPage";
 import CollectionDetails from "../views/CollectionDetails";
 import CollectionsPage from "../views/CollectionsPage";
+import WatchedMoviesPage from "../views/WatchedMoviesPage";
+import ActivityFeedPage from "../views/ActivityFeedPage";
 
-// Admin pages
 import AdminSectionsPage from "../views/admin/AdminSectionsPage";
 import AdminCollectionsPage from "../views/admin/AdminCollectionsPage";
 import AdminSettingsPage from "../views/admin/AdminSettingsPage";
@@ -72,6 +73,14 @@ const router = createBrowserRouter([
       {
         path: ":username/collections",
         element: <CollectionsPage />,
+      },
+      {
+        path: ":username/watched",
+        element: <WatchedMoviesPage />,
+      },
+      {
+        path: ":username/activity",
+        element: <ActivityFeedPage />,
       },
       {
         path: "search",
