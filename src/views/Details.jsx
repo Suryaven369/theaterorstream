@@ -341,6 +341,8 @@ const Details = () => {
                   movieYear={data?.release_date?.split('-')[0] || data?.first_air_date?.split('-')[0]}
                   posterUrl={data?.poster_path}
                   backdropUrl={data?.backdrop_path}
+                  posterBase64={data?.images?.poster_base64}
+                  backdropBase64={data?.images?.backdrop_base64}
                   ratings={displayRatings.ratings}
                   imageURL={imageURL}
                 />

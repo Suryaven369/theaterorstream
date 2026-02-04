@@ -50,93 +50,97 @@ const ShareableCard = React.forwardRef(({ movieTitle, movieYear, posterUrl, back
 
     const scoreColor = getScoreColor();
 
-    // Prioritize Base64 strings passed from parent to ensure CORS isn't an issue during capture
+    // Explicitly check for data URIs to ensure no CORS issues
     const bgImage = backdropBase64 || posterBase64 || backdropUrl || posterUrl;
     const posterDisplay = posterBase64 || posterUrl || backdropBase64 || backdropUrl;
 
     return (
         <div
             ref={ref}
-            className="w-[360px] h-[640px] bg-[#050505] relative overflow-hidden flex flex-col"
+            className="w-[360px] h-[640px] bg-[#0a0a0a] relative overflow-hidden flex flex-col"
             style={{ fontFamily: "'Inter', sans-serif" }}
         >
-            {/* Background - Blurred Art */}
+            {/* Background - Blurred Art with improved visibility */}
             <div className="absolute inset-0 z-0">
                 {bgImage ? (
                     <img
                         src={bgImage}
                         alt=""
-                        className="w-full h-full object-cover opacity-30 blur-[40px] scale-150"
+                        className="w-full h-full object-cover opacity-50 blur-[50px] scale-150"
                         crossOrigin="anonymous"
                     />
                 ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-gray-900 via-black to-gray-900" />
+                    <div className="w-full h-full bg-gradient-to-br from-gray-900 via-black to-gray-800" />
                 )}
-                <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black/60" />
+                {/* Dark Vignette */}
+                <div className="absolute inset-0 bg-radial-gradient from-transparent to-black/80" />
+                <div className="absolute inset-0 bg-black/40" />
             </div>
 
             {/* Content Container */}
-            <div className="relative z-10 h-full flex flex-col p-7 items-center">
+            <div className="relative z-10 h-full flex flex-col p-8 items-center">
 
-                {/* Header Section */}
-                <div className="w-full flex items-start justify-between mb-6">
-                    <div className="flex flex-col flex-1 pr-4">
-                        <span className="text-orange-500 font-bold text-[10px] uppercase tracking-[0.3em] mb-1">Review Details</span>
-                        <h2 className="text-white font-black text-2xl leading-[1.1] drop-shadow-2xl">
+                {/* Header Section - Better Spacing */}
+                <div className="w-full flex items-start justify-between mb-8">
+                    <div className="flex flex-col flex-1 pr-2">
+                        <span className="text-orange-500 font-extrabold text-[9px] uppercase tracking-[0.4em] mb-1.5 opacity-80">Rating Card</span>
+                        <h2 className="text-white font-black text-2xl leading-none drop-shadow-2xl mb-1">
                             {movieTitle}
                         </h2>
-                        <span className="text-white/40 text-xs mt-1 font-medium italic">Released {movieYear || '2024'}</span>
+                        <span className="text-white/40 text-xs font-semibold">EST. {movieYear || '2024'}</span>
                     </div>
                     <div className="flex flex-col items-end">
-                        <div className="bg-white/10 p-2 rounded-xl backdrop-blur-md border border-white/10 shadow-lg">
+                        <div className="bg-white/10 p-2 rounded-xl backdrop-blur-md border border-white/20 shadow-xl">
                             <span className="text-orange-500 font-black text-xs tracking-tighter">TOS</span>
                         </div>
                     </div>
                 </div>
 
                 {/* Visual Content Area */}
-                <div className="flex-1 w-full flex flex-col items-center justify-center gap-2">
+                <div className="flex-1 w-full flex flex-col items-center justify-center gap-4">
 
                     {/* Poster - Centerpiece */}
-                    <div className="relative mb-6">
-                        <div className="w-44 h-[260px] bg-black/40 rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.8)] border border-white/10 relative z-10">
+                    <div className="relative mb-8">
+                        {/* Glow behind poster */}
+                        <div
+                            className="absolute -inset-4 rounded-3xl blur-[60px] opacity-40 z-0"
+                            style={{ backgroundColor: scoreColor }}
+                        />
+
+                        <div className="w-44 h-[260px] bg-black/60 rounded-2xl overflow-hidden shadow-[0_25px_60px_rgba(0,0,0,0.9)] border border-white/10 relative z-10">
                             {posterDisplay ? (
                                 <img
                                     src={posterDisplay}
                                     alt=""
-                                    className="w-full h-full object-cover"
+                                    className="w-full h-full object-cover rounded-2xl"
                                     crossOrigin="anonymous"
                                 />
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center bg-gray-900">
-                                    <span className="text-3xl">🎬</span>
+                                    <span className="text-4xl">🎬</span>
                                 </div>
                             )}
                         </div>
-                        {/* Dramatic Glow */}
-                        <div
-                            className="absolute inset-0 rounded-2xl blur-[60px] opacity-30 z-0 scale-110 translate-y-4"
-                            style={{ backgroundColor: scoreColor }}
-                        />
                     </div>
 
-                    {/* Score Highlight */}
-                    <div className="flex flex-col items-center mb-6">
-                        <div className="flex items-baseline gap-1">
+                    {/* Score Highlight - Fixed Line Position */}
+                    <div className="flex flex-col items-center mb-8">
+                        <div className="flex items-baseline gap-1 relative">
                             <span className="text-7xl font-black tracking-tighter" style={{
                                 color: scoreColor,
-                                textShadow: `0 0 40px ${scoreColor}40`
+                                textShadow: `0 0 30px ${scoreColor}50`
                             }}>
                                 {(overallScore || 0).toFixed(1)}
                             </span>
                             <span className="text-white/20 text-xl font-bold">/10</span>
                         </div>
-                        <div className="h-1 w-12 rounded-full mt-1" style={{ backgroundColor: scoreColor }} />
+                        {/* Underline with better separation */}
+                        <div className="h-[3px] w-12 rounded-full mt-2" style={{ backgroundColor: scoreColor }} />
                     </div>
 
                     {/* Metrics Dashboard */}
-                    <div className="w-full bg-white/[0.03] backdrop-blur-2xl rounded-3xl p-5 border border-white/10 shadow-2xl">
-                        <div className="grid grid-cols-4 gap-y-5 gap-x-2">
+                    <div className="w-full bg-black/60 backdrop-blur-2xl rounded-3xl p-5 border border-white/10 shadow-2xl">
+                        <div className="grid grid-cols-4 gap-y-4 gap-x-1">
                             {TOS_CATEGORIES.slice(0, 4).map((cat) => (
                                 <MiniTOSCircle
                                     key={cat.key}
@@ -146,7 +150,7 @@ const ShareableCard = React.forwardRef(({ movieTitle, movieYear, posterUrl, back
                                 />
                             ))}
                         </div>
-                        <div className="flex justify-center gap-8 mt-5 pt-5 border-t border-white/5">
+                        <div className="flex justify-center gap-8 mt-5 pt-5 border-t border-white/10">
                             {TOS_CATEGORIES.slice(4).map((cat) => (
                                 <MiniTOSCircle
                                     key={cat.key}
@@ -161,14 +165,10 @@ const ShareableCard = React.forwardRef(({ movieTitle, movieYear, posterUrl, back
                 </div>
 
                 {/* Footer Branding */}
-                <div className="w-full flex items-center justify-center pt-6">
-                    <div className="flex items-center gap-2">
-                        <div className="h-[1px] w-6 bg-white/10"></div>
-                        <p className="text-white/20 text-[9px] font-bold tracking-[0.4em] uppercase">
-                            theaterorstream.com
-                        </p>
-                        <div className="h-[1px] w-6 bg-white/10"></div>
-                    </div>
+                <div className="w-full flex items-center justify-center mt-6">
+                    <p className="text-white/20 text-[8px] font-black tracking-[0.5em] uppercase">
+                        theaterorstream.com
+                    </p>
                 </div>
             </div>
         </div>
@@ -177,13 +177,13 @@ const ShareableCard = React.forwardRef(({ movieTitle, movieYear, posterUrl, back
 
 
 // Main Share Modal Component
-const ShareMovieModal = ({ isOpen, onClose, movieTitle, movieYear, posterUrl, backdropUrl, ratings, imageURL }) => {
+const ShareMovieModal = ({ isOpen, onClose, movieTitle, movieYear, posterUrl, backdropUrl, ratings, imageURL, posterBase64: initialPosterBase64, backdropBase64: initialBackdropBase64 }) => {
     const cardRef = useRef(null);
     const [generating, setGenerating] = useState(false);
     const [shareImage, setShareImage] = useState(null);
     const [copied, setCopied] = useState(false);
-    const [backdropBase64, setBackdropBase64] = useState(null);
-    const [posterBase64, setPosterBase64] = useState(null);
+    const [backdropBase64, setBackdropBase64] = useState(initialBackdropBase64);
+    const [posterBase64, setPosterBase64] = useState(initialPosterBase64);
 
     // Calculate overall score
     const calculateOverall = () => {
@@ -201,6 +201,8 @@ const ShareMovieModal = ({ isOpen, onClose, movieTitle, movieYear, posterUrl, ba
     const convertToBase64 = async (url) => {
         try {
             if (!url) return null;
+            if (url.startsWith('data:')) return url;
+
             // Use a CORS proxy for TMDB images
             const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
             const response = await fetch(proxyUrl);
@@ -220,29 +222,32 @@ const ShareMovieModal = ({ isOpen, onClose, movieTitle, movieYear, posterUrl, ba
     // Generate shareable image
     const generateImage = async () => {
         if (!cardRef.current) return;
+
+        // If we don't have base64 yet, get it
+        if (!backdropBase64 && fullBackdropUrl) {
+            setGenerating(true);
+            const b64 = await convertToBase64(fullBackdropUrl);
+            if (b64) setBackdropBase64(b64);
+        }
+        if (!posterBase64 && fullPosterUrl) {
+            setGenerating(true);
+            const b64 = await convertToBase64(fullPosterUrl);
+            if (b64) setPosterBase64(b64);
+        }
+
         setGenerating(true);
 
         try {
-            // Convert images first to avoid CORS issues during canvas capture
-            if (!backdropBase64 && fullBackdropUrl) {
-                const b64 = await convertToBase64(fullBackdropUrl);
-                if (b64) setBackdropBase64(b64);
-            }
-            if (!posterBase64 && fullPosterUrl) {
-                const b64 = await convertToBase64(fullPosterUrl);
-                if (b64) setPosterBase64(b64);
-            }
-
-            // Give extra time for the browser to render the blurred backgrounds and high-res poster
+            // Give extra time for images to settle in the DOM
             await new Promise(resolve => setTimeout(resolve, 1500));
 
             const canvas = await html2canvas(cardRef.current, {
-                backgroundColor: '#050505',
-                scale: 2, // High resolution
+                backgroundColor: '#0a0a0a',
+                scale: 3, // Even higher quality
                 useCORS: true,
                 allowTaint: true,
                 logging: false,
-                imageTimeout: 0, // No timeout for images
+                imageTimeout: 0,
             });
 
             const imageUrl = canvas.toDataURL('image/png', 1.0);
@@ -274,8 +279,7 @@ const ShareMovieModal = ({ isOpen, onClose, movieTitle, movieYear, posterUrl, ba
 
     // Share to Twitter
     const shareToTwitter = () => {
-        const text = `🎬 ${movieTitle} - TOS Rating: ${overallScore.toFixed(1)}/10\n\n${overallScore >= 7 ? "Worth watching in theaters! 🎬" : "Good for streaming 📺"
-            }\n\n#TheaterOrStream #MovieReview`;
+        const text = `🎬 ${movieTitle} - TOS Rating: ${overallScore.toFixed(1)}/10\n\n#TheaterOrStream #MovieReview`;
         const url = window.location.href;
         window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`, '_blank');
     };
@@ -297,7 +301,6 @@ const ShareMovieModal = ({ isOpen, onClose, movieTitle, movieYear, posterUrl, ba
     const handleNativeShare = async () => {
         if (navigator.share && shareImage) {
             try {
-                // Determine if we can share the file directly
                 const blob = await (await fetch(shareImage)).blob();
                 const file = new File([blob], `${movieTitle}.png`, { type: 'image/png' });
 
@@ -309,7 +312,6 @@ const ShareMovieModal = ({ isOpen, onClose, movieTitle, movieYear, posterUrl, ba
                         url: window.location.href
                     });
                 } else {
-                    // Fallback to text share
                     await navigator.share({
                         title: `Review: ${movieTitle}`,
                         text: `Check out my rating for ${movieTitle}!`,
@@ -322,139 +324,116 @@ const ShareMovieModal = ({ isOpen, onClose, movieTitle, movieYear, posterUrl, ba
         }
     };
 
-    // Generate image when modal opens
+    // Initial effect to handle base64 update if they change
     React.useEffect(() => {
         if (isOpen) {
-            setBackdropBase64(null);
-            setPosterBase64(null);
+            if (initialBackdropBase64) setBackdropBase64(initialBackdropBase64);
+            if (initialPosterBase64) setPosterBase64(initialPosterBase64);
             setShareImage(null);
-            // Start generation immediately
-            setTimeout(generateImage, 100);
+            generateImage();
         }
-    }, [isOpen]);
-
-    // Re-generate if base64s update
-    React.useEffect(() => {
-        if (isOpen && (backdropBase64 || posterBase64) && !generating) {
-            // Only regenerate if we don't have a share image yet or we just got new quality bits
-            // But to avoid loops, let generateImage logic handle distinct calls?
-            // Actually, simplest is to just call generate again if we got new data
-            // But debounce it
-            const timer = setTimeout(() => {
-                if (!cardRef.current) return;
-                generateImage();
-            }, 500);
-            return () => clearTimeout(timer);
-        }
-    }, [backdropBase64, posterBase64]);
+    }, [isOpen, initialBackdropBase64, initialPosterBase64]);
 
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-            <div className="bg-[#1a1a1a] rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto border border-white/10">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+            <div className="bg-[#111111] rounded-3xl max-w-lg w-full max-h-[90vh] overflow-hidden border border-white/10 shadow-2xl flex flex-col">
                 {/* Modal Header */}
-                <div className="flex items-center justify-between p-4 border-b border-white/10">
-                    <div className="flex items-center gap-2">
-                        <FaShare className="text-green-400" />
-                        <h3 className="text-white font-semibold">Share Rating</h3>
+                <div className="flex items-center justify-between p-5 border-b border-white/5">
+                    <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center">
+                            <FaShare className="text-green-500 text-sm" />
+                        </div>
+                        <h3 className="text-white font-bold tracking-tight">Generate Share Card</h3>
                     </div>
                     <button
                         onClick={onClose}
-                        className="p-2 rounded-lg hover:bg-white/10 text-white/60 hover:text-white transition-colors"
+                        className="w-10 h-10 rounded-full hover:bg-white/5 flex items-center justify-center text-white/40 hover:text-white transition-all"
                     >
                         <FaTimes />
                     </button>
                 </div>
 
-                {/* Preview Card (hidden, used for generation) */}
-                <div className="absolute left-[-9999px]">
-                    <ShareableCard
-                        ref={cardRef}
-                        movieTitle={movieTitle}
-                        movieYear={movieYear}
-                        posterUrl={fullPosterUrl}
-                        backdropUrl={fullBackdropUrl}
-                        backdropBase64={backdropBase64}
-                        posterBase64={posterBase64}
-                        ratings={ratings}
-                        overallScore={overallScore}
-                    />
+                {/* Content Container */}
+                <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
+                    {/* Preview Card (hidden, used for generation) */}
+                    <div className="absolute left-[-9999px]">
+                        <ShareableCard
+                            ref={cardRef}
+                            movieTitle={movieTitle}
+                            movieYear={movieYear}
+                            posterUrl={fullPosterUrl}
+                            backdropUrl={fullBackdropUrl}
+                            backdropBase64={backdropBase64}
+                            posterBase64={posterBase64}
+                            ratings={ratings}
+                            overallScore={overallScore}
+                        />
+                    </div>
+
+                    {/* Image Preview Area */}
+                    <div className="flex flex-col items-center">
+                        <div className="w-full relative group">
+                            {generating || !shareImage ? (
+                                <div className="aspect-[9/16] w-full max-w-[280px] mx-auto bg-white/5 rounded-3xl flex flex-col items-center justify-center border border-dashed border-white/20">
+                                    <div className="w-12 h-12 border-4 border-green-500/30 border-t-green-500 rounded-full animate-spin mb-4" />
+                                    <p className="text-white/40 text-sm font-medium">Drafting your card...</p>
+                                </div>
+                            ) : (
+                                <div className="flex justify-center animate-in fade-in zoom-in duration-500">
+                                    <img
+                                        src={shareImage}
+                                        alt="Share preview"
+                                        className="w-full max-w-[300px] rounded-3xl shadow-[0_30px_60px_rgba(0,0,0,0.5)] border border-white/10"
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </div>
 
-                {/* Generated Image Preview */}
-                <div className="p-4">
-                    {generating && !shareImage ? (
-                        <div className="aspect-[9/16] max-h-[400px] mx-auto bg-white/5 rounded-xl flex items-center justify-center border border-white/10">
-                            <div className="text-center">
-                                <div className="animate-spin text-2xl mb-2">⏳</div>
-                                <p className="text-white/40 text-sm">Designing Card...</p>
-                            </div>
-                        </div>
-                    ) : shareImage ? (
-                        <div className="flex justify-center">
-                            <img
-                                src={shareImage}
-                                alt="Share preview"
-                                className="max-h-[450px] rounded-xl shadow-2xl border border-white/10"
-                            />
-                        </div>
-                    ) : (
-                        <div className="aspect-[9/16] max-h-[400px] mx-auto bg-white/5 rounded-xl flex items-center justify-center">
-                            <p className="text-white/40 text-sm">Preparing...</p>
-                        </div>
-                    )}
-                </div>
-
-                {/* Share Buttons */}
-                <div className="p-4 border-t border-white/10">
-
-                    {/* Native Share Button (Mobile/Supported) */}
+                {/* Footer Actions */}
+                <div className="p-6 bg-[#161616] border-t border-white/5">
+                    {/* Primary Share Action */}
                     {navigator.share && (
                         <button
                             onClick={handleNativeShare}
                             disabled={!shareImage}
-                            className="w-full py-3 mb-4 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold hover:from-blue-500 hover:to-purple-500 transition-all shadow-lg flex items-center justify-center gap-2"
+                            className="w-full py-4 mb-5 rounded-2xl bg-gradient-to-r from-green-600 to-emerald-600 text-white font-bold hover:from-green-500 hover:to-emerald-500 transition-all shadow-lg active:scale-95 flex items-center justify-center gap-3 disabled:opacity-50 disabled:grayscale"
                         >
-                            <FaShare /> Share via... (Apps, Stories)
+                            <FaShare className="text-lg" /> Send to Instagram Stories, WhatsApp...
                         </button>
                     )}
 
-                    <p className="text-white/40 text-xs uppercase tracking-wider mb-3">Or share directly</p>
-
-                    <div className="grid grid-cols-4 gap-2 mb-4">
-                        {/* Twitter */}
-                        <button onClick={shareToTwitter} className="flex flex-col items-center justify-center gap-1 p-3 rounded-xl bg-[#1DA1F2]/10 hover:bg-[#1DA1F2]/20 text-[#1DA1F2] transition-all">
-                            <FaTwitter className="text-lg" />
-                            <span className="text-[10px]">Twitter</span>
+                    <div className="grid grid-cols-4 gap-3 mb-5">
+                        <button onClick={shareToTwitter} disabled={!shareImage} className="flex flex-col items-center justify-center gap-2 p-3 rounded-2xl bg-[#1DA1F2]/5 hover:bg-[#1DA1F2]/10 text-[#1DA1F2] transition-all border border-[#1DA1F2]/10 disabled:opacity-30">
+                            <FaTwitter className="text-xl" />
+                            <span className="text-[10px] font-bold uppercase tracking-wider">Twitter</span>
                         </button>
 
-                        {/* Facebook */}
-                        <button onClick={shareToFacebook} className="flex flex-col items-center justify-center gap-1 p-3 rounded-xl bg-[#1877F2]/10 hover:bg-[#1877F2]/20 text-[#1877F2] transition-all">
-                            <FaFacebook className="text-lg" />
-                            <span className="text-[10px]">Facebook</span>
+                        <button onClick={shareToFacebook} disabled={!shareImage} className="flex flex-col items-center justify-center gap-2 p-3 rounded-2xl bg-[#1877F2]/5 hover:bg-[#1877F2]/10 text-[#1877F2] transition-all border border-[#1877F2]/10 disabled:opacity-30">
+                            <FaFacebook className="text-xl" />
+                            <span className="text-[10px] font-bold uppercase tracking-wider">FB</span>
                         </button>
 
-                        {/* Reddit */}
-                        <button onClick={shareToReddit} className="flex flex-col items-center justify-center gap-1 p-3 rounded-xl bg-[#FF4500]/10 hover:bg-[#FF4500]/20 text-[#FF4500] transition-all">
-                            <FaReddit className="text-lg" />
-                            <span className="text-[10px]">Reddit</span>
+                        <button onClick={shareToReddit} disabled={!shareImage} className="flex flex-col items-center justify-center gap-2 p-3 rounded-2xl bg-[#FF4500]/5 hover:bg-[#FF4500]/10 text-[#FF4500] transition-all border border-[#FF4500]/10 disabled:opacity-30">
+                            <FaReddit className="text-xl" />
+                            <span className="text-[10px] font-bold uppercase tracking-wider">Reddit</span>
                         </button>
 
-                        {/* Copy Link */}
-                        <button onClick={copyLink} className="flex flex-col items-center justify-center gap-1 p-3 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 transition-all">
-                            <FaLink className="text-lg" />
-                            <span className="text-[10px]">{copied ? 'Copied!' : 'Link'}</span>
+                        <button onClick={copyLink} disabled={!shareImage} className="flex flex-col items-center justify-center gap-2 p-3 rounded-2xl bg-white/5 hover:bg-white/10 text-white/60 transition-all border border-white/10 disabled:opacity-30">
+                            <FaLink className="text-xl" />
+                            <span className="text-[10px] font-bold uppercase tracking-wider">{copied ? 'Done!' : 'Link'}</span>
                         </button>
                     </div>
 
-                    {/* Download Button */}
                     <button
                         onClick={downloadImage}
                         disabled={!shareImage}
-                        className="w-full py-3 rounded-xl bg-white/10 text-white font-semibold hover:bg-white/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2 border border-white/5"
+                        className="w-full py-3.5 rounded-2xl bg-white/5 text-white font-bold hover:bg-white/10 transition-all disabled:opacity-50 flex items-center justify-center gap-2 border border-white/10"
                     >
-                        <FaDownload /> Download Image
+                        <FaDownload className="text-white/60" /> Download for later
                     </button>
                 </div>
             </div>
@@ -463,17 +442,17 @@ const ShareMovieModal = ({ isOpen, onClose, movieTitle, movieYear, posterUrl, ba
 };
 
 // Share Button Component (to use on Details page)
-export const ShareButton = ({ movieTitle, movieYear, posterUrl, backdropUrl, ratings, imageURL }) => {
+export const ShareButton = ({ movieTitle, movieYear, posterUrl, backdropUrl, ratings, imageURL, posterBase64, backdropBase64 }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
 
     return (
         <>
             <button
                 onClick={() => setIsModalOpen(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 hover:border-green-500/30 hover:bg-green-500/10 text-white/70 hover:text-green-400 transition-all"
+                className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-white/5 border border-white/10 hover:border-green-500/50 hover:bg-green-500/10 text-white font-bold transition-all group scale-100 hover:scale-[1.02] active:scale-[0.98]"
             >
-                <FaShare className="text-sm" />
-                <span className="text-sm font-medium">Share</span>
+                <FaShare className="text-green-500 group-hover:rotate-12 transition-transform" />
+                <span className="text-sm">Share Review Card</span>
             </button>
 
             <ShareMovieModal
@@ -483,6 +462,8 @@ export const ShareButton = ({ movieTitle, movieYear, posterUrl, backdropUrl, rat
                 movieYear={movieYear}
                 posterUrl={posterUrl}
                 backdropUrl={backdropUrl}
+                posterBase64={posterBase64}
+                backdropBase64={backdropBase64}
                 ratings={ratings}
                 imageURL={imageURL}
             />
