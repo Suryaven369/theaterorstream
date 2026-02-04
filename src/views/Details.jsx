@@ -11,7 +11,7 @@ import axios from "axios";
 import { FaStar, FaClock, FaCalendar, FaPlay } from "react-icons/fa";
 import { IoArrowBack } from "react-icons/io5";
 import UserRatingSystem, { RatingModal } from "../components/UserRatingSystem";
-import { getMovieRatings, getUserRatingForMovie, getAdvancedMovieFromLibrary } from "../lib/supabase";
+import { getMovieRatings, getUserRatingForMovie, getAdvancedMovieFromLibrary, toggleWatchedMovie } from "../lib/supabase";
 import { ShareButton } from "../components/ShareMovie";
 import ParentGuide from "../components/ParentGuide";
 import VibeChart from "../components/VibeChart";
@@ -185,8 +185,25 @@ const Details = () => {
   };
 
   // Handle rating submission success
-  const handleRatingSubmitSuccess = () => {
-    setRatingsKey(prev => prev + 1); // Force refetch of ratings and user rating
+  const handleRatingSubmitSuccess = async () => {
+    // 1. Force refetch of ratings and user rating
+    setRatingsKey(prev => prev + 1);
+
+    // 2. Automatically mark as watched if authenticated
+    if (isAuthenticated && user?.id && data) {
+      try {
+        console.log("Automatically marking as watched on rating...");
+        await toggleWatchedMovie(
+          user.id,
+          movieId,
+          data.title || data.name,
+          data.poster_path,
+          mediaType
+        );
+      } catch (e) {
+        console.error("Error auto-marking watched:", e);
+      }
+    }
   };
 
   // AI/scraper ratings - backend service not available, use fallback
@@ -326,6 +343,7 @@ const Details = () => {
             {/* Movie Action Buttons - Watchlist, Watched, Like, Save */}
             {data && (
               <MovieActionButtons
+                key={ratingsKey}
                 movieId={movieId}
                 movieTitle={data?.title || data?.name}
                 posterPath={data?.poster_path}
