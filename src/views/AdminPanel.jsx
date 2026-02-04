@@ -24,8 +24,10 @@ import {
     deleteHomepageSection,
     toggleHomepageSectionActive,
     addMovieToSection,
-    removeMovieFromSection
+    removeMovieFromSection,
+    supabase
 } from "../lib/supabase";
+import { convertImageToBase64 } from "../utils/imageHelper";
 import MovieDetailsModal from "../components/MovieDetailsModal";
 
 // ========== COMPONENTS ==========
@@ -389,6 +391,7 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
         { id: 'browse', label: 'Browse TMDB', icon: '🔍' },
         { id: 'bulk', label: 'Bulk Import', icon: '⚡' },
         { id: 'collections', label: 'Collections', icon: '🏷️' },
+        { id: 'maintenance', label: 'Maintenance', icon: '🛠️' },
     ];
 
     // Universal category filters that work for both movies and TV
@@ -832,6 +835,102 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
         setBulkFullSaving(false);
     };
 
+    // Maintenance Script: Sync Cast Images (Base64)
+    const [syncingImages, setSyncingImages] = useState(false);
+    const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0, updated: 0 });
+    const [syncLogs, setSyncLogs] = useState([]);
+
+    const handleSyncCastImages = async () => {
+        if (!confirm("This will scan ALL movies in your library and download cast images for offline access. This process may take a while. Continue?")) return;
+
+        setSyncingImages(true);
+        setSyncLogs([]);
+        setSyncProgress({ current: 0, total: 0, updated: 0 });
+
+        try {
+            // 1. Fetch all movies (using limit for safety, maybe loop if needed, but 1000 is likely enough for now)
+            // Ideally should use pagination, but let's grab a large chunk
+            setSyncLogs(prev => [...prev, "Fetching library movies..."]);
+            const { data: movies, error } = await supabase.from('movies_library').select('tmdb_id, title, credits');
+
+            if (error) throw error;
+
+            const totalMovies = movies.length;
+            setSyncProgress({ current: 0, total: totalMovies, updated: 0 });
+            setSyncLogs(prev => [...prev, `Found ${totalMovies} movies to scan.`]);
+
+            let updatedCount = 0;
+            const BATCH_SIZE = 5;
+
+            // Process in batches
+            for (let i = 0; i < totalMovies; i += BATCH_SIZE) {
+                const batch = movies.slice(i, i + BATCH_SIZE);
+
+                await Promise.all(batch.map(async (movie) => {
+                    try {
+                        let hasChanges = false;
+                        const cast = movie.credits?.cast || [];
+
+                        // Check if top 10 cast needs images
+                        const topCast = cast.slice(0, 10);
+                        let imagesProcessed = 0;
+
+                        await Promise.all(topCast.map(async (actor) => {
+                            // If has path but NO base64, fetch it
+                            if (actor.profile_path && !actor.profile_base64) {
+                                try {
+                                    const profileUrl = `https://image.tmdb.org/t/p/w185${actor.profile_path}`;
+                                    const profileBase64 = await convertImageToBase64(profileUrl);
+                                    if (profileBase64) {
+                                        actor.profile_base64 = profileBase64;
+                                        hasChanges = true;
+                                        imagesProcessed++;
+                                    }
+                                } catch (e) {
+                                    // console.warn(`Failed image for ${actor.name}`);
+                                }
+                            }
+                        }));
+
+                        if (hasChanges) {
+                            // Update the cast array in the movie record
+                            // Note: 'cast' is a reference to movie.credits.cast? No, we sliced for topCast loop
+                            // We updated objects inside 'topCast'. Does that update 'movie.credits.cast'?
+                            // Arrays of objects: yes, objects are references.
+                            // So movie.credits.cast objects are modified. 
+
+                            // Update DB
+                            await supabase
+                                .from('movies_library')
+                                .update({ credits: movie.credits })
+                                .eq('tmdb_id', movie.tmdb_id);
+
+                            updatedCount++;
+                            setSyncLogs(prev => [`Updated ${movie.title} (${imagesProcessed} images)`, ...prev].slice(0, 50));
+                        }
+
+                    } catch (err) {
+                        console.error(`Error processing ${movie.title}`, err);
+                    }
+                }));
+
+                setSyncProgress(prev => ({
+                    ...prev,
+                    current: Math.min(i + BATCH_SIZE, totalMovies),
+                    updated: updatedCount
+                }));
+            }
+
+            setSyncLogs(prev => [`✓ Sync Complete! Updated ${updatedCount} movies.`, ...prev]);
+
+        } catch (error) {
+            console.error("Sync failed:", error);
+            setSyncLogs(prev => [`❌ Error: ${error.message}`, ...prev]);
+        } finally {
+            setSyncingImages(false);
+        }
+    };
+
     const handleBulkSave = async () => {
         setBulkSaving(true);
         setBulkResult(null);
@@ -915,6 +1014,45 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
     return (
         <div className="min-h-screen bg-[#0a0a0a] py-6">
             <div className="container mx-auto px-4 max-w-6xl">
+                {/* Tabs Navigation */}
+                <div className="flex gap-4 mb-6">
+                    <button
+                        onClick={() => setActiveTab('dashboard')}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'dashboard' ? 'bg-orange-500 text-white' : 'bg-white/10 text-white/70 hover:bg-white/20'}`}
+                    >
+                        📊 Dashboard
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('library')}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'library' ? 'bg-orange-500 text-white' : 'bg-white/10 text-white/70 hover:bg-white/20'}`}
+                    >
+                        📚 Library
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('browse')}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'browse' ? 'bg-orange-500 text-white' : 'bg-white/10 text-white/70 hover:bg-white/20'}`}
+                    >
+                        🔍 Browse TMDB
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('sections')}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'sections' ? 'bg-orange-500 text-white' : 'bg-white/10 text-white/70 hover:bg-white/20'}`}
+                    >
+                        📐 Sections
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('collections')}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'collections' ? 'bg-orange-500 text-white' : 'bg-white/10 text-white/70 hover:bg-white/20'}`}
+                    >
+                        📦 Collections
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('maintenance')}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'maintenance' ? 'bg-orange-500 text-white' : 'bg-white/10 text-white/70 hover:bg-white/20'}`}
+                    >
+                        🛠️ Maintenance
+                    </button>
+                </div>
 
                 {/* Dashboard View - Only stats, no tabs */}
                 {activeTab === 'dashboard' && (
@@ -1915,6 +2053,90 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                         </div>
                     )
                 }
+
+                {/* Maintenance Tab */}
+                {activeTab === 'maintenance' && (
+                    <div className="max-w-4xl mx-auto">
+                        <div className="mb-6">
+                            <h1 className="text-xl font-bold text-white">🛠️ Maintenance & Tools</h1>
+                            <p className="text-xs text-white/40">Run scripts to fix data, migrate formats, or clean up the database.</p>
+                        </div>
+
+                        <div className="grid gap-6">
+
+                            {/* Sync Cast Images Card */}
+                            <div className="bg-white/5 rounded-xl p-6 border border-white/10">
+                                <div className="flex items-start justify-between mb-4">
+                                    <div>
+                                        <h3 className="text-lg font-bold text-white mb-1">Sync Cast Images to Database</h3>
+                                        <p className="text-sm text-white/60 max-w-2xl">
+                                            This script scans your entire library and downloads base64 profile images for the top 10 cast members of each movie/show.
+                                            This fixes missing cast images on mobile/offline views.
+                                        </p>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className="text-xs text-orange-400 font-mono bg-orange-500/10 px-2 py-1 rounded">
+                                            Heavy Operation
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-black/30 rounded-lg p-4 border border-white/5 mb-4">
+                                    <h4 className="text-xs font-bold text-white/40 uppercase mb-2">Process Details</h4>
+                                    <ul className="text-xs text-white/60 space-y-1 list-disc pl-4">
+                                        <li>Fetches all movies from <code>movies_library</code></li>
+                                        <li>Checks <code>credits.cast</code> for missing <code>profile_base64</code></li>
+                                        <li>Downloads images from TMDB and converts to Base64</li>
+                                        <li>Updates the database record</li>
+                                        <li>Skips movies that are already optimized.</li>
+                                    </ul>
+                                </div>
+
+                                <div className="flex items-center gap-4">
+                                    <button
+                                        onClick={handleSyncCastImages}
+                                        disabled={syncingImages}
+                                        className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-lg shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95 flex items-center gap-2"
+                                    >
+                                        {syncingImages ? (
+                                            <>
+                                                <div className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin"></div>
+                                                Syncing... ({Math.round((syncProgress.current / (syncProgress.total || 1)) * 100)}%)
+                                            </>
+                                        ) : (
+                                            <>🚀 Start Sync Process</>
+                                        )}
+                                    </button>
+
+                                    {syncingImages && (
+                                        <div className="text-xs text-white/50">
+                                            Processed: {syncProgress.current} / {syncProgress.total} <br />
+                                            Updated: {syncProgress.updated} records
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Logs Console */}
+                                {syncLogs.length > 0 && (
+                                    <div className="mt-6">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <span className="text-xs font-bold text-white/50">Execution Logs</span>
+                                            <button onClick={() => setSyncLogs([])} className="text-[10px] text-white/30 hover:text-white">Clear</button>
+                                        </div>
+                                        <div className="bg-black/50 rounded-lg p-3 h-48 overflow-y-auto font-mono text-[10px] space-y-1 border border-white/5">
+                                            {syncLogs.map((log, i) => (
+                                                <div key={i} className={log.startsWith('❌') ? 'text-red-400' : log.startsWith('✓') ? 'text-green-400' : 'text-gray-400'}>
+                                                    {log}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                        </div>
+                    </div>
+                )}
             </div >
 
             {/* Edit Modal */}
