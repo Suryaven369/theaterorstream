@@ -30,6 +30,7 @@ import {
 } from "../lib/supabase";
 import { convertImageToBase64 } from "../utils/imageHelper";
 import MovieDetailsModal from "../components/MovieDetailsModal";
+import AdminMovieEditorPage from "./admin/AdminMovieEditorPage";
 
 // ========== COMPONENTS ==========
 
@@ -391,6 +392,7 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
         { id: 'library', label: 'Library', icon: '📚' },
         { id: 'browse', label: 'Browse TMDB', icon: '🔍' },
         { id: 'bulk', label: 'Bulk Import', icon: '⚡' },
+        { id: 'editor', label: 'Movie Editor', icon: '🎬' },
         { id: 'collections', label: 'Collections', icon: '🏷️' },
         { id: 'maintenance', label: 'Maintenance', icon: '🛠️' },
     ];
@@ -2207,6 +2209,13 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                         </div>
                     )
                 }
+
+                {/* Movie Editor Tab */}
+                {activeTab === 'editor' && (
+                    <div className="max-w-5xl mx-auto">
+                        <AdminMovieEditorPage />
+                    </div>
+                )}
 
                 {/* Collections Tab */}
                 {
