@@ -71,7 +71,7 @@ const AdminSectionsPage = () => {
     // Working copy for editing (staged changes)
     const [sections, setSections] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [newSection, setNewSection] = useState({ name: "", icon: "🎬", section_type: "manual", max_movies: 10 });
+    const [newSection, setNewSection] = useState({ name: "", icon: "🎬", section_type: "manual", api_source: "trending", max_movies: 10 });
     const [editingSection, setEditingSection] = useState(null);
     const [searchQuery, setSearchQuery] = useState("");
     const [searchResults, setSearchResults] = useState([]);
@@ -421,7 +421,7 @@ const AdminSectionsPage = () => {
             toast.success(`Section "${newSection.name}" created!`);
         }
 
-        setNewSection({ name: "", icon: "🎬", section_type: "manual", max_movies: 10 });
+        setNewSection({ name: "", icon: "🎬", section_type: "manual", api_source: "trending", max_movies: 10 });
         await loadSections(true);
     };
 
@@ -961,6 +961,24 @@ const AdminSectionsPage = () => {
                         <option value="manual">Manual</option>
                         <option value="api">API Source</option>
                     </select>
+                    {newSection.section_type === 'api' && (
+                        <select
+                            value={newSection.api_source}
+                            onChange={(e) => setNewSection({ ...newSection, api_source: e.target.value })}
+                            className="bg-black/30 rounded-lg px-4 py-2 text-sm text-white border border-white/10 outline-none"
+                        >
+                            <option value="trending">Trending</option>
+                            <option value="now_playing">Now Playing</option>
+                            <option value="popular">Popular</option>
+                            <option value="top_rated">Top Rated</option>
+                            <option value="upcoming">Upcoming</option>
+                            <option value="coming_soon">Coming Soon</option>
+                            <option value="airing_today">Airing Today (TV)</option>
+                            <option value="on_the_air">On The Air (TV)</option>
+                            <option value="popular_tv">Popular TV</option>
+                            <option value="top_rated_tv">Top Rated TV</option>
+                        </select>
+                    )}
                     <input
                         type="number"
                         placeholder="Max"
