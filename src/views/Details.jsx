@@ -423,6 +423,43 @@ const Details = () => {
               customCertification={data?.certification}
             />
 
+            {/* Streaming Platforms - from DB */}
+            {data?.streaming_platforms?.length > 0 && (
+              <div className="mb-5">
+                <div className="flex flex-wrap gap-2">
+                  {data.streaming_platforms.map((platform, i) => {
+                    const name = platform.name?.toLowerCase() || '';
+                    const platformStyles = {
+                      'netflix': { bg: 'bg-red-600/20', border: 'border-red-500/40', text: 'text-red-400', icon: '🔴' },
+                      'amazon prime': { bg: 'bg-blue-500/20', border: 'border-blue-400/40', text: 'text-blue-400', icon: '📦' },
+                      'disney+': { bg: 'bg-blue-600/20', border: 'border-blue-500/40', text: 'text-blue-300', icon: '🏰' },
+                      'apple tv+': { bg: 'bg-gray-500/20', border: 'border-gray-400/40', text: 'text-gray-300', icon: '🍎' },
+                      'hbo max': { bg: 'bg-purple-600/20', border: 'border-purple-500/40', text: 'text-purple-400', icon: '🟣' },
+                      'hulu': { bg: 'bg-green-500/20', border: 'border-green-400/40', text: 'text-green-400', icon: '🟢' },
+                      'paramount+': { bg: 'bg-blue-700/20', border: 'border-blue-600/40', text: 'text-blue-400', icon: '⛰️' },
+                      'jiocinema': { bg: 'bg-pink-500/20', border: 'border-pink-400/40', text: 'text-pink-400', icon: '🎬' },
+                      'hotstar': { bg: 'bg-blue-500/20', border: 'border-blue-400/40', text: 'text-blue-300', icon: '⭐' },
+                      'zee5': { bg: 'bg-purple-500/20', border: 'border-purple-400/40', text: 'text-purple-400', icon: '📺' },
+                      'sonyliv': { bg: 'bg-blue-500/20', border: 'border-blue-400/40', text: 'text-blue-300', icon: '📡' },
+                    };
+                    const style = platformStyles[name] || { bg: 'bg-white/10', border: 'border-white/20', text: 'text-white/70', icon: '📺' };
+                    const Tag = platform.url ? 'a' : 'span';
+                    const linkProps = platform.url ? { href: platform.url, target: '_blank', rel: 'noopener noreferrer' } : {};
+                    return (
+                      <Tag
+                        key={i}
+                        {...linkProps}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border ${style.bg} ${style.border} ${style.text} text-xs font-medium transition-all hover:scale-105 cursor-pointer`}
+                      >
+                        <span>{style.icon}</span>
+                        <span>{platform.name}</span>
+                      </Tag>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Meta info */}
             <div className="flex flex-wrap items-center gap-4 mb-6">
               <span className="rating-badge flex items-center gap-1.5">

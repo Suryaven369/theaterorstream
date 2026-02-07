@@ -161,18 +161,18 @@ const VibeChart = ({ genres = [], compact = false, customVibes = null }) => {
 
     if (compact) {
         return (
-            <div className="p-4 rounded-xl bg-gradient-to-br from-white/[0.06] to-white/[0.02] border border-white/10">
+            <div className="p-5 rounded-xl bg-gradient-to-br from-white/[0.06] to-white/[0.02] border border-white/10">
                 {/* Header */}
-                <div className="flex items-center gap-2 mb-3">
-                    <span className="text-lg">🎭</span>
-                    <h4 className="text-sm font-semibold text-white">Movie Vibes</h4>
+                <div className="flex items-center gap-2 mb-4">
+                    <span className="text-xl">🎭</span>
+                    <h4 className="text-base font-semibold text-white">Movie Vibes</h4>
                 </div>
 
-                {/* Pie Chart */}
-                <div className="flex items-center gap-4">
-                    <div className="relative w-24 h-24 flex-shrink-0">
+                {/* Pie Chart - Centered */}
+                <div className="flex justify-center mb-4">
+                    <div className="relative w-40 h-40">
                         <svg viewBox="0 0 120 120" className="w-full h-full">
-                            {slices.map((slice, index) => (
+                            {slices.map((slice) => (
                                 <PieSlice
                                     key={slice.key}
                                     startAngle={slice.startAngle}
@@ -182,32 +182,35 @@ const VibeChart = ({ genres = [], compact = false, customVibes = null }) => {
                             ))}
                             {/* Center circle */}
                             <circle cx="60" cy="60" r="25" fill="#0a0a0a" />
-                            <text x="60" y="60" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="10" fontWeight="bold">
+                            <text x="60" y="55" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="9" fontWeight="bold">
+                                MOVIE
+                            </text>
+                            <text x="60" y="67" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="9" opacity="0.6">
                                 VIBE
                             </text>
                         </svg>
                     </div>
+                </div>
 
-                    {/* Legend - Top 3 */}
-                    <div className="flex-1 space-y-1.5">
-                        {topVibes.map(vibe => (
-                            <div key={vibe.key} className="flex items-center gap-2">
-                                <div
-                                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                                    style={{ backgroundColor: vibe.color }}
-                                />
-                                <span className="text-[10px] text-white/70 flex-1">{vibe.emoji} {vibe.label}</span>
-                                <span className="text-[10px] text-white/50">{vibe.percentage}%</span>
-                            </div>
-                        ))}
-                    </div>
+                {/* Legend - All vibes */}
+                <div className="space-y-2">
+                    {vibeData.map(vibe => (
+                        <div key={vibe.key} className="flex items-center gap-2.5">
+                            <div
+                                className="w-3 h-3 rounded-full flex-shrink-0"
+                                style={{ backgroundColor: vibe.color }}
+                            />
+                            <span className="text-xs text-white/70 flex-1">{vibe.emoji} {vibe.label}</span>
+                            <span className="text-xs font-medium text-white/50">{vibe.percentage}%</span>
+                        </div>
+                    ))}
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="p-5 rounded-2xl bg-gradient-to-br from-white/[0.06] to-white/[0.02] border border-white/10">
+        <div className="p-6 rounded-2xl bg-gradient-to-br from-white/[0.06] to-white/[0.02] border border-white/10">
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
@@ -226,7 +229,7 @@ const VibeChart = ({ genres = [], compact = false, customVibes = null }) => {
             {/* Pie Chart & Legend */}
             <div className="flex items-center gap-6">
                 {/* Pie Chart */}
-                <div className="relative w-32 h-32 flex-shrink-0">
+                <div className="relative w-40 h-40 flex-shrink-0">
                     <svg viewBox="0 0 120 120" className="w-full h-full">
                         {slices.map((slice) => (
                             <PieSlice
@@ -248,16 +251,16 @@ const VibeChart = ({ genres = [], compact = false, customVibes = null }) => {
                 </div>
 
                 {/* Legend */}
-                <div className="flex-1 grid grid-cols-2 gap-x-4 gap-y-2">
+                <div className="flex-1 grid grid-cols-2 gap-x-4 gap-y-3">
                     {vibeData.map(vibe => (
                         <div key={vibe.key} className="flex items-center gap-2">
                             <div
-                                className="w-3 h-3 rounded-full flex-shrink-0"
+                                className="w-3.5 h-3.5 rounded-full flex-shrink-0"
                                 style={{ backgroundColor: vibe.color }}
                             />
-                            <span className="text-xs text-white/70">{vibe.emoji}</span>
-                            <span className="text-xs text-white/60 flex-1">{vibe.label}</span>
-                            <span className="text-xs text-white/40">{vibe.percentage}%</span>
+                            <span className="text-sm text-white/70">{vibe.emoji}</span>
+                            <span className="text-sm text-white/60 flex-1">{vibe.label}</span>
+                            <span className="text-sm font-medium text-white/40">{vibe.percentage}%</span>
                         </div>
                     ))}
                 </div>
