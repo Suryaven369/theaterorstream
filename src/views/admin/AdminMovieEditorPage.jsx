@@ -128,12 +128,40 @@ const AdminMovieEditorPage = () => {
         setHasChanges(true);
     };
 
-    // Vibe change
-    const handleVibeChange = (key, value) => {
-        setForm((prev) => ({
-            ...prev,
-            custom_vibes: { ...prev.custom_vibes, [key]: parseInt(value) || 0 },
-        }));
+    // Vibe change - auto-distributes remaining to sum to 100
+    const handleVibeChange = (key, rawValue) => {
+        const newVal = Math.max(0, Math.min(100, parseInt(rawValue) || 0));
+        setForm((prev) => {
+            const current = { ...prev.custom_vibes };
+            const otherKeys = VIBE_CATEGORIES.map(c => c.key).filter(k => k !== key);
+            const otherTotal = otherKeys.reduce((sum, k) => sum + (current[k] || 0), 0);
+            const remaining = 100 - newVal;
+
+            const updated = { [key]: newVal };
+            if (otherTotal === 0) {
+                // Distribute remaining equally among others
+                const each = Math.floor(remaining / otherKeys.length);
+                const leftover = remaining - each * otherKeys.length;
+                otherKeys.forEach((k, i) => {
+                    updated[k] = each + (i < leftover ? 1 : 0);
+                });
+            } else {
+                // Scale others proportionally to fit remaining
+                otherKeys.forEach(k => {
+                    updated[k] = Math.round(((current[k] || 0) / otherTotal) * remaining);
+                });
+                // Fix rounding drift
+                const actualSum = Object.values(updated).reduce((a, b) => a + b, 0);
+                const drift = 100 - actualSum;
+                if (drift !== 0) {
+                    // Add drift to the largest "other" key
+                    const largest = otherKeys.reduce((a, b) => (updated[a] >= updated[b] ? a : b));
+                    updated[largest] = Math.max(0, updated[largest] + drift);
+                }
+            }
+
+            return { ...prev, custom_vibes: updated };
+        });
         setHasChanges(true);
     };
 
@@ -717,10 +745,19 @@ const AdminMovieEditorPage = () => {
                                     <h3 className="text-sm font-medium text-white mb-1">
                                         🎭 Custom Vibe Chart
                                     </h3>
-                                    <p className="text-xs text-white/40 mb-4">
-                                        Override the auto-generated vibe scores. Set each vibe from 0
-                                        to 100. Leave at 0 to use the default genre-based calculation.
-                                    </p>
+                                    <div className="flex items-center justify-between mb-4">
+                                        <p className="text-xs text-white/40">
+                                            Adjust sliders — values auto-balance to always total 100%.
+                                        </p>
+                                        {(() => {
+                                            const total = VIBE_CATEGORIES.reduce((s, c) => s + (form.custom_vibes?.[c.key] || 0), 0);
+                                            return (
+                                                <span className={`text-sm font-bold px-3 py-1 rounded-lg ${total === 100 ? 'bg-green-500/20 text-green-400' : total === 0 ? 'bg-white/10 text-white/40' : 'bg-red-500/20 text-red-400'}`}>
+                                                    Total: {total}%
+                                                </span>
+                                            );
+                                        })()}
+                                    </div>
 
                                     <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                         {VIBE_CATEGORIES.map((cat) => {
@@ -741,7 +778,7 @@ const AdminMovieEditorPage = () => {
                                                             className="text-sm font-bold"
                                                             style={{ color: cat.color }}
                                                         >
-                                                            {value}
+                                                            {value}%
                                                         </span>
                                                     </div>
                                                     <input
@@ -758,9 +795,9 @@ const AdminMovieEditorPage = () => {
                                                         }}
                                                     />
                                                     <div className="flex justify-between text-[10px] text-white/30 mt-1">
-                                                        <span>0</span>
-                                                        <span>50</span>
-                                                        <span>100</span>
+                                                        <span>0%</span>
+                                                        <span>50%</span>
+                                                        <span>100%</span>
                                                     </div>
                                                 </div>
                                             );

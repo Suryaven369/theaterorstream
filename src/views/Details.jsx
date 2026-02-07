@@ -369,7 +369,7 @@ const Details = () => {
             {/* Vibe Chart - RIGHT BELOW POSTER */}
             {data?.genres && (
               <div className="mt-4 hidden lg:block">
-                <VibeChart genres={data.genres} compact={true} />
+                <VibeChart genres={data.genres} compact={true} customVibes={data.custom_vibes} />
               </div>
             )}
 
@@ -414,11 +414,13 @@ const Details = () => {
               </p>
             )}
 
-            {/* Parent Guide Badges - Fetches real TMDB certifications */}
+            {/* Parent Guide Badges - Uses DB data if available, falls back to TMDB */}
             <ParentGuide
               movieId={movieId}
               mediaType={mediaType}
               genres={data?.genres}
+              customParentGuide={data?.custom_parent_guide}
+              customCertification={data?.certification}
             />
 
             {/* Meta info */}
@@ -468,7 +470,7 @@ const Details = () => {
             {/* Vibe Chart - Mobile Only */}
             {data?.genres && (
               <div className="mb-6 lg:hidden">
-                <VibeChart genres={data.genres} />
+                <VibeChart genres={data.genres} customVibes={data.custom_vibes} />
               </div>
             )}
 

@@ -130,8 +130,10 @@ const PieSlice = ({ startAngle, endAngle, color, isHovered }) => {
 };
 
 // Main Vibe Chart Component - PIE CHART VERSION
-const VibeChart = ({ genres = [], compact = false }) => {
-    const vibes = generateVibeScores(genres);
+const VibeChart = ({ genres = [], compact = false, customVibes = null }) => {
+    // Use custom vibes from DB if they exist and have values, otherwise auto-generate from genres
+    const hasCustomVibes = customVibes && Object.values(customVibes).some(v => v > 0);
+    const vibes = hasCustomVibes ? { ...generateVibeScores(genres), ...customVibes } : generateVibeScores(genres);
 
     // Normalize scores to percentages
     const total = Object.values(vibes).reduce((a, b) => a + b, 0);

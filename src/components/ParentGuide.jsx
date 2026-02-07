@@ -148,11 +148,18 @@ const determineContentLevels = (certification, genres = []) => {
 };
 
 // Main Parent Guide Component
-const ParentGuide = ({ movieId, mediaType = "movie", genres = [] }) => {
-    const [certification, setCertification] = useState(null);
-    const [loading, setLoading] = useState(true);
+const ParentGuide = ({ movieId, mediaType = "movie", genres = [], customParentGuide = null, customCertification = null }) => {
+    const [certification, setCertification] = useState(customCertification || null);
+    const [loading, setLoading] = useState(!customCertification);
 
     useEffect(() => {
+        // Skip TMDB fetch if we have a custom certification from DB
+        if (customCertification) {
+            setCertification(customCertification);
+            setLoading(false);
+            return;
+        }
+
         const fetchCertification = async () => {
             if (!movieId) {
                 setLoading(false);
@@ -193,9 +200,14 @@ const ParentGuide = ({ movieId, mediaType = "movie", genres = [] }) => {
         };
 
         fetchCertification();
-    }, [movieId, mediaType]);
+    }, [movieId, mediaType, customCertification]);
 
-    const guide = determineContentLevels(certification, genres);
+    // Use custom parent guide from DB if available, otherwise auto-generate
+    const hasCustomGuide = customParentGuide && Object.values(customParentGuide).some(v => v && v !== "");
+    const autoGuide = determineContentLevels(certification, genres);
+    const guide = hasCustomGuide
+        ? { ...autoGuide, ...Object.fromEntries(Object.entries(customParentGuide).filter(([_, v]) => v && v !== "")) }
+        : autoGuide;
     const isFamilyFriendly = Object.values(guide).every(level => level === "none");
 
     if (loading) {
