@@ -852,6 +852,157 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
         setBulkFullSaving(false);
     };
 
+    // Maintenance Script: Sync Upcoming Movies & Series
+    const [syncingUpcoming, setSyncingUpcoming] = useState(false);
+    const [upcomingProgress, setUpcomingProgress] = useState({ current: 0, total: 0, saved: 0 });
+    const [upcomingLogs, setUpcomingLogs] = useState([]);
+
+    const handleSyncUpcoming = async () => {
+        if (!confirm("This will fetch upcoming movies and series from TMDB and save them to your database. Continue?")) return;
+
+        setSyncingUpcoming(true);
+        setUpcomingLogs([]);
+        setUpcomingProgress({ current: 0, total: 0, saved: 0 });
+
+        try {
+            const regions = ['US', 'IN', 'GB'];
+            let allMovies = new Map();
+            let allTV = new Map();
+
+            // 1. Fetch upcoming movies from multiple pages and regions
+            setUpcomingLogs(prev => [...prev, "📽️ Fetching upcoming movies..."]);
+            for (const region of regions) {
+                for (let page = 1; page <= 5; page++) {
+                    try {
+                        const res = await axios.get('/movie/upcoming', { params: { region, page } });
+                        const movies = res.data.results || [];
+                        movies.forEach(m => { if (!allMovies.has(m.id)) allMovies.set(m.id, m); });
+                    } catch (e) { break; }
+                }
+            }
+
+            // Also fetch from discover for wider upcoming range (next 6 months)
+            const today = new Date().toISOString().split('T')[0];
+            const sixMonths = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            for (let page = 1; page <= 5; page++) {
+                try {
+                    const res = await axios.get('/discover/movie', {
+                        params: {
+                            'primary_release_date.gte': today,
+                            'primary_release_date.lte': sixMonths,
+                            sort_by: 'popularity.desc',
+                            page,
+                        }
+                    });
+                    const movies = res.data.results || [];
+                    movies.forEach(m => { if (!allMovies.has(m.id)) allMovies.set(m.id, m); });
+                } catch (e) { break; }
+            }
+
+            setUpcomingLogs(prev => [...prev, `Found ${allMovies.size} unique upcoming movies`]);
+
+            // 2. Fetch upcoming TV series (on the air + future)
+            setUpcomingLogs(prev => [...prev, "📺 Fetching upcoming TV series..."]);
+            for (let page = 1; page <= 3; page++) {
+                try {
+                    const res = await axios.get('/tv/on_the_air', { params: { page } });
+                    const shows = res.data.results || [];
+                    shows.forEach(s => { if (!allTV.has(s.id)) allTV.set(s.id, s); });
+                } catch (e) { break; }
+            }
+            for (let page = 1; page <= 3; page++) {
+                try {
+                    const res = await axios.get('/discover/tv', {
+                        params: {
+                            'first_air_date.gte': today,
+                            sort_by: 'popularity.desc',
+                            page,
+                        }
+                    });
+                    const shows = res.data.results || [];
+                    shows.forEach(s => { if (!allTV.has(s.id)) allTV.set(s.id, s); });
+                } catch (e) { break; }
+            }
+
+            setUpcomingLogs(prev => [...prev, `Found ${allTV.size} unique upcoming TV series`]);
+
+            // 3. Save all to DB with full details
+            const allItems = [
+                ...[...allMovies.values()].map(m => ({ ...m, _type: 'movie' })),
+                ...[...allTV.values()].map(s => ({ ...s, _type: 'tv' })),
+            ];
+
+            const totalItems = allItems.length;
+            setUpcomingProgress({ current: 0, total: totalItems, saved: 0 });
+            setUpcomingLogs(prev => [...prev, `🚀 Saving ${totalItems} items to database...`]);
+
+            let savedCount = 0;
+            const BATCH_SIZE = 3;
+
+            for (let i = 0; i < totalItems; i += BATCH_SIZE) {
+                const batch = allItems.slice(i, i + BATCH_SIZE);
+
+                await Promise.all(batch.map(async (item) => {
+                    const mediaType = item._type;
+                    const title = item.title || item.name;
+                    try {
+                        const endpoint = mediaType === 'tv' ? `/tv/${item.id}` : `/movie/${item.id}`;
+                        const detailRes = await axios.get(endpoint, {
+                            params: { append_to_response: 'credits,videos,images,release_dates,keywords' }
+                        });
+                        const fullData = detailRes.data;
+
+                        // Convert poster & backdrop to base64
+                        try {
+                            if (fullData.poster_path) {
+                                const posterBase64 = await convertImageToBase64(`https://image.tmdb.org/t/p/w342${fullData.poster_path}`);
+                                if (posterBase64) {
+                                    if (!fullData.images) fullData.images = {};
+                                    fullData.images.poster_base64 = posterBase64;
+                                }
+                            }
+                            if (fullData.backdrop_path) {
+                                const backdropBase64 = await convertImageToBase64(`https://image.tmdb.org/t/p/w780${fullData.backdrop_path}`);
+                                if (backdropBase64) {
+                                    if (!fullData.images) fullData.images = {};
+                                    fullData.images.backdrop_base64 = backdropBase64;
+                                }
+                            }
+                        } catch (imgErr) { /* skip image errors */ }
+
+                        await saveFullMovieToLibrary(fullData, { media_type: mediaType });
+                        savedCount++;
+                        setUpcomingLogs(prev => [`✓ ${title}`, ...prev].slice(0, 80));
+                    } catch (err) {
+                        // Quick save fallback
+                        try {
+                            await saveMovieToLibrary(item, mediaType);
+                            savedCount++;
+                            setUpcomingLogs(prev => [`⚡ ${title} (quick)`, ...prev].slice(0, 80));
+                        } catch (e2) {
+                            setUpcomingLogs(prev => [`❌ Failed: ${title}`, ...prev].slice(0, 80));
+                        }
+                    }
+                }));
+
+                setUpcomingProgress(prev => ({
+                    ...prev,
+                    current: Math.min(i + BATCH_SIZE, totalItems),
+                    saved: savedCount
+                }));
+            }
+
+            setUpcomingLogs(prev => [`✅ Sync Complete! Saved ${savedCount}/${totalItems} items to database.`, ...prev]);
+            await loadData(); // Refresh stats
+
+        } catch (error) {
+            console.error("Upcoming sync failed:", error);
+            setUpcomingLogs(prev => [`❌ Error: ${error.message}`, ...prev]);
+        } finally {
+            setSyncingUpcoming(false);
+        }
+    };
+
     // Maintenance Script: Sync Cast Images (Base64)
     const [syncingImages, setSyncingImages] = useState(false);
     const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0, updated: 0 });
@@ -2094,6 +2245,77 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                         </div>
 
                         <div className="grid gap-6">
+
+                            {/* Sync Upcoming Movies & Series Card */}
+                            <div className="bg-white/5 rounded-xl p-6 border border-white/10">
+                                <div className="flex items-start justify-between mb-4">
+                                    <div>
+                                        <h3 className="text-lg font-bold text-white mb-1">🎬 Sync Upcoming Movies & Series</h3>
+                                        <p className="text-sm text-white/60 max-w-2xl">
+                                            Fetches all upcoming movies and TV series from TMDB (multiple regions & pages) and saves them with full details to your database.
+                                            The frontend Upcoming page will then load directly from DB — no TMDB API calls needed.
+                                        </p>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className="text-xs text-purple-400 font-mono bg-purple-500/10 px-2 py-1 rounded">
+                                            Heavy Operation
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-black/30 rounded-lg p-4 border border-white/5 mb-4">
+                                    <h4 className="text-xs font-bold text-white/40 uppercase mb-2">What This Does</h4>
+                                    <ul className="text-xs text-white/60 space-y-1 list-disc pl-4">
+                                        <li>Fetches upcoming movies from TMDB (US, IN, GB regions × 5 pages each)</li>
+                                        <li>Fetches upcoming movies from Discover API (next 6 months, sorted by popularity)</li>
+                                        <li>Fetches upcoming TV series (On The Air + future first air dates)</li>
+                                        <li>Saves each item with full details (cast, videos, images, keywords)</li>
+                                        <li>Converts poster & backdrop images to Base64 for offline access</li>
+                                        <li>Deduplicates across regions — each movie saved once</li>
+                                    </ul>
+                                </div>
+
+                                <div className="flex items-center gap-4">
+                                    <button
+                                        onClick={handleSyncUpcoming}
+                                        disabled={syncingUpcoming}
+                                        className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold rounded-lg shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95 flex items-center gap-2"
+                                    >
+                                        {syncingUpcoming ? (
+                                            <>
+                                                <div className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin"></div>
+                                                Syncing... ({Math.round((upcomingProgress.current / (upcomingProgress.total || 1)) * 100)}%)
+                                            </>
+                                        ) : (
+                                            <>🚀 Sync Upcoming Content</>
+                                        )}
+                                    </button>
+
+                                    {syncingUpcoming && (
+                                        <div className="text-xs text-white/50">
+                                            Processed: {upcomingProgress.current} / {upcomingProgress.total} <br />
+                                            Saved: {upcomingProgress.saved} items
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Logs Console */}
+                                {upcomingLogs.length > 0 && (
+                                    <div className="mt-6">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <span className="text-xs font-bold text-white/50">Execution Logs</span>
+                                            <button onClick={() => setUpcomingLogs([])} className="text-[10px] text-white/30 hover:text-white">Clear</button>
+                                        </div>
+                                        <div className="bg-black/50 rounded-lg p-3 h-48 overflow-y-auto font-mono text-[10px] space-y-1 border border-white/5">
+                                            {upcomingLogs.map((log, i) => (
+                                                <div key={i} className={log.startsWith('❌') ? 'text-red-400' : log.startsWith('✅') || log.startsWith('✓') ? 'text-green-400' : log.startsWith('⚡') ? 'text-yellow-400' : 'text-gray-400'}>
+                                                    {log}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
 
                             {/* Sync Cast Images Card */}
                             <div className="bg-white/5 rounded-xl p-6 border border-white/10">

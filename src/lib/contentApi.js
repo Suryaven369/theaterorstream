@@ -524,6 +524,50 @@ export const getExploreContent = async (options = {}) => {
 };
 
 // =============================================
+// UPCOMING CONTENT FROM DB
+// =============================================
+
+/**
+ * Get upcoming movies/series from database (release_date >= today)
+ */
+export const getUpcomingFromDb = async (options = {}) => {
+    const {
+        mediaType = null,    // 'movie', 'tv', or null for both
+        limit = 24,
+        offset = 0,
+    } = options;
+
+    const today = new Date().toISOString().split('T')[0];
+    const cacheKey = `upcoming:${mediaType}:${limit}:${offset}`;
+    const cached = getCached(cacheKey, CACHE_TTL.library);
+    if (cached) return cached;
+
+    let query = supabase
+        .from('movies_library')
+        .select('*', { count: 'exact' })
+        .eq('is_active', true)
+        .gte('release_date', today)
+        .order('release_date', { ascending: true, nullsFirst: false });
+
+    if (mediaType) {
+        query = query.eq('media_type', mediaType);
+    }
+
+    query = query.range(offset, offset + limit - 1);
+
+    const { data, error, count } = await query;
+
+    if (error) {
+        console.error('Error fetching upcoming from DB:', error);
+        return { data: [], total: 0, error };
+    }
+
+    const result = { data: data || [], total: count || 0 };
+    setCache(cacheKey, result);
+    return result;
+};
+
+// =============================================
 // FEATURED & TRENDING API
 // =============================================
 
@@ -663,6 +707,9 @@ export default {
 
     // Explore
     getExploreContent,
+
+    // Upcoming
+    getUpcomingFromDb,
 
     // Featured & Trending
     getFeaturedContent,

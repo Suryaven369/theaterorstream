@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import Card from "../components/Card";
 import { FaDatabase, FaGlobe } from "react-icons/fa";
-import { getExploreContent, getMoviesFromDb, getTrendingContent, MOVIE_GENRES, TV_GENRES } from "../lib/contentApi";
+import { getExploreContent, getMoviesFromDb, getTrendingContent, getUpcomingFromDb, MOVIE_GENRES, TV_GENRES } from "../lib/contentApi";
 
 const ExplorePage = () => {
   const params = useParams();
@@ -75,19 +75,10 @@ const ExplorePage = () => {
           offset,
         });
       } else if (exploreType === "upcoming" || exploreType === "coming-soon") {
-        // For upcoming, get future releases
-        const today = new Date().toISOString().split('T')[0];
-        result = await getMoviesFromDb({
-          mediaType: 'movie',
-          sortBy: 'release_date',
-          sortOrder: 'asc',
+        result = await getUpcomingFromDb({
           limit: PAGE_SIZE,
           offset,
         });
-        // Filter to only future dates client-side as a simple approach
-        if (result.data) {
-          result.data = result.data.filter(m => m.release_date >= today);
-        }
       } else {
         // Default: popular movies
         result = await getExploreContent({
