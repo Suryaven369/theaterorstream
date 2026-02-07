@@ -2,7 +2,8 @@ import { Outlet, useLocation } from "react-router-dom";
 import axios from "axios";
 import { useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { setImageURL } from "./store/movieSlice";
+import { setImageURL, invalidateHomepageSections, invalidateMovieDetails } from "./store/movieSlice";
+import { supabase } from "./lib/supabase";
 
 // components
 import Header from "./components/Header";
@@ -28,6 +29,35 @@ function App() {
       fetchConfiguration();
     }
   }, []);
+
+  // Supabase Realtime: auto-invalidate cache when DB content changes
+  useEffect(() => {
+    const channel = supabase
+      .channel('db-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'homepage_sections' },
+        (payload) => {
+          console.log('\u26a1 Realtime: homepage_sections changed', payload.eventType);
+          dispatch(invalidateHomepageSections());
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'movies_library' },
+        (payload) => {
+          console.log('\u26a1 Realtime: movies_library changed', payload.eventType);
+          const tmdbId = payload.new?.tmdb_id || payload.old?.tmdb_id;
+          dispatch(invalidateMovieDetails(tmdbId || null));
+          dispatch(invalidateHomepageSections());
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [dispatch]);
 
   // Scroll to top on route change
   useEffect(() => {

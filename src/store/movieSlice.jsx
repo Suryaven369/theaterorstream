@@ -34,9 +34,22 @@ export const movieSlice = createSlice({
       const { movieId, data, castData } = action.payload;
       state.movieDetailsCache[movieId] = { data, castData, timestamp: Date.now() };
     },
+    // Invalidate caches when DB changes (Supabase Realtime)
+    invalidateHomepageSections: (state) => {
+      state.homepageSections = null;
+      state.homepageSectionsTimestamp = null;
+    },
+    invalidateMovieDetails: (state, action) => {
+      const movieId = action.payload;
+      if (movieId) {
+        delete state.movieDetailsCache[movieId];
+      } else {
+        state.movieDetailsCache = {};
+      }
+    },
   },
 });
 
-export const { setBannerData, setImageURL, updateReviewAnalysisCache, setHomepageSections, cacheMovieDetails } = movieSlice.actions;
+export const { setBannerData, setImageURL, updateReviewAnalysisCache, setHomepageSections, cacheMovieDetails, invalidateHomepageSections, invalidateMovieDetails } = movieSlice.actions;
 
 export default movieSlice.reducer;
