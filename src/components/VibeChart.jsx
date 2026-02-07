@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 
 // Vibe categories with their characteristics
 const VIBE_CATEGORIES = [
@@ -90,8 +90,10 @@ const generateVibeScores = (genres = []) => {
 };
 
 // Pie Chart Slice Component
-const PieSlice = ({ startAngle, endAngle, color, isHovered }) => {
+const PieSlice = ({ startAngle, endAngle, color, isHovered, onMouseEnter, onMouseLeave }) => {
     const radius = 50;
+    const hoverRadius = 53;
+    const r = isHovered ? hoverRadius : radius;
     const cx = 60;
     const cy = 60;
 
@@ -100,10 +102,10 @@ const PieSlice = ({ startAngle, endAngle, color, isHovered }) => {
     const endRad = (endAngle - 90) * (Math.PI / 180);
 
     // Calculate arc points
-    const x1 = cx + radius * Math.cos(startRad);
-    const y1 = cy + radius * Math.sin(startRad);
-    const x2 = cx + radius * Math.cos(endRad);
-    const y2 = cy + radius * Math.sin(endRad);
+    const x1 = cx + r * Math.cos(startRad);
+    const y1 = cy + r * Math.sin(startRad);
+    const x2 = cx + r * Math.cos(endRad);
+    const y2 = cy + r * Math.sin(endRad);
 
     // Determine if arc is more than 180 degrees
     const largeArcFlag = endAngle - startAngle > 180 ? 1 : 0;
@@ -111,7 +113,7 @@ const PieSlice = ({ startAngle, endAngle, color, isHovered }) => {
     const pathData = [
         `M ${cx} ${cy}`,
         `L ${x1} ${y1}`,
-        `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}`,
+        `A ${r} ${r} 0 ${largeArcFlag} 1 ${x2} ${y2}`,
         'Z'
     ].join(' ');
 
@@ -120,10 +122,14 @@ const PieSlice = ({ startAngle, endAngle, color, isHovered }) => {
             d={pathData}
             fill={color}
             stroke="#0a0a0a"
-            strokeWidth="1"
+            strokeWidth="1.5"
+            onMouseEnter={onMouseEnter}
+            onMouseLeave={onMouseLeave}
             style={{
-                filter: isHovered ? `drop-shadow(0 0 8px ${color})` : 'none',
-                transition: 'all 0.3s ease'
+                filter: isHovered ? `drop-shadow(0 0 10px ${color})` : 'none',
+                opacity: isHovered ? 1 : 0.85,
+                transition: 'all 0.25s ease',
+                cursor: 'pointer'
             }}
         />
     );
@@ -131,22 +137,24 @@ const PieSlice = ({ startAngle, endAngle, color, isHovered }) => {
 
 // Main Vibe Chart Component - PIE CHART VERSION
 const VibeChart = ({ genres = [], compact = false, customVibes = null }) => {
+    const [hoveredVibe, setHoveredVibe] = useState(null);
+
     // Use custom vibes from DB if they exist and have values, otherwise auto-generate from genres
     const hasCustomVibes = customVibes && Object.values(customVibes).some(v => v > 0);
     const vibes = hasCustomVibes ? { ...generateVibeScores(genres), ...customVibes } : generateVibeScores(genres);
 
-    // Normalize scores to percentages
+    // Normalize scores to percentages and filter out 0% vibes
     const total = Object.values(vibes).reduce((a, b) => a + b, 0);
     const vibeData = VIBE_CATEGORIES.map(cat => ({
         ...cat,
         value: vibes[cat.key],
         percentage: Math.round((vibes[cat.key] / total) * 100)
-    })).sort((a, b) => b.value - a.value);
+    })).filter(v => v.percentage > 0).sort((a, b) => b.value - a.value);
 
     // Get top 3 vibes
     const topVibes = vibeData.slice(0, 3);
 
-    // Calculate pie slices
+    // Calculate pie slices (only non-zero)
     let currentAngle = 0;
     const slices = vibeData.map(vibe => {
         const angle = (vibe.value / total) * 360;
@@ -159,6 +167,9 @@ const VibeChart = ({ genres = [], compact = false, customVibes = null }) => {
         return slice;
     });
 
+    // Hovered vibe info for center display
+    const activeVibe = hoveredVibe ? vibeData.find(v => v.key === hoveredVibe) : null;
+
     if (compact) {
         return (
             <div className="p-5 rounded-xl bg-gradient-to-br from-white/[0.06] to-white/[0.02] border border-white/10">
@@ -170,7 +181,7 @@ const VibeChart = ({ genres = [], compact = false, customVibes = null }) => {
 
                 {/* Pie Chart - Centered */}
                 <div className="flex justify-center mb-4">
-                    <div className="relative w-40 h-40">
+                    <div className="relative w-44 h-44">
                         <svg viewBox="0 0 120 120" className="w-full h-full">
                             {slices.map((slice) => (
                                 <PieSlice
@@ -178,30 +189,58 @@ const VibeChart = ({ genres = [], compact = false, customVibes = null }) => {
                                     startAngle={slice.startAngle}
                                     endAngle={slice.endAngle}
                                     color={slice.color}
+                                    isHovered={hoveredVibe === slice.key}
+                                    onMouseEnter={() => setHoveredVibe(slice.key)}
+                                    onMouseLeave={() => setHoveredVibe(null)}
                                 />
                             ))}
                             {/* Center circle */}
                             <circle cx="60" cy="60" r="25" fill="#0a0a0a" />
-                            <text x="60" y="55" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="9" fontWeight="bold">
-                                MOVIE
-                            </text>
-                            <text x="60" y="67" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="9" opacity="0.6">
-                                VIBE
-                            </text>
+                            {activeVibe ? (
+                                <>
+                                    <text x="60" y="54" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="12">
+                                        {activeVibe.emoji}
+                                    </text>
+                                    <text x="60" y="68" textAnchor="middle" dominantBaseline="middle" fill={activeVibe.color} fontSize="9" fontWeight="bold">
+                                        {activeVibe.percentage}%
+                                    </text>
+                                </>
+                            ) : (
+                                <>
+                                    <text x="60" y="55" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="9" fontWeight="bold">
+                                        MOVIE
+                                    </text>
+                                    <text x="60" y="67" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="9" opacity="0.6">
+                                        VIBE
+                                    </text>
+                                </>
+                            )}
                         </svg>
                     </div>
                 </div>
 
-                {/* Legend - All vibes */}
+                {/* Hover tooltip */}
+                {activeVibe && (
+                    <div className="text-center mb-3 transition-all" style={{ color: activeVibe.color }}>
+                        <span className="text-sm font-semibold">{activeVibe.emoji} {activeVibe.label} — {activeVibe.percentage}%</span>
+                    </div>
+                )}
+
+                {/* Legend - Only non-zero vibes */}
                 <div className="space-y-2">
                     {vibeData.map(vibe => (
-                        <div key={vibe.key} className="flex items-center gap-2.5">
+                        <div
+                            key={vibe.key}
+                            className={`flex items-center gap-2.5 px-2 py-1 rounded-lg transition-all cursor-pointer ${hoveredVibe === vibe.key ? 'bg-white/10' : 'hover:bg-white/5'}`}
+                            onMouseEnter={() => setHoveredVibe(vibe.key)}
+                            onMouseLeave={() => setHoveredVibe(null)}
+                        >
                             <div
-                                className="w-3 h-3 rounded-full flex-shrink-0"
-                                style={{ backgroundColor: vibe.color }}
+                                className="w-3 h-3 rounded-full flex-shrink-0 transition-transform"
+                                style={{ backgroundColor: vibe.color, transform: hoveredVibe === vibe.key ? 'scale(1.4)' : 'scale(1)' }}
                             />
-                            <span className="text-xs text-white/70 flex-1">{vibe.emoji} {vibe.label}</span>
-                            <span className="text-xs font-medium text-white/50">{vibe.percentage}%</span>
+                            <span className={`text-xs flex-1 transition-colors ${hoveredVibe === vibe.key ? 'text-white' : 'text-white/70'}`}>{vibe.emoji} {vibe.label}</span>
+                            <span className={`text-xs font-medium transition-colors ${hoveredVibe === vibe.key ? 'text-white' : 'text-white/50'}`}>{vibe.percentage}%</span>
                         </div>
                     ))}
                 </div>
@@ -219,7 +258,7 @@ const VibeChart = ({ genres = [], compact = false, customVibes = null }) => {
                 </div>
                 <div className="flex items-center gap-1">
                     {topVibes.map(vibe => (
-                        <span key={vibe.key} className="text-lg" title={vibe.label}>
+                        <span key={vibe.key} className="text-lg" title={`${vibe.label} ${vibe.percentage}%`}>
                             {vibe.emoji}
                         </span>
                     ))}
@@ -229,7 +268,7 @@ const VibeChart = ({ genres = [], compact = false, customVibes = null }) => {
             {/* Pie Chart & Legend */}
             <div className="flex items-center gap-6">
                 {/* Pie Chart */}
-                <div className="relative w-40 h-40 flex-shrink-0">
+                <div className="relative w-44 h-44 flex-shrink-0">
                     <svg viewBox="0 0 120 120" className="w-full h-full">
                         {slices.map((slice) => (
                             <PieSlice
@@ -237,30 +276,50 @@ const VibeChart = ({ genres = [], compact = false, customVibes = null }) => {
                                 startAngle={slice.startAngle}
                                 endAngle={slice.endAngle}
                                 color={slice.color}
+                                isHovered={hoveredVibe === slice.key}
+                                onMouseEnter={() => setHoveredVibe(slice.key)}
+                                onMouseLeave={() => setHoveredVibe(null)}
                             />
                         ))}
-                        {/* Center circle with gradient */}
+                        {/* Center circle */}
                         <circle cx="60" cy="60" r="28" fill="#0a0a0a" />
-                        <text x="60" y="55" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="10" fontWeight="bold">
-                            MOVIE
-                        </text>
-                        <text x="60" y="68" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="10" opacity="0.6">
-                            VIBE
-                        </text>
+                        {activeVibe ? (
+                            <>
+                                <text x="60" y="53" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="14">
+                                    {activeVibe.emoji}
+                                </text>
+                                <text x="60" y="70" textAnchor="middle" dominantBaseline="middle" fill={activeVibe.color} fontSize="10" fontWeight="bold">
+                                    {activeVibe.percentage}%
+                                </text>
+                            </>
+                        ) : (
+                            <>
+                                <text x="60" y="55" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="10" fontWeight="bold">
+                                    MOVIE
+                                </text>
+                                <text x="60" y="68" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="10" opacity="0.6">
+                                    VIBE
+                                </text>
+                            </>
+                        )}
                     </svg>
                 </div>
 
-                {/* Legend */}
-                <div className="flex-1 grid grid-cols-2 gap-x-4 gap-y-3">
+                {/* Legend - Only non-zero */}
+                <div className="flex-1 space-y-2">
                     {vibeData.map(vibe => (
-                        <div key={vibe.key} className="flex items-center gap-2">
+                        <div
+                            key={vibe.key}
+                            className={`flex items-center gap-2.5 px-2 py-1.5 rounded-lg transition-all cursor-pointer ${hoveredVibe === vibe.key ? 'bg-white/10' : 'hover:bg-white/5'}`}
+                            onMouseEnter={() => setHoveredVibe(vibe.key)}
+                            onMouseLeave={() => setHoveredVibe(null)}
+                        >
                             <div
-                                className="w-3.5 h-3.5 rounded-full flex-shrink-0"
-                                style={{ backgroundColor: vibe.color }}
+                                className="w-3.5 h-3.5 rounded-full flex-shrink-0 transition-transform"
+                                style={{ backgroundColor: vibe.color, transform: hoveredVibe === vibe.key ? 'scale(1.4)' : 'scale(1)' }}
                             />
-                            <span className="text-sm text-white/70">{vibe.emoji}</span>
-                            <span className="text-sm text-white/60 flex-1">{vibe.label}</span>
-                            <span className="text-sm font-medium text-white/40">{vibe.percentage}%</span>
+                            <span className={`text-sm flex-1 transition-colors ${hoveredVibe === vibe.key ? 'text-white' : 'text-white/70'}`}>{vibe.emoji} {vibe.label}</span>
+                            <span className={`text-sm font-semibold transition-colors ${hoveredVibe === vibe.key ? 'text-white' : 'text-white/40'}`}>{vibe.percentage}%</span>
                         </div>
                     ))}
                 </div>
@@ -269,15 +328,24 @@ const VibeChart = ({ genres = [], compact = false, customVibes = null }) => {
             {/* Vibe Summary */}
             <div className="mt-4 pt-3 border-t border-white/10">
                 <p className="text-xs text-white/50">
-                    This movie feels primarily{" "}
-                    <span className="text-white/80 font-medium">{topVibes[0]?.label.toLowerCase()}</span>
-                    {topVibes[1] && (
+                    {activeVibe ? (
                         <>
-                            {" "}with{" "}
-                            <span className="text-white/80 font-medium">{topVibes[1]?.label.toLowerCase()}</span>
+                            <span style={{ color: activeVibe.color }} className="font-medium">{activeVibe.emoji} {activeVibe.label}</span>
+                            {' — '}{activeVibe.percentage}% of this movie's vibe
+                        </>
+                    ) : (
+                        <>
+                            This movie feels primarily{" "}
+                            <span className="text-white/80 font-medium">{topVibes[0]?.label.toLowerCase()}</span>
+                            {topVibes[1] && (
+                                <>
+                                    {" "}with{" "}
+                                    <span className="text-white/80 font-medium">{topVibes[1]?.label.toLowerCase()}</span>
+                                </>
+                            )}
+                            {" "}vibes. Hover to explore.
                         </>
                     )}
-                    {" "}vibes.
                 </p>
             </div>
         </div>

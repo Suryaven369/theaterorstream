@@ -426,32 +426,38 @@ const Details = () => {
             {/* Streaming Platforms - from DB */}
             {data?.streaming_platforms?.length > 0 && (
               <div className="mb-5">
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2.5">
                   {data.streaming_platforms.map((platform, i) => {
                     const name = platform.name?.toLowerCase() || '';
-                    const platformStyles = {
-                      'netflix': { bg: 'bg-red-600/20', border: 'border-red-500/40', text: 'text-red-400', icon: '🔴' },
-                      'amazon prime': { bg: 'bg-blue-500/20', border: 'border-blue-400/40', text: 'text-blue-400', icon: '📦' },
-                      'disney+': { bg: 'bg-blue-600/20', border: 'border-blue-500/40', text: 'text-blue-300', icon: '🏰' },
-                      'apple tv+': { bg: 'bg-gray-500/20', border: 'border-gray-400/40', text: 'text-gray-300', icon: '🍎' },
-                      'hbo max': { bg: 'bg-purple-600/20', border: 'border-purple-500/40', text: 'text-purple-400', icon: '🟣' },
-                      'hulu': { bg: 'bg-green-500/20', border: 'border-green-400/40', text: 'text-green-400', icon: '🟢' },
-                      'paramount+': { bg: 'bg-blue-700/20', border: 'border-blue-600/40', text: 'text-blue-400', icon: '⛰️' },
-                      'jiocinema': { bg: 'bg-pink-500/20', border: 'border-pink-400/40', text: 'text-pink-400', icon: '🎬' },
-                      'hotstar': { bg: 'bg-blue-500/20', border: 'border-blue-400/40', text: 'text-blue-300', icon: '⭐' },
-                      'zee5': { bg: 'bg-purple-500/20', border: 'border-purple-400/40', text: 'text-purple-400', icon: '📺' },
-                      'sonyliv': { bg: 'bg-blue-500/20', border: 'border-blue-400/40', text: 'text-blue-300', icon: '📡' },
+                    const platformData = {
+                      'netflix': { bg: 'bg-red-600/20', border: 'border-red-500/40', text: 'text-red-400', logo: 'https://images.ctfassets.net/4cd45et68cgf/Rx83JoRDMkYNlMC9MKzcB/2b14d5a59fc3937afd3f03191e19502d/Netflix-Symbol.png?w=700&h=456' },
+                      'amazon prime': { bg: 'bg-blue-500/20', border: 'border-blue-400/40', text: 'text-blue-400', logo: 'https://www.citypng.com/public/uploads/preview/amazon-prime-ios-app-icon-701751695133984u2yuon8nlu.png?v=2026011918' },
+                      'prime video': { bg: 'bg-blue-500/20', border: 'border-blue-400/40', text: 'text-blue-400', logo: 'https://www.citypng.com/public/uploads/preview/amazon-prime-ios-app-icon-701751695133984u2yuon8nlu.png?v=2026011918' },
+                      'disney+': { bg: 'bg-blue-600/20', border: 'border-blue-500/40', text: 'text-blue-300', logo: null },
+                      'apple tv+': { bg: 'bg-gray-500/20', border: 'border-gray-400/40', text: 'text-gray-300', logo: 'https://www.clipartmax.com/png/middle/241-2419842_apple-tv-logo-png.png' },
+                      'apple tv': { bg: 'bg-gray-500/20', border: 'border-gray-400/40', text: 'text-gray-300', logo: 'https://www.clipartmax.com/png/middle/241-2419842_apple-tv-logo-png.png' },
+                      'hbo max': { bg: 'bg-purple-600/20', border: 'border-purple-500/40', text: 'text-purple-400', logo: 'https://static.cdn.turner.com/styles/scale_792/s3/images/2025-05/hbo-max-logo.jpg?itok=v7Dk_88s' },
+                      'hulu': { bg: 'bg-green-500/20', border: 'border-green-400/40', text: 'text-green-400', logo: null },
+                      'paramount+': { bg: 'bg-blue-700/20', border: 'border-blue-600/40', text: 'text-blue-400', logo: null },
+                      'jiocinema': { bg: 'bg-pink-500/20', border: 'border-pink-400/40', text: 'text-pink-400', logo: null },
+                      'hotstar': { bg: 'bg-blue-500/20', border: 'border-blue-400/40', text: 'text-blue-300', logo: 'https://play-lh.googleusercontent.com/bp4jknyVZ8yDKhER9thIS1p9MBeU2LABqBX-sO8uaL1h5_keqlgMUmXv-CjfRWaqKw' },
+                      'zee5': { bg: 'bg-purple-500/20', border: 'border-purple-400/40', text: 'text-purple-400', logo: 'https://www.medianews4u.com/wp-content/uploads/2025/06/Zee-5.jpg' },
+                      'sonyliv': { bg: 'bg-blue-500/20', border: 'border-blue-400/40', text: 'text-blue-300', logo: 'https://upload.wikimedia.org/wikipedia/commons/f/f7/SonyLIV_2020.png' },
                     };
-                    const style = platformStyles[name] || { bg: 'bg-white/10', border: 'border-white/20', text: 'text-white/70', icon: '📺' };
+                    const pData = platformData[name] || { bg: 'bg-white/10', border: 'border-white/20', text: 'text-white/70', logo: null };
                     const Tag = platform.url ? 'a' : 'span';
                     const linkProps = platform.url ? { href: platform.url, target: '_blank', rel: 'noopener noreferrer' } : {};
                     return (
                       <Tag
                         key={i}
                         {...linkProps}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border ${style.bg} ${style.border} ${style.text} text-xs font-medium transition-all hover:scale-105 cursor-pointer`}
+                        className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl border ${pData.bg} ${pData.border} ${pData.text} text-xs font-medium transition-all hover:scale-105 hover:brightness-125 cursor-pointer`}
                       >
-                        <span>{style.icon}</span>
+                        {pData.logo ? (
+                          <img src={pData.logo} alt={platform.name} className="w-5 h-5 rounded object-contain" />
+                        ) : (
+                          <span className="text-sm">📺</span>
+                        )}
                         <span>{platform.name}</span>
                       </Tag>
                     );
