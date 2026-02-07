@@ -219,28 +219,19 @@ const VibeChart = ({ genres = [], compact = false, customVibes = null }) => {
                     </div>
                 </div>
 
-                {/* Hover tooltip */}
-                {activeVibe && (
-                    <div className="text-center mb-3 transition-all" style={{ color: activeVibe.color }}>
-                        <span className="text-sm font-semibold">{activeVibe.emoji} {activeVibe.label} — {activeVibe.percentage}%</span>
-                    </div>
-                )}
-
                 {/* Legend - Only non-zero vibes */}
                 <div className="space-y-2">
                     {vibeData.map(vibe => (
                         <div
                             key={vibe.key}
-                            className={`flex items-center gap-2.5 px-2 py-1 rounded-lg transition-all cursor-pointer ${hoveredVibe === vibe.key ? 'bg-white/10' : 'hover:bg-white/5'}`}
-                            onMouseEnter={() => setHoveredVibe(vibe.key)}
-                            onMouseLeave={() => setHoveredVibe(null)}
+                            className="flex items-center gap-2.5 px-2 py-1"
                         >
                             <div
-                                className="w-3 h-3 rounded-full flex-shrink-0 transition-transform"
-                                style={{ backgroundColor: vibe.color, transform: hoveredVibe === vibe.key ? 'scale(1.4)' : 'scale(1)' }}
+                                className="w-3 h-3 rounded-full flex-shrink-0"
+                                style={{ backgroundColor: vibe.color }}
                             />
-                            <span className={`text-xs flex-1 transition-colors ${hoveredVibe === vibe.key ? 'text-white' : 'text-white/70'}`}>{vibe.emoji} {vibe.label}</span>
-                            <span className={`text-xs font-medium transition-colors ${hoveredVibe === vibe.key ? 'text-white' : 'text-white/50'}`}>{vibe.percentage}%</span>
+                            <span className="text-xs text-white/70 flex-1">{vibe.emoji} {vibe.label}</span>
+                            <span className="text-xs font-medium text-white/50">{vibe.percentage}%</span>
                         </div>
                     ))}
                 </div>
@@ -310,16 +301,14 @@ const VibeChart = ({ genres = [], compact = false, customVibes = null }) => {
                     {vibeData.map(vibe => (
                         <div
                             key={vibe.key}
-                            className={`flex items-center gap-2.5 px-2 py-1.5 rounded-lg transition-all cursor-pointer ${hoveredVibe === vibe.key ? 'bg-white/10' : 'hover:bg-white/5'}`}
-                            onMouseEnter={() => setHoveredVibe(vibe.key)}
-                            onMouseLeave={() => setHoveredVibe(null)}
+                            className="flex items-center gap-2.5 px-2 py-1.5"
                         >
                             <div
-                                className="w-3.5 h-3.5 rounded-full flex-shrink-0 transition-transform"
-                                style={{ backgroundColor: vibe.color, transform: hoveredVibe === vibe.key ? 'scale(1.4)' : 'scale(1)' }}
+                                className="w-3.5 h-3.5 rounded-full flex-shrink-0"
+                                style={{ backgroundColor: vibe.color }}
                             />
-                            <span className={`text-sm flex-1 transition-colors ${hoveredVibe === vibe.key ? 'text-white' : 'text-white/70'}`}>{vibe.emoji} {vibe.label}</span>
-                            <span className={`text-sm font-semibold transition-colors ${hoveredVibe === vibe.key ? 'text-white' : 'text-white/40'}`}>{vibe.percentage}%</span>
+                            <span className="text-sm text-white/70 flex-1">{vibe.emoji} {vibe.label}</span>
+                            <span className="text-sm font-semibold text-white/40">{vibe.percentage}%</span>
                         </div>
                     ))}
                 </div>
@@ -328,24 +317,15 @@ const VibeChart = ({ genres = [], compact = false, customVibes = null }) => {
             {/* Vibe Summary */}
             <div className="mt-4 pt-3 border-t border-white/10">
                 <p className="text-xs text-white/50">
-                    {activeVibe ? (
+                    This movie feels primarily{" "}
+                    <span className="text-white/80 font-medium">{topVibes[0]?.label.toLowerCase()}</span>
+                    {topVibes[1] && (
                         <>
-                            <span style={{ color: activeVibe.color }} className="font-medium">{activeVibe.emoji} {activeVibe.label}</span>
-                            {' — '}{activeVibe.percentage}% of this movie's vibe
-                        </>
-                    ) : (
-                        <>
-                            This movie feels primarily{" "}
-                            <span className="text-white/80 font-medium">{topVibes[0]?.label.toLowerCase()}</span>
-                            {topVibes[1] && (
-                                <>
-                                    {" "}with{" "}
-                                    <span className="text-white/80 font-medium">{topVibes[1]?.label.toLowerCase()}</span>
-                                </>
-                            )}
-                            {" "}vibes. Hover to explore.
+                            {" "}with{" "}
+                            <span className="text-white/80 font-medium">{topVibes[1]?.label.toLowerCase()}</span>
                         </>
                     )}
+                    {" "}vibes.
                 </p>
             </div>
         </div>
