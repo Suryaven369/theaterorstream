@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from "react";
+import { useSelector, useDispatch } from "react-redux";
 import Card from "../components/Card";
 import { FaGlobe, FaChevronDown, FaCalendarAlt } from "react-icons/fa";
 import { Link } from "react-router-dom";
 import { getHomepageSections } from "../lib/supabase";
 import { generateSlugWithId } from "../lib/slugUtils";
+import { setHomepageSections } from "../store/movieSlice";
+
+const SECTIONS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 // Available regions for content filtering
 const REGIONS = [
@@ -20,6 +24,10 @@ const REGIONS = [
 ];
 
 const Home = () => {
+  const dispatch = useDispatch();
+  const cachedSections = useSelector((state) => state.movieData.homepageSections);
+  const cachedTimestamp = useSelector((state) => state.movieData.homepageSectionsTimestamp);
+
   // Load saved region from localStorage or default to India
   const [selectedRegion, setSelectedRegion] = useState(() => {
     const saved = localStorage.getItem('selectedRegion');
@@ -30,15 +38,23 @@ const Home = () => {
     return REGIONS[0];
   });
   const [isRegionOpen, setIsRegionOpen] = useState(false);
-  const [cmsSections, setCmsSections] = useState([]);
-  const [loadingSections, setLoadingSections] = useState(true);
+  const [cmsSections, setCmsSections] = useState(cachedSections || []);
+  const [loadingSections, setLoadingSections] = useState(!cachedSections);
 
   // ============================================
   // FETCH ALL SECTIONS FROM DATABASE ONCE
-  // Movies are stored per region in movies_by_region
-  // Frontend filters by selectedRegion.code
+  // Uses Redux cache to avoid re-fetching on navigation
   // ============================================
   useEffect(() => {
+    const isCacheValid = cachedSections && cachedTimestamp && (Date.now() - cachedTimestamp < SECTIONS_CACHE_TTL);
+
+    if (isCacheValid) {
+      console.log("⚡ Using cached homepage sections from Redux");
+      setCmsSections(cachedSections);
+      setLoadingSections(false);
+      return;
+    }
+
     const fetchCmsSections = async () => {
       setLoadingSections(true);
       console.log("📦 Fetching all sections from database...");
@@ -54,10 +70,11 @@ const Home = () => {
 
       console.log(`✅ Loaded ${sections?.length || 0} sections with ${totalMovies} movies across all regions`);
       setCmsSections(sections || []);
+      dispatch(setHomepageSections(sections || []));
       setLoadingSections(false);
     };
     fetchCmsSections();
-  }, []); // Only fetch once on mount
+  }, []); // Only fetch once on mount, uses Redux cache on re-visit
 
   const handleRegionSelect = (region) => {
     setSelectedRegion(region);

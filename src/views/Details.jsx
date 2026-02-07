@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from "react";
 import { useParams, Link, useLocation } from "react-router-dom";
 
 import useReviewAnalysis from "../hooks/useReviewAnalysis";
-import { useSelector } from "react-redux";
+import { useSelector, useDispatch } from "react-redux";
+import { cacheMovieDetails } from "../store/movieSlice";
 import moment from "moment";
 import VideoPlay from "../components/VideoPlay";
 import ReviewAnalysis from "../components/ReviewAnalysis";
@@ -20,11 +21,15 @@ import { useNavigate } from "react-router-dom";
 import MovieActionButtons from "../components/MovieActionButtons";
 import { extractIdFromSlug } from "../lib/slugUtils";
 
+const DETAILS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
 const Details = () => {
   const params = useParams();
   const location = useLocation();
   const navigate = useNavigate();
   const { isAuthenticated, user } = useAuth();
+  const dispatch = useDispatch();
+  const movieDetailsCache = useSelector((state) => state.movieData.movieDetailsCache);
 
   // Determine if using new slug-based URL or legacy ID-based URL
   // New format: /movies/greenland-2-840464 or /tv/breaking-bad-1396
@@ -61,6 +66,17 @@ const Details = () => {
   useEffect(() => {
     const fetchDetails = async () => {
       if (!movieId) return;
+
+      // Check Redux cache first
+      const cached = movieDetailsCache[movieId];
+      if (cached && cached.data && (Date.now() - cached.timestamp < DETAILS_CACHE_TTL)) {
+        console.log(`\u26a1 Using cached details for ${movieId}`);
+        setData(cached.data);
+        setCastData(cached.castData);
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
 
       try {
@@ -68,27 +84,38 @@ const Details = () => {
         console.log(`Fetching details for ${movieId} (${mediaType})`);
         const { success, data: dbData } = await getAdvancedMovieFromLibrary(movieId);
 
+        let fetchedData = null;
+        let fetchedCast = null;
+
         if (success && dbData) {
           console.log("Loaded from DB:", dbData);
-          setData(dbData);
+          fetchedData = dbData;
           // In DB, cast is in 'credits' field
           if (dbData.credits) {
-            setCastData(dbData.credits);
+            fetchedCast = dbData.credits;
           } else {
             // If DB entry exists but no credits (legacy?), try fetch credits
             try {
               const castRes = await axios.get(`/${mediaType}/${movieId}/credits`);
-              setCastData(castRes.data);
+              fetchedCast = castRes.data;
             } catch (e) { console.error("Credits fetch fail", e); }
           }
         } else {
           // 2. Fallback to API if not in DB
           console.log("Not found in DB, falling back to API");
           const response = await axios.get(`/${mediaType}/${movieId}`);
-          setData(response.data);
+          fetchedData = response.data;
 
           const castResponse = await axios.get(`/${mediaType}/${movieId}/credits`);
-          setCastData(castResponse.data);
+          fetchedCast = castResponse.data;
+        }
+
+        setData(fetchedData);
+        setCastData(fetchedCast);
+
+        // Cache in Redux for future visits
+        if (fetchedData) {
+          dispatch(cacheMovieDetails({ movieId, data: fetchedData, castData: fetchedCast }));
         }
       } catch (error) {
         console.error("Error fetching details:", error);

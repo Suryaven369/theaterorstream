@@ -1,7 +1,7 @@
 import { Outlet, useLocation } from "react-router-dom";
 import axios from "axios";
 import { useEffect } from "react";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { setImageURL } from "./store/movieSlice";
 
 // components
@@ -12,6 +12,7 @@ import MobileNavigation from "./components/MobileNavigation";
 function App() {
   const dispatch = useDispatch();
   const location = useLocation();
+  const imageURL = useSelector((state) => state.movieData.imageURL);
 
   const fetchConfiguration = async () => {
     try {
@@ -23,7 +24,9 @@ function App() {
   };
 
   useEffect(() => {
-    fetchConfiguration();
+    if (!imageURL) {
+      fetchConfiguration();
+    }
   }, []);
 
   // Scroll to top on route change
