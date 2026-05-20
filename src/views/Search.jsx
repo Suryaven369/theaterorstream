@@ -261,7 +261,6 @@ const Search = () => {
                       vote_average: item.vote_average,
                       release_date: item.release_date || item.first_air_date,
                       overview: item.overview,
-                      images: item.images // Pass images for Base64 support
                     }}
                     media_type={item.media_type || 'movie'}
                     index={index}

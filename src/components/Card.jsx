@@ -31,17 +31,15 @@ const Card = ({ data, trending, index, media_type }) => {
 
   // Construct image source with proper fallbacks
   const getImageSrc = () => {
-    // Priority 1: Base64 image (works offline, fastest)
-    if (data.images?.poster_base64) {
-      return data.images.poster_base64;
-    }
-    // Priority 2: TMDB poster path
     if (data.poster_path) {
-      // Handle both full URLs and relative paths
       if (data.poster_path.startsWith('http')) {
         return data.poster_path;
       }
       return `${imageURL}${data.poster_path}`;
+    }
+    // Legacy fallback for older library rows
+    if (data.images?.poster_base64) {
+      return data.images.poster_base64;
     }
     return null;
   };

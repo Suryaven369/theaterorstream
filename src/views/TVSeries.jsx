@@ -196,7 +196,6 @@ const TVSeries = () => {
                                                                         overview: show.overview,
                                                                         genres: show.genres,
                                                                         runtime: show.runtime,
-                                                                        images: show.images // Pass images for Base64 support
                                                                     }}
                                                                     media_type={show.media_type || "tv"}
                                                                     index={index}

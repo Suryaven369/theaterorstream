@@ -11,7 +11,6 @@ import {
     saveFullMovieToLibrary
 } from "../../lib/supabase";
 import { useToast } from "../../components/Toast";
-import { convertImageToBase64 } from "../../utils/imageHelper";
 
 // Available regions for fetching content
 const REGIONS = [
@@ -304,34 +303,6 @@ const AdminSectionsPage = () => {
                     });
                     const fullData = detailResponse.data;
 
-                    // =========================================================
-                    // OPTIMIZATION: Convert images to Base64 for DB storage
-                    // This ensures images load even if TMDB is restricted
-                    // =========================================================
-                    try {
-                        // Use w342 for posters (good balance of quality/size)
-                        if (fullData.poster_path) {
-                            const posterUrl = `https://image.tmdb.org/t/p/w342${fullData.poster_path}`;
-                            const posterBase64 = await convertImageToBase64(posterUrl);
-                            if (posterBase64) {
-                                if (!fullData.images) fullData.images = {};
-                                fullData.images.poster_base64 = posterBase64;
-                            }
-                        }
-
-                        // Use w780 for backdrops
-                        if (fullData.backdrop_path) {
-                            const backdropUrl = `https://image.tmdb.org/t/p/w780${fullData.backdrop_path}`;
-                            const backdropBase64 = await convertImageToBase64(backdropUrl);
-                            if (backdropBase64) {
-                                if (!fullData.images) fullData.images = {};
-                                fullData.images.backdrop_base64 = backdropBase64;
-                            }
-                        }
-                    } catch (imgError) {
-                        console.warn('Failed to process offline images:', imgError);
-                    }
-
                     // Save to library with correct media_type
                     await saveFullMovieToLibrary(fullData, { media_type: mediaType });
 
@@ -350,7 +321,6 @@ const AdminSectionsPage = () => {
                         runtime: fullData.runtime || fullData.episode_run_time?.[0],
                         number_of_seasons: fullData.number_of_seasons,
                         number_of_episodes: fullData.number_of_episodes,
-                        images: fullData.images, // Include Base64 images in section cache
                         order: items.indexOf(item) + 1
                     };
                 } catch (err) {
@@ -465,66 +435,6 @@ const AdminSectionsPage = () => {
             });
             const fullData = detailResponse.data;
 
-            // =========================================================
-            // OPTIMIZATION: Convert images to Base64 for DB storage
-            // =========================================================
-            try {
-                // Use w342 for posters (good balance of quality/size)
-                if (fullData.poster_path) {
-                    const posterUrl = `https://image.tmdb.org/t/p/w342${fullData.poster_path}`;
-                    const posterBase64 = await convertImageToBase64(posterUrl);
-                    if (posterBase64) {
-                        if (!fullData.images) fullData.images = {};
-                        fullData.images.poster_base64 = posterBase64;
-                    }
-                }
-
-                // Use w780 for backdrops
-                if (fullData.backdrop_path) {
-                    const backdropUrl = `https://image.tmdb.org/t/p/w780${fullData.backdrop_path}`;
-                    const backdropBase64 = await convertImageToBase64(backdropUrl);
-                    if (backdropBase64) {
-                        if (!fullData.images) fullData.images = {};
-                        fullData.images.backdrop_base64 = backdropBase64;
-                    }
-                }
-            } catch (imgError) {
-                console.warn('Failed to process offline images:', imgError);
-            }
-
-            // =========================================================
-            // OPTIMIZATION: Process Cast Images (Top 10)
-            // =========================================================
-            try {
-                if (fullData.credits?.cast?.length > 0) {
-                    console.log('  Processing cast images...');
-                    const topCast = fullData.credits.cast.slice(0, 10); // Limit to top 10 to save space
-
-                    await Promise.all(topCast.map(async (actor) => {
-                        if (actor.profile_path) {
-                            try {
-                                const profileUrl = `https://image.tmdb.org/t/p/w185${actor.profile_path}`; // Small size is enough
-                                const profileBase64 = await convertImageToBase64(profileUrl);
-                                if (profileBase64) {
-                                    actor.profile_base64 = profileBase64;
-                                }
-                            } catch (e) {
-                                console.warn(`Failed to process cast image for ${actor.name}`, e);
-                            }
-                        }
-                    }));
-
-                    // Update the cast in fullData with the modified objects (that now have base64)
-                    // Note: Since we modified objects in the array reference, this might technically be done, 
-                    // but let's be explicit if we sliced/mapped.
-                    // Actually, map doesn't mutate, so we need to put them back.
-                    // But here I used map just to trigger async work. The objects inside `topCast` are refs to `fullData.credits.cast` objects.
-                    // So mutating `actor` inside map DOES mutate `fullData.credits.cast`. 
-                }
-            } catch (castError) {
-                console.warn('Failed to process cast images:', castError);
-            }
-
             // Save to library (immediate)
             await saveFullMovieToLibrary(fullData);
             console.log(`✓ Saved to library: ${fullData.title || fullData.name}`);
@@ -555,7 +465,6 @@ const AdminSectionsPage = () => {
                 original_language: fullData.original_language,
                 genres: fullData.genres,
                 runtime: fullData.runtime || fullData.episode_run_time?.[0],
-                images: fullData.images,
                 order: currentMovies.length + 1
             };
 

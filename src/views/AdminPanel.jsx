@@ -954,24 +954,6 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                         });
                         const fullData = detailRes.data;
 
-                        // Convert poster & backdrop to base64
-                        try {
-                            if (fullData.poster_path) {
-                                const posterBase64 = await convertImageToBase64(`https://image.tmdb.org/t/p/w342${fullData.poster_path}`);
-                                if (posterBase64) {
-                                    if (!fullData.images) fullData.images = {};
-                                    fullData.images.poster_base64 = posterBase64;
-                                }
-                            }
-                            if (fullData.backdrop_path) {
-                                const backdropBase64 = await convertImageToBase64(`https://image.tmdb.org/t/p/w780${fullData.backdrop_path}`);
-                                if (backdropBase64) {
-                                    if (!fullData.images) fullData.images = {};
-                                    fullData.images.backdrop_base64 = backdropBase64;
-                                }
-                            }
-                        } catch (imgErr) { /* skip image errors */ }
-
                         await saveFullMovieToLibrary(fullData, { media_type: mediaType });
                         savedCount++;
                         setUpcomingLogs(prev => [`✓ ${title}`, ...prev].slice(0, 80));
@@ -2284,8 +2266,8 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                                         <li>Fetches upcoming movies from TMDB (US, IN, GB regions × 5 pages each)</li>
                                         <li>Fetches upcoming movies from Discover API (next 6 months, sorted by popularity)</li>
                                         <li>Fetches upcoming TV series (On The Air + future first air dates)</li>
-                                        <li>Saves each item with full details (cast, videos, images, keywords)</li>
-                                        <li>Converts poster & backdrop images to Base64 for offline access</li>
+                                        <li>Saves each item with full details (cast, videos, keywords)</li>
+                                        <li>Stores poster/backdrop paths for TMDB CDN — no base64 bloat</li>
                                         <li>Deduplicates across regions — each movie saved once</li>
                                     </ul>
                                 </div>

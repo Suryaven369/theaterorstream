@@ -207,7 +207,6 @@ const Home = () => {
                                     overview: movie.overview,
                                     genres: movie.genres,
                                     runtime: movie.runtime,
-                                    images: movie.images, // Pass images for Base64 support
                                     tos_rating: movie.tos_rating // Pass TOS rating for badge
                                   }}
                                   media_type={movie.media_type || "movie"}

@@ -1,10 +1,10 @@
-import axios from "axios";
 import React, { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { FaCalendarAlt, FaChevronDown, FaFilm, FaStar } from "react-icons/fa";
+import { getUpcomingFromDb } from "../lib/contentApi";
+import { generateSlugWithId } from "../lib/slugUtils";
 
-// Available regions
 const REGIONS = [
   { code: "IN", name: "India", flag: "🇮🇳" },
   { code: "US", name: "United States", flag: "🇺🇸" },
@@ -28,26 +28,33 @@ const MONTHS = [
   { id: 11, name: "December", short: "Dec" },
 ];
 
-// Years to show (2026-2030)
 const YEARS = [2026, 2027, 2028, 2029, 2030];
+const CALENDAR_START_YEAR = YEARS[0];
+const CALENDAR_END_YEAR = YEARS[YEARS.length - 1];
+const MAX_PER_MONTH = 15;
 
-// Compact Movie Card Component
 const CompactCard = ({ movie }) => {
   const imageURL = useSelector((state) => state.movieData.imageURL);
   const posterPath = movie.poster_path
-    ? `${imageURL}${movie.poster_path}`
+    ? movie.poster_path.startsWith("http")
+      ? movie.poster_path
+      : `${imageURL}${movie.poster_path}`
     : null;
 
   const releaseDate = movie.release_date
-    ? new Date(movie.release_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-    : 'TBA';
+    ? new Date(movie.release_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    : "TBA";
+
+  const year = movie.release_date?.split("-")[0];
+  const mediaType = movie.media_type === "tv" ? "tv" : "movie";
+  const slug = generateSlugWithId(movie.title, movie.id, year);
+  const detailPath = mediaType === "tv" ? `/tv/${slug}` : `/movies/${slug}`;
 
   return (
     <Link
-      to={`/movie/${movie.id}`}
+      to={detailPath}
       className="group relative block bg-white/5 rounded-lg overflow-hidden hover:bg-white/10 transition-all duration-300 hover:scale-105 hover:shadow-xl hover:shadow-green-500/10"
     >
-      {/* Poster */}
       <div className="aspect-[2/3] relative overflow-hidden">
         {posterPath ? (
           <img
@@ -62,18 +69,15 @@ const CompactCard = ({ movie }) => {
           </div>
         )}
 
-        {/* Overlay on hover */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
-        {/* Rating Badge */}
         {movie.vote_average > 0 && (
           <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-black/70 backdrop-blur-sm">
             <FaStar className="text-yellow-400 text-[8px]" />
-            <span className="text-white text-[10px] font-medium">{movie.vote_average.toFixed(1)}</span>
+            <span className="text-white text-[10px] font-medium">{Number(movie.vote_average).toFixed(1)}</span>
           </div>
         )}
 
-        {/* Release Date Badge */}
         <div className="absolute bottom-1.5 left-1.5 right-1.5">
           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-green-500/90 backdrop-blur-sm text-[10px] text-white font-medium">
             📅 {releaseDate}
@@ -81,13 +85,12 @@ const CompactCard = ({ movie }) => {
         </div>
       </div>
 
-      {/* Title */}
       <div className="p-2">
         <h4 className="text-xs font-medium text-white truncate group-hover:text-green-400 transition-colors">
           {movie.title}
         </h4>
         <p className="text-[10px] text-white/40 mt-0.5">
-          {movie.release_date ? new Date(movie.release_date).getFullYear() : 'TBA'}
+          {movie.release_date ? new Date(movie.release_date).getFullYear() : "TBA"}
         </p>
       </div>
     </Link>
@@ -95,72 +98,60 @@ const CompactCard = ({ movie }) => {
 };
 
 const UpcomingPage = () => {
-  const [selectedRegion, setSelectedRegion] = useState(REGIONS[0]);
+  const [selectedRegion, setSelectedRegion] = useState(() => {
+    const saved = localStorage.getItem("selectedRegion");
+    return REGIONS.find((r) => r.code === saved) || REGIONS[0];
+  });
   const [isRegionOpen, setIsRegionOpen] = useState(false);
-  const [selectedYear, setSelectedYear] = useState(2026);
+  const [selectedYear, setSelectedYear] = useState(CALENDAR_START_YEAR);
   const [isYearOpen, setIsYearOpen] = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState(null); // null = show all months
+  const [selectedMonth, setSelectedMonth] = useState(null);
   const [allMovies, setAllMovies] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  // Fetch important/popular movies from 2026 to 2030
-  const fetchAllUpcoming = async () => {
-    setLoading(true);
-    try {
-      const movies = [];
-
-      // Fetch for each year to ensure coverage
-      for (const year of YEARS) {
-        const startDate = `${year}-01-01`;
-        const endDate = `${year}-12-31`;
-
-        // Fetch top movies by popularity for each year
-        for (let page = 1; page <= 5; page++) {
-          const response = await axios.get(
-            `https://api.themoviedb.org/3/discover/movie`,
-            {
-              params: {
-                api_key: import.meta.env.VITE_MOVIE_API_KEY,
-                language: "en-US",
-                page: page,
-                sort_by: "popularity.desc", // Sort by popularity to get important movies
-                "primary_release_date.gte": startDate,
-                "primary_release_date.lte": endDate,
-                with_release_type: "2|3", // Theatrical releases
-                "vote_count.gte": 0, // Include movies with any votes
-              },
-            }
-          );
-
-          if (response.data.results.length === 0) break;
-          movies.push(...response.data.results);
-
-          // Stop if we've reached the last page or have enough movies
-          if (page >= response.data.total_pages) break;
-        }
-      }
-
-      // Remove duplicates based on movie ID
-      const uniqueMovies = movies.filter((movie, index, self) =>
-        index === self.findIndex((m) => m.id === movie.id)
-      );
-
-      setAllMovies(uniqueMovies);
-    } catch (error) {
-      console.log("Error fetching upcoming:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [fetchError, setFetchError] = useState(null);
 
   useEffect(() => {
-    fetchAllUpcoming();
-  }, [selectedRegion]);
+    let cancelled = false;
 
-  // Filter movies by selected year and optionally by month (max 15 per month)
+    const fetchAllUpcoming = async () => {
+      setLoading(true);
+      setFetchError(null);
+
+      try {
+        const { data, error } = await getUpcomingFromDb({
+          yearFrom: CALENDAR_START_YEAR,
+          yearTo: CALENDAR_END_YEAR,
+          minReleaseDate: `${CALENDAR_START_YEAR}-01-01`,
+          fetchAll: true,
+        });
+
+        if (cancelled) return;
+
+        if (error) {
+          setFetchError("Could not load upcoming titles from the library.");
+          setAllMovies([]);
+        } else {
+          setAllMovies(data || []);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Error fetching upcoming from DB:", error);
+          setFetchError("Could not load upcoming titles from the library.");
+          setAllMovies([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    fetchAllUpcoming();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const filteredMovies = useMemo(() => {
-    const startDate = new Date(2026, 0, 1);
-    const MAX_PER_MONTH = 15;
+    const startDate = new Date(CALENDAR_START_YEAR, 0, 1);
 
     let filtered = allMovies.filter((movie) => {
       if (!movie.release_date) return false;
@@ -171,19 +162,14 @@ const UpcomingPage = () => {
       const movieYear = date.getFullYear();
       const movieMonth = date.getMonth();
 
-      // Filter by year
       if (movieYear !== selectedYear) return false;
-
-      // Filter by month if selected
       if (selectedMonth !== null && movieMonth !== selectedMonth) return false;
 
       return true;
     });
 
-    // Sort by release date (earliest first)
     filtered = filtered.sort((a, b) => new Date(a.release_date) - new Date(b.release_date));
 
-    // If filtering by single month, limit to MAX_PER_MONTH
     if (selectedMonth !== null) {
       filtered = filtered.slice(0, MAX_PER_MONTH);
     }
@@ -191,19 +177,14 @@ const UpcomingPage = () => {
     return filtered;
   }, [allMovies, selectedYear, selectedMonth]);
 
-  // Organize ALL movies for the year by month (max 15 per month, sorted by popularity)
-  // This is independent of selectedMonth so month counts are always accurate
   const moviesByMonth = useMemo(() => {
     const organized = {};
-    const MAX_PER_MONTH = 15;
-    const startDate = new Date(2026, 0, 1);
+    const startDate = new Date(CALENDAR_START_YEAR, 0, 1);
 
-    // Initialize all months with empty arrays
     MONTHS.forEach((month) => {
       organized[month.id] = [];
     });
 
-    // Group movies by month (filter by year only, not by selectedMonth)
     const tempOrganized = {};
     MONTHS.forEach((month) => {
       tempOrganized[month.id] = [];
@@ -215,11 +196,9 @@ const UpcomingPage = () => {
       if (date < startDate) return;
       if (date.getFullYear() !== selectedYear) return;
 
-      const month = date.getMonth();
-      tempOrganized[month].push(movie);
+      tempOrganized[date.getMonth()].push(movie);
     });
 
-    // Sort each month by release date (earliest first) and limit to MAX_PER_MONTH
     MONTHS.forEach((month) => {
       organized[month.id] = tempOrganized[month.id]
         .sort((a, b) => new Date(a.release_date) - new Date(b.release_date))
@@ -229,49 +208,37 @@ const UpcomingPage = () => {
     return organized;
   }, [allMovies, selectedYear]);
 
-  // Get movie count per month for badges (capped at 15)
   const monthCounts = useMemo(() => {
     const counts = {};
-    const MAX_PER_MONTH = 15;
-
     MONTHS.forEach((month) => {
-      const monthMovies = moviesByMonth[month.id] || [];
-      counts[month.id] = Math.min(monthMovies.length, MAX_PER_MONTH);
+      counts[month.id] = Math.min((moviesByMonth[month.id] || []).length, MAX_PER_MONTH);
     });
-
     return counts;
   }, [moviesByMonth]);
 
-  // Total movies for selected year
   const totalMoviesInYear = Object.values(monthCounts).reduce((sum, count) => sum + count, 0);
 
   const handleRegionSelect = (region) => {
     setSelectedRegion(region);
+    localStorage.setItem("selectedRegion", region.code);
     setIsRegionOpen(false);
-    setAllMovies([]);
   };
 
   const handleYearSelect = (year) => {
     setSelectedYear(year);
     setIsYearOpen(false);
-    setSelectedMonth(null); // Reset month filter when year changes
+    setSelectedMonth(null);
   };
 
   const handleMonthSelect = (monthId) => {
-    if (selectedMonth === monthId) {
-      setSelectedMonth(null); // Toggle off - show all months
-    } else {
-      setSelectedMonth(monthId);
-    }
+    setSelectedMonth((current) => (current === monthId ? null : monthId));
   };
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] pb-20 lg:pb-0">
-      {/* Header */}
       <section className="pt-16 sm:pt-20 pb-3 sm:pb-4 px-3 sm:px-4 sticky top-0 z-40 bg-[#0a0a0a]/95 backdrop-blur-md border-b border-white/5">
         <div className="container mx-auto">
           <div className="flex flex-col gap-4">
-            {/* Title Row */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 sm:gap-3">
                 <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center">
@@ -284,15 +251,14 @@ const UpcomingPage = () => {
                   <p className="text-xs text-white/40">
                     {selectedMonth !== null
                       ? `${filteredMovies.length} movies in ${MONTHS[selectedMonth].name} ${selectedYear}`
-                      : `${totalMoviesInYear} movies in ${selectedYear}`
-                    }
+                      : `${totalMoviesInYear} movies in ${selectedYear}`}
+                    {" · "}
+                    <span className="text-green-400/80">From library</span>
                   </p>
                 </div>
               </div>
 
-              {/* Right side controls */}
               <div className="flex items-center gap-3">
-                {/* Year Dropdown */}
                 <div className="relative">
                   <button
                     onClick={() => { setIsYearOpen(!isYearOpen); setIsRegionOpen(false); }}
@@ -309,8 +275,7 @@ const UpcomingPage = () => {
                         <button
                           key={year}
                           onClick={() => handleYearSelect(year)}
-                          className={`w-full flex items-center justify-center gap-2 px-4 py-2 hover:bg-white/5 transition-colors text-sm ${selectedYear === year ? "bg-green-500/10 text-green-400" : "text-white"
-                            }`}
+                          className={`w-full flex items-center justify-center gap-2 px-4 py-2 hover:bg-white/5 transition-colors text-sm ${selectedYear === year ? "bg-green-500/10 text-green-400" : "text-white"}`}
                         >
                           <span className="font-bold">{year}</span>
                         </button>
@@ -319,7 +284,6 @@ const UpcomingPage = () => {
                   )}
                 </div>
 
-                {/* Region Selector */}
                 <div className="relative">
                   <button
                     onClick={() => { setIsRegionOpen(!isRegionOpen); setIsYearOpen(false); }}
@@ -336,8 +300,7 @@ const UpcomingPage = () => {
                         <button
                           key={region.code}
                           onClick={() => handleRegionSelect(region)}
-                          className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-white/5 transition-colors text-sm ${selectedRegion.code === region.code ? "bg-green-500/10 text-green-400" : "text-white"
-                            }`}
+                          className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-white/5 transition-colors text-sm ${selectedRegion.code === region.code ? "bg-green-500/10 text-green-400" : "text-white"}`}
                         >
                           <span className="text-lg">{region.flag}</span>
                           <span className="font-medium">{region.name}</span>
@@ -349,9 +312,7 @@ const UpcomingPage = () => {
               </div>
             </div>
 
-            {/* Month Filter Pills - All 12 months */}
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
-              {/* All Months Button */}
               <button
                 onClick={() => setSelectedMonth(null)}
                 className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${selectedMonth === null
@@ -362,7 +323,6 @@ const UpcomingPage = () => {
                 All
               </button>
 
-              {/* Individual Month Buttons */}
               {MONTHS.map((month) => {
                 const count = monthCounts[month.id];
                 const hasMovies = count > 0;
@@ -382,8 +342,7 @@ const UpcomingPage = () => {
                   >
                     <span>{month.short}</span>
                     {hasMovies && (
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${isSelected ? "bg-black/20" : "bg-white/10"
-                        }`}>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${isSelected ? "bg-black/20" : "bg-white/10"}`}>
                         {count}
                       </span>
                     )}
@@ -395,7 +354,6 @@ const UpcomingPage = () => {
         </div>
       </section>
 
-      {/* Loading State */}
       {loading ? (
         <section className="px-4 py-8">
           <div className="container mx-auto">
@@ -414,18 +372,30 @@ const UpcomingPage = () => {
           </div>
         </section>
       ) : (
-        /* Content Section */
         <section className="px-4 py-6">
           <div className="container mx-auto">
-            {/* Show all months or filtered month */}
-            {selectedMonth === null ? (
-              // Show all months for the year
+            {fetchError && (
+              <div className="mb-6 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-sm">
+                {fetchError}
+              </div>
+            )}
+
+            {!fetchError && allMovies.length === 0 && (
+              <div className="text-center py-20 px-4">
+                <FaFilm className="mx-auto text-6xl text-white/10 mb-4" />
+                <h3 className="text-xl font-semibold text-white/60 mb-2">No upcoming titles in the library yet</h3>
+                <p className="text-white/40 max-w-md mx-auto">
+                  Use Admin Panel → Sync Upcoming to import release calendars into your database. This page loads instantly once titles are saved.
+                </p>
+              </div>
+            )}
+
+            {allMovies.length > 0 && selectedMonth === null ? (
               MONTHS.map((month) => {
                 const movies = moviesByMonth[month.id];
 
                 return (
                   <div key={month.id} className="mb-8">
-                    {/* Month Header */}
                     <div className="flex items-center gap-3 mb-4">
                       <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${movies.length > 0
                         ? "bg-gradient-to-br from-green-500/20 to-emerald-500/20 border border-green-500/30"
@@ -440,7 +410,7 @@ const UpcomingPage = () => {
                           {month.name}
                         </h3>
                         <p className="text-xs text-white/40">
-                          {movies.length > 0 ? `${movies.length} movie${movies.length > 1 ? 's' : ''}` : 'No releases'}
+                          {movies.length > 0 ? `${movies.length} movie${movies.length > 1 ? "s" : ""}` : "No releases"}
                         </p>
                       </div>
                       {movies.length > 0 && (
@@ -448,7 +418,6 @@ const UpcomingPage = () => {
                       )}
                     </div>
 
-                    {/* Movies Grid */}
                     {movies.length > 0 ? (
                       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2 sm:gap-3">
                         {movies.map((movie) => (
@@ -463,10 +432,8 @@ const UpcomingPage = () => {
                   </div>
                 );
               })
-            ) : (
-              // Show only selected month
+            ) : allMovies.length > 0 ? (
               <div>
-                {/* Month Header */}
                 <div className="flex items-center gap-3 mb-6">
                   <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 border border-green-500/30 flex items-center justify-center">
                     <span className="text-green-400 font-bold text-lg">
@@ -475,11 +442,10 @@ const UpcomingPage = () => {
                   </div>
                   <div>
                     <h2 className="text-2xl font-bold text-white">{MONTHS[selectedMonth].name} {selectedYear}</h2>
-                    <p className="text-sm text-white/40">{filteredMovies.length} movie{filteredMovies.length !== 1 ? 's' : ''} releasing</p>
+                    <p className="text-sm text-white/40">{filteredMovies.length} movie{filteredMovies.length !== 1 ? "s" : ""} releasing</p>
                   </div>
                 </div>
 
-                {/* Movies Grid */}
                 {filteredMovies.length > 0 ? (
                   <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2 sm:gap-3">
                     {filteredMovies.map((movie) => (
@@ -493,14 +459,13 @@ const UpcomingPage = () => {
                   </div>
                 )}
               </div>
-            )}
+            ) : null}
 
-            {/* Empty State for entire year */}
-            {totalMoviesInYear === 0 && !loading && (
+            {totalMoviesInYear === 0 && allMovies.length > 0 && !loading && (
               <div className="text-center py-20">
                 <FaFilm className="mx-auto text-6xl text-white/10 mb-4" />
                 <h3 className="text-xl font-semibold text-white/60 mb-2">No upcoming movies for {selectedYear}</h3>
-                <p className="text-white/40">Try selecting a different region or year</p>
+                <p className="text-white/40">Try selecting a different year</p>
               </div>
             )}
           </div>

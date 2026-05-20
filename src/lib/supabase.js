@@ -901,6 +901,26 @@ export const updateCollection = async (slug, updates) => {
 // HOMEPAGE SECTIONS CMS
 // =============================================
 
+/** Slim projection for list/card hydration — excludes heavy JSONB blobs */
+const LIBRARY_CARD_SELECT =
+    'tmdb_id, title, poster_path, backdrop_path, media_type, release_date, first_air_date, vote_average, overview, genres, runtime, number_of_seasons, number_of_episodes';
+
+const stripImagesBase64 = (images) => {
+    if (!images || typeof images !== 'object' || Array.isArray(images)) return images;
+    const { poster_base64, backdrop_base64, ...clean } = images;
+    return clean;
+};
+
+const stripCreditsBase64 = (credits) => {
+    if (!credits) return credits;
+    const stripPerson = ({ profile_base64, ...rest }) => rest;
+    return {
+        ...credits,
+        cast: credits.cast?.map(stripPerson),
+        crew: credits.crew?.map(stripPerson),
+    };
+};
+
 // Get all homepage sections (ordered by display_order)
 // Movies are stored per region in movies_by_region field
 export const getHomepageSections = async (activeOnly = false) => {
@@ -949,7 +969,7 @@ export const getHomepageSections = async (activeOnly = false) => {
     // We fetch a bit more info to ensure we can fully reconstruct the UI cards
     const { data: globalMovies, error: libError } = await supabase
         .from('movies_library')
-        .select('tmdb_id, title, poster_path, backdrop_path, media_type, release_date, vote_average, overview, genres, runtime, number_of_seasons, number_of_episodes, images')
+        .select(LIBRARY_CARD_SELECT)
         .in('tmdb_id', Array.from(tmdbIdsToFetch));
 
     if (libError) {
@@ -981,20 +1001,17 @@ export const getHomepageSections = async (activeOnly = false) => {
                 const tosRating = ratingsMap.get(String(rawMovie.tmdb_id));
 
                 if (globalMovie) {
-                    // MERGE: Keep explicit order from section, overwrite details from library
                     return {
-                        ...rawMovie, // keeps 'order' and any manual overrides
-                        ...globalMovie, // overwrites title, poster, images, etc. from global DB
-                        // Ensure images are properly set if library has them
-                        images: globalMovie.images || rawMovie.images,
-                        // Attach TOS rating if available
+                        ...rawMovie,
+                        ...globalMovie,
+                        release_date: globalMovie.release_date || globalMovie.first_air_date || rawMovie.release_date,
                         tos_rating: tosRating || null,
                     };
                 }
                 return {
                     ...rawMovie,
                     tos_rating: tosRating || null,
-                }; // Fallback to embedded data if library missing
+                };
             });
         });
 
@@ -1070,7 +1087,7 @@ export const deleteHomepageSection = async (id) => {
 };
 
 // Get all TV sections (ordered by display_order)
-// Hydrates from movies_library for full details + images
+// Hydrates from movies_library with slim card fields only
 export const getTVSections = async (activeOnly = false) => {
     let query = supabase
         .from('tv_sections')
@@ -1110,10 +1127,9 @@ export const getTVSections = async (activeOnly = false) => {
 
     if (tmdbIdsToFetch.size === 0) return sections;
 
-    // Fetch full details from movies_library
     const { data: globalMovies, error: libError } = await supabase
         .from('movies_library')
-        .select('tmdb_id, title, poster_path, backdrop_path, media_type, release_date, vote_average, overview, genres, runtime, number_of_seasons, number_of_episodes, images')
+        .select(LIBRARY_CARD_SELECT)
         .in('tmdb_id', Array.from(tmdbIdsToFetch));
 
     if (libError) {
@@ -1126,7 +1142,6 @@ export const getTVSections = async (activeOnly = false) => {
         movieMap.set(String(m.tmdb_id), m);
     });
 
-    // Hydrate sections
     const hydratedSections = sections.map(section => {
         if (!section.movies_by_region) return section;
 
@@ -1142,7 +1157,7 @@ export const getTVSections = async (activeOnly = false) => {
                     return {
                         ...rawMovie,
                         ...globalMovie,
-                        images: globalMovie.images || rawMovie.images,
+                        release_date: globalMovie.release_date || globalMovie.first_air_date || rawMovie.release_date,
                     };
                 }
                 return rawMovie;
@@ -1513,7 +1528,7 @@ export const getCollectionBySlug = async (slug) => {
         // Fetch full details from movies_library
         const { data: libraryMovies, error: libError } = await supabase
             .from('movies_library')
-            .select('tmdb_id, title, poster_path, backdrop_path, media_type, release_date, vote_average, overview, genres, runtime, images')
+            .select(LIBRARY_CARD_SELECT)
             .in('tmdb_id', movieIds);
 
         if (!libError && libraryMovies && libraryMovies.length > 0) {
@@ -1537,7 +1552,6 @@ export const getCollectionBySlug = async (slug) => {
                         overview: libraryMovie.overview,
                         genres: libraryMovie.genres,
                         runtime: libraryMovie.runtime,
-                        images: libraryMovie.images, // Includes base64 images
                     };
                 }
                 return collMovie;
@@ -1837,10 +1851,10 @@ export const saveFullMovieToLibrary = async (movieData, additionalData = {}) => 
         origin_country: movieData.origin_country,
         original_language: movieData.original_language,
 
-        // New Detailed JSONB Fields
-        credits: movieData.credits,                // Contains cast and crew
-        videos: movieData.videos?.results || [],   // Trailers, teasers
-        images: movieData.images,                         // Posters, backdrops
+        // New Detailed JSONB Fields (base64 stripped — use TMDB CDN paths)
+        credits: stripCreditsBase64(movieData.credits),
+        videos: movieData.videos?.results || [],
+        images: stripImagesBase64(movieData.images),
         reviews: movieData.reviews?.results || [], // TMDB user reviews
         similar_movies: movieData.similar?.results || movieData.similar || [], // Similar movies/TV
         recommendations: movieData.recommendations?.results || movieData.recommendations || [], // Recommended

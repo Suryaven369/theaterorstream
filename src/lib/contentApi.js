@@ -527,42 +527,123 @@ export const getExploreContent = async (options = {}) => {
 // UPCOMING CONTENT FROM DB
 // =============================================
 
+/** Slim fields for list/card views */
+const UPCOMING_SELECT = 'tmdb_id, title, poster_path, backdrop_path, media_type, release_date, first_air_date, vote_average, popularity, overview';
+
 /**
- * Get upcoming movies/series from database (release_date >= today)
+ * Normalize a movies_library row for frontend card components
+ */
+export const normalizeLibraryItem = (item) => {
+    if (!item) return null;
+    const releaseDate = item.release_date || item.first_air_date || null;
+    return {
+        ...item,
+        id: item.tmdb_id,
+        release_date: releaseDate,
+    };
+};
+
+/**
+ * Get upcoming movies/series from database
+ * @param {Object} options
+ * @param {string|null} options.mediaType - 'movie', 'tv', or null for both
+ * @param {number} options.limit - Page size (default 24 for explore, use 500+ for calendar views)
+ * @param {number} options.offset - Pagination offset
+ * @param {number|null} options.yearFrom - Min release year (inclusive)
+ * @param {number|null} options.yearTo - Max release year (inclusive)
+ * @param {string|null} options.minReleaseDate - ISO date lower bound (overrides upcomingOnly)
+ * @param {boolean} options.upcomingOnly - If true and no minReleaseDate, uses today
+ * @param {boolean} options.fetchAll - Paginate until all matching rows are loaded (max 2000)
  */
 export const getUpcomingFromDb = async (options = {}) => {
     const {
-        mediaType = null,    // 'movie', 'tv', or null for both
+        mediaType = null,
         limit = 24,
         offset = 0,
+        yearFrom = null,
+        yearTo = null,
+        minReleaseDate = null,
+        upcomingOnly = false,
+        fetchAll = false,
     } = options;
 
     const today = new Date().toISOString().split('T')[0];
-    const cacheKey = `upcoming:${mediaType}:${limit}:${offset}`;
+    const hasCalendarRange = yearFrom != null || yearTo != null || minReleaseDate != null;
+    const effectiveMinDate = minReleaseDate ?? ((upcomingOnly || !hasCalendarRange) ? today : null);
+
+    const cacheKey = `upcoming:${JSON.stringify(options)}`;
     const cached = getCached(cacheKey, CACHE_TTL.library);
     if (cached) return cached;
 
-    let query = supabase
-        .from('movies_library')
-        .select('*', { count: 'exact' })
-        .eq('is_active', true)
-        .gte('release_date', today)
-        .order('release_date', { ascending: true, nullsFirst: false });
+    const buildQuery = (rangeFrom, rangeTo) => {
+        let query = supabase
+            .from('movies_library')
+            .select(UPCOMING_SELECT, { count: 'exact' })
+            .eq('is_active', true)
+            .not('release_date', 'is', null)
+            .order('release_date', { ascending: true, nullsFirst: false })
+            .order('popularity', { ascending: false, nullsFirst: false });
 
-    if (mediaType) {
-        query = query.eq('media_type', mediaType);
+        if (effectiveMinDate) {
+            query = query.gte('release_date', effectiveMinDate);
+        }
+        if (yearFrom) {
+            query = query.gte('release_date', `${yearFrom}-01-01`);
+        }
+        if (yearTo) {
+            query = query.lte('release_date', `${yearTo}-12-31`);
+        }
+        if (mediaType) {
+            query = query.eq('media_type', mediaType);
+        }
+
+        return query.range(rangeFrom, rangeTo);
+    };
+
+    const PAGE_SIZE = 500;
+    const MAX_ROWS = 2000;
+
+    if (!fetchAll) {
+        const { data, error, count } = await buildQuery(offset, offset + limit - 1);
+
+        if (error) {
+            console.error('Error fetching upcoming from DB:', error);
+            return { data: [], total: 0, error };
+        }
+
+        const result = {
+            data: (data || []).map(normalizeLibraryItem),
+            total: count || 0,
+        };
+        setCache(cacheKey, result);
+        return result;
     }
 
-    query = query.range(offset, offset + limit - 1);
+    // Fetch all pages for calendar-style views
+    let allData = [];
+    let total = 0;
+    let pageOffset = 0;
 
-    const { data, error, count } = await query;
+    while (pageOffset < MAX_ROWS) {
+        const { data, error, count } = await buildQuery(pageOffset, pageOffset + PAGE_SIZE - 1);
 
-    if (error) {
-        console.error('Error fetching upcoming from DB:', error);
-        return { data: [], total: 0, error };
+        if (error) {
+            console.error('Error fetching upcoming from DB:', error);
+            return { data: allData.map(normalizeLibraryItem), total: allData.length, error };
+        }
+
+        total = count || 0;
+        const batch = data || [];
+        allData = allData.concat(batch);
+
+        if (batch.length < PAGE_SIZE || allData.length >= total) break;
+        pageOffset += PAGE_SIZE;
     }
 
-    const result = { data: data || [], total: count || 0 };
+    const result = {
+        data: allData.map(normalizeLibraryItem),
+        total,
+    };
     setCache(cacheKey, result);
     return result;
 };
