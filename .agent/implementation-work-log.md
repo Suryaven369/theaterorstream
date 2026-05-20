@@ -53,7 +53,8 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
-| `ab05710` | May 2026 | Rule: require work log update before every push |
+| *(pending)* | May 2026 | Share card polish: logo, yellow border, compact modal, no backdrop |
+| `9c53290` | May 2026 | Fix work log git history rows |
 | `5dce9b3` | May 2026 | TOS home card badge + share card UI/sharing + work log |
 | `22eceed` | May 2026 | Sync HEAD refs + align 14-task lists across agent docs |
 | `424b999` | May 2026 | Mark Task 4 `db-migrations` complete in docs |
@@ -215,5 +216,23 @@ TMDB still used: **admin panel** (import/sync), **Explore** (optional toggle), *
 ### Work log on every push (agent rule) ✅
 
 **Updated:** `.cursor/rules/task-list-sync.mdc` — agents must update `.agent/implementation-work-log.md` before every `git push` so phone `git pull` includes handoff notes.
+
+---
+
+### Share card UI polish (layout + branding + speed) ✅
+
+**Problem:** Old share card had green poster glow, TOS text instead of logo, green score dash, backdrop slow-load, desktop modal scrolled.
+
+**Files changed:** `src/components/ShareMovie.jsx`
+
+**Fixes:**
+- TOS **logo** (Cloudinary, same as header) instead of "TOS" text badge
+- Poster: **fine yellow border**, no green glow
+- Score: **yellow**, no underline/dash
+- **No backdrop image** — solid gradient BG + subtle `theaterorstream.com` watermark
+- Poster only at **w500** (faster generation)
+- Desktop modal: compact **720×560px**, no scroll
+
+**Next recommended task:** `server-tmdb-proxy` (Task #5)
 
 ---
