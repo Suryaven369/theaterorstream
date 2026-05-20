@@ -10,11 +10,13 @@ const FALLBACK_IMAGE_URL = "https://image.tmdb.org/t/p/original";
 
 const Card = ({ data, trending, index, media_type }) => {
   const reduxImageURL = useSelector((state) => state.movieData.imageURL);
+  const userRatedMovieIds = useSelector((state) => state.movieData.userRatedMovieIds);
   const imageURL = reduxImageURL || FALLBACK_IMAGE_URL;
   const mediaType = data.media_type ?? media_type;
 
+  const movieId = String(data.id ?? data.tmdb_id ?? "");
+
   // Generate SEO-friendly slug URL
-  // Format: /movies/greenland-2-840464 or /tv/breaking-bad-1396
   const movieUrl = useMemo(() => {
     const title = data?.title || data?.name || '';
     const year = data?.release_date?.split('-')[0] || data?.first_air_date?.split('-')[0];
@@ -23,9 +25,11 @@ const Card = ({ data, trending, index, media_type }) => {
     return `${basePath}/${slug}`;
   }, [data, mediaType]);
 
-  // Use pre-loaded TOS rating if available, otherwise TMDB rating
-  // TOS rating can be passed via data.tos_rating from hydrated sections
-  const tosRating = data.tos_rating || null;
+  // Show TOS badge only for movies the signed-in user has rated
+  const userRated = userRatedMovieIds[movieId];
+  const tosRating = userRated
+    ? (data.tos_rating || { score: userRated.score, count: 1 })
+    : null;
   const displayRating = tosRating ? tosRating.score : (data.vote_average || 0);
   const isTosRating = tosRating !== null;
 

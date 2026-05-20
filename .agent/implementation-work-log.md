@@ -2,7 +2,25 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** May 2026 · HEAD `424b999` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** May 2026 · HEAD `22eceed` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session sync protocol
+
+**Run at session start** — especially after `git pull` or when work was done from phone (Supabase SQL, Vercel, GitHub mobile).
+
+1. **Inspect git:** `git log --oneline -15` + diff vs `origin/main` for task-related commits.
+2. **Ask about off-git work:** SQL in Supabase Editor, env vars, deploys — these won't show in commits.
+3. **Update all four sources in one pass:**
+   - `.agent/tos-production-architecture-plan.md` (YAML todos + master table + HEAD + progress)
+   - `.agent/implementation-work-log.md` (this file)
+   - `.agent/implementation-plan-api-optimization.md` (cross-ref table)
+   - `~/.cursor/plans/tos_production_architecture_e5360011.plan.md` (Cursor plan — copy from repo plan if drifted)
+4. **Tick marks:** ✅ done · 🔄 partial · ⬜ pending — in YAML `status`, tables, and Phase 1 checkboxes.
+5. **Set HEAD** to latest `git log -1` short hash; update progress count (e.g. `5 / 14`).
+
+Cursor rule: [`.cursor/rules/task-list-sync.mdc`](../.cursor/rules/task-list-sync.mdc)
 
 ---
 
@@ -35,6 +53,8 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| *(this push)* | May 2026 | TOS home card badge + share card UI/sharing + work log |
+| `22eceed` | May 2026 | Sync HEAD refs + align 14-task lists across agent docs |
 | `424b999` | May 2026 | Mark Task 4 `db-migrations` complete in docs |
 | `6b79231` | May 2026 | Sync master task list across all agent docs |
 | `786207a` | May 2026 | Updated agent docs — Phase 1 status |
@@ -148,3 +168,45 @@ Browser (React SPA)
 ```
 
 TMDB still used: **admin panel** (import/sync), **Explore** (optional toggle), **Details** (missing library fallback).
+
+---
+
+## Session: May 2026 — UX fixes (ratings + share card)
+
+### Home page TOS badge on movie cards ✅
+
+**Problem:** After rating a movie, home cards still showed TMDB star instead of orange TOS badge.
+
+**Root cause:** Homepage Redux cache wasn’t updated after rating; Card didn’t read user’s rated movies directly.
+
+**Files changed:**
+- `src/store/movieSlice.jsx` — `userRatedMovieIds`, `markUserRatedMovie`, `patchHomepageMovieTosRating`
+- `src/lib/ratingUtils.js` — overall score helpers
+- `src/components/UserRatingSystem.jsx` — sync rating to Redux on submit
+- `src/components/Card.jsx` — show TOS badge only when signed-in user has rated that movie
+- `src/views/Home.jsx` — load user ratings on mount + refresh on tab focus
+
+**Behavior:** TMDB star by default → orange **TOS** badge immediately after you rate (and on return to Home).
+
+---
+
+### Share review card redesign + cross-platform sharing ✅
+
+**Problem:** Share card had poster not rendering (html2canvas captured before base64 load), title overlap, weak layout.
+
+**Files changed:**
+- `src/components/ShareMovie.jsx` — simple vertical layout (poster → title → score → categories); two-step image prep then capture
+- `src/lib/shareUtils.js` — Instagram Stories, WhatsApp, X, Facebook, Telegram, Reddit, native share helpers
+
+**Share options:** Quick Share (native sheet), Instagram, WhatsApp, X, Facebook, Telegram, Reddit, Copy Image, Copy Link, Download.
+
+---
+
+### Agent docs + task sync rule ✅
+
+- `.cursor/rules/task-list-sync.mdc` — sync all 4 task lists after pull / phone work
+- `.agent/implementation-work-log.md` — session sync protocol + this session log
+
+**Next recommended task:** `server-tmdb-proxy` (Task #5)
+
+---

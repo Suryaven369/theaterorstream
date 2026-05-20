@@ -9,6 +9,7 @@ const initialState = {
   homepageSections: null,          // cached homepage sections from Supabase
   homepageSectionsTimestamp: null,  // when they were fetched
   movieDetailsCache: {},            // { [movieId]: { data, castData, timestamp } }
+  userRatedMovieIds: {},            // { [movieId]: { score } } — movies the signed-in user rated
 };
 
 export const movieSlice = createSlice({
@@ -47,9 +48,47 @@ export const movieSlice = createSlice({
         state.movieDetailsCache = {};
       }
     },
+    setUserRatedMovies: (state, action) => {
+      state.userRatedMovieIds = action.payload || {};
+    },
+    markUserRatedMovie: (state, action) => {
+      const { movieId, score } = action.payload;
+      if (!movieId || score == null) return;
+      state.userRatedMovieIds[String(movieId)] = { score };
+    },
+    patchHomepageMovieTosRating: (state, action) => {
+      const { movieId, tos_rating } = action.payload;
+      if (!movieId || !tos_rating || !state.homepageSections?.length) return;
+
+      const id = String(movieId);
+      state.homepageSections = state.homepageSections.map((section) => {
+        if (!section.movies_by_region) return section;
+
+        const moviesByRegion = {};
+        Object.keys(section.movies_by_region).forEach((regionCode) => {
+          moviesByRegion[regionCode] = (section.movies_by_region[regionCode] || []).map((movie) => {
+            if (String(movie.tmdb_id) !== id) return movie;
+            return { ...movie, tos_rating };
+          });
+        });
+
+        return { ...section, movies_by_region: moviesByRegion };
+      });
+    },
   },
 });
 
-export const { setBannerData, setImageURL, updateReviewAnalysisCache, setHomepageSections, cacheMovieDetails, invalidateHomepageSections, invalidateMovieDetails } = movieSlice.actions;
+export const {
+  setBannerData,
+  setImageURL,
+  updateReviewAnalysisCache,
+  setHomepageSections,
+  cacheMovieDetails,
+  invalidateHomepageSections,
+  invalidateMovieDetails,
+  setUserRatedMovies,
+  markUserRatedMovie,
+  patchHomepageMovieTosRating,
+} = movieSlice.actions;
 
 export default movieSlice.reducer;

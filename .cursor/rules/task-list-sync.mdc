@@ -1,0 +1,53 @@
+---
+description: Keep TOS master task lists in sync after GitHub pulls and phone-side work
+alwaysApply: true
+---
+
+# Task list sync (TheaterOrStream)
+
+At the **start of every session** (especially after `git pull` or when the user says they worked from phone):
+
+## 1. Discover what changed
+
+Run in parallel:
+- `git log --oneline -15`
+- `git diff origin/main...HEAD` (or `git log origin/main..HEAD`) if behind/ahead
+- Skim recent commits for task IDs: `fix-upcoming-db`, `slim-hydration`, `edge-read-api`, `db-migrations`, `server-tmdb-proxy`, etc.
+
+Phone-only work (Supabase SQL Editor, Vercel env, manual deploy) may **not** appear in git — ask or infer from user notes.
+
+## 2. Update ALL four task sources together
+
+Never update only one file. Sync these in the same pass:
+
+| Source | Path |
+|--------|------|
+| Repo master plan | `.agent/tos-production-architecture-plan.md` |
+| Work log | `.agent/implementation-work-log.md` |
+| API plan cross-ref | `.agent/implementation-plan-api-optimization.md` |
+| Cursor plan | `~/.cursor/plans/tos_production_architecture_e5360011.plan.md` |
+
+## 3. What to update on each task change
+
+- YAML frontmatter `todos[].status`: `completed` | `pending`
+- Master table: ✅ Done · 🔄 Partial · ⬜ Pending
+- Phase 1 checkboxes `[x]` / `[ ]` where applicable
+- **HEAD** line → current `git log -1 --oneline` short hash
+- **Progress** count (e.g. `4 / 14`)
+- Work log: task section + git history table for new commits
+
+## 4. Marking complete
+
+When a task is done (code merged, or user confirms Supabase/Vercel work):
+- Tick ✅ in all tables
+- Set YAML `status: completed`
+- Add summary row under "Completed" in work log
+- Move "Next recommended" to the following pending task
+
+Partial work (e.g. `unify-content-api`): use 🔄 and note what remains.
+
+## 5. Do not
+
+- Leave Cursor plan stale while repo docs are updated
+- Mark `db-migrations` or SQL tasks complete without user confirmation when run outside git
+- Skip sync after the user mentions phone, pull, or "I finished X"

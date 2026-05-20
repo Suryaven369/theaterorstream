@@ -49,7 +49,7 @@ isProject: false
 
 # TheaterOrStream — Production Architecture & Product Redesign Plan
 
-**Branch:** `main` · **HEAD:** `424b999` · **Progress:** 4 / 14 tasks complete (Phase 1 foundation)
+**Branch:** `main` · **HEAD:** `22eceed` · **Progress:** 4 / 14 tasks complete (Phase 1 foundation)
 
 ---
 
@@ -75,6 +75,8 @@ isProject: false
 **Legend:** ✅ Done · 🔄 Partial · ⬜ Pending
 
 **Next recommended:** `server-tmdb-proxy` → `automated-sync` → `admin-control-tower`
+
+**Task sync:** After every completed task or `git pull`, update this file + [implementation-work-log.md](./implementation-work-log.md) + [Cursor plan](~/.cursor/plans/tos_production_architecture_e5360011.plan.md). See [task-list-sync rule](../.cursor/rules/task-list-sync.mdc).
 
 ---
 
@@ -691,7 +693,7 @@ This is production-viable on Supabase + Vercel without a separate backend servic
 
 See [implementation-work-log.md](./implementation-work-log.md) for session-by-session changes, commits, and deploy notes.
 
-### Completed (Phase 1 — as of May 2026, `main` @ `424b999`)
+### Completed (Phase 1 — as of May 2026, `main` @ `22eceed`)
 
 | # | Task ID | Status | Summary |
 |---|---------|--------|---------|

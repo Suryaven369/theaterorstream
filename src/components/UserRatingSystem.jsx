@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useDispatch } from "react-redux";
 import { FaArrowUp, FaArrowDown, FaStar, FaUser, FaClock, FaReply, FaTimes } from "react-icons/fa";
 import {
     getMovieReviews,
@@ -10,6 +11,8 @@ import {
     downvoteReview,
     removeUpvoteReview
 } from "../lib/supabase";
+import { computeOverallFromCategories, computeTosScoreFromAggregates } from "../lib/ratingUtils";
+import { markUserRatedMovie, patchHomepageMovieTosRating } from "../store/movieSlice";
 import { useAuth } from "../context/AuthContext";
 
 // Reddit-style rating slider
@@ -234,6 +237,7 @@ const ReviewCard = ({ review, replies = [], onUpvote, onDownvote, onReply, depth
 
 // Rating Modal Component
 export const RatingModal = ({ isOpen, onClose, movieId, movieTitle, onSubmitSuccess, existingRating, userId }) => {
+    const dispatch = useDispatch();
     const [submitting, setSubmitting] = useState(false);
     const [showSuccess, setShowSuccess] = useState(false);
 
@@ -291,11 +295,35 @@ export const RatingModal = ({ isOpen, onClose, movieId, movieTitle, onSubmitSucc
         const ratingResult = await submitRating(movieId, movieTitle, userRatings, userId || 'anonymous');
 
         if (ratingResult.success) {
+            const userScore = computeOverallFromCategories(userRatings);
+            if (userId && userId !== 'anonymous' && userScore != null) {
+                dispatch(markUserRatedMovie({ movieId: String(movieId), score: userScore }));
+
+                try {
+                    const community = await getMovieRatings(movieId);
+                    const communityScore = computeTosScoreFromAggregates(community);
+                    const tosRating = communityScore != null
+                        ? { score: communityScore, count: community.totalRatings }
+                        : { score: userScore, count: 1 };
+
+                    dispatch(patchHomepageMovieTosRating({
+                        movieId: String(movieId),
+                        tos_rating: tosRating,
+                    }));
+                } catch (error) {
+                    console.error('Error syncing TOS rating to home cache:', error);
+                    dispatch(patchHomepageMovieTosRating({
+                        movieId: String(movieId),
+                        tos_rating: { score: userScore, count: 1 },
+                    }));
+                }
+            }
+
             setShowSuccess(true);
             setTimeout(() => {
                 setShowSuccess(false);
                 onClose();
-                onSubmitSuccess?.();
+                onSubmitSuccess?.(userRatings);
             }, 1500);
         }
 

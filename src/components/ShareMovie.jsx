@@ -1,462 +1,448 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import html2canvas from "html2canvas";
-import { FaShare, FaTwitter, FaInstagram, FaFacebook, FaDownload, FaTimes, FaLink, FaReddit } from "react-icons/fa";
+import {
+    FaShare,
+    FaTwitter,
+    FaInstagram,
+    FaFacebook,
+    FaDownload,
+    FaTimes,
+    FaLink,
+    FaReddit,
+    FaWhatsapp,
+    FaTelegramPlane,
+} from "react-icons/fa";
+import {
+    TOS_SHARE_CATEGORIES,
+    calculateShareOverallScore,
+    copyImageToClipboard,
+    dataUrlToBlob,
+    downloadBlob,
+    getScoreAccentColor,
+    isMobileDevice,
+    normalizeShareRatings,
+    shareImageFile,
+    shareToFacebook,
+    shareToInstagramStories,
+    shareToReddit,
+    shareToTelegram,
+    shareToTwitter,
+    shareToWhatsApp,
+} from "../lib/shareUtils";
 
-// TOS Rating categories with colors
-const TOS_CATEGORIES = [
-    { key: "acting", label: "Acting", color: "#22c55e" },
-    { key: "screenplay", label: "Story", color: "#3b82f6" },
-    { key: "sound", label: "Sound", color: "#a855f7" },
-    { key: "direction", label: "Direction", color: "#f97316" },
-    { key: "entertainmentValue", label: "Fun", color: "#ec4899" },
-    { key: "pacing", label: "Pacing", color: "#06b6d4" },
-    { key: "cinematicQuality", label: "Visuals", color: "#f59e0b" },
-];
+const waitForImages = (container) => {
+    const images = container ? Array.from(container.querySelectorAll("img")) : [];
+    if (!images.length) return Promise.resolve();
 
-// Mini TOS Rating Circle for share card - Clean and Readable
-const MiniTOSCircle = ({ value, label, color }) => (
-    <div className="flex flex-col items-center justify-center p-1 min-w-[64px]">
-        <div
-            className="w-12 h-12 rounded-full flex items-center justify-center text-base font-black border-2 bg-black/40 backdrop-blur-sm"
-            style={{
-                borderColor: color,
-                color: '#ffffff',
-                textShadow: '0 2px 4px rgba(0,0,0,0.5)'
-            }}
-        >
-            {value?.toFixed(1) || '-'}
-        </div>
-        <span
-            className="text-[8px] uppercase tracking-[0.1em] mt-1.5 text-center font-extrabold text-white/80 drop-shadow-md leading-tight"
-        >
-            {label}
-        </span>
-    </div>
-);
+    return Promise.all(
+        images.map(
+            (img) =>
+                new Promise((resolve) => {
+                    if (img.complete && img.naturalWidth > 0) {
+                        resolve();
+                        return;
+                    }
+                    img.onload = () => resolve();
+                    img.onerror = () => resolve();
+                    window.setTimeout(resolve, 2500);
+                }),
+        ),
+    );
+};
 
-// Shareable Card Component (for generating image) - TOS Style
-const ShareableCard = React.forwardRef(({ movieTitle, movieYear, posterUrl, backdropUrl, backdropBase64, posterBase64, ratings, overallScore }, ref) => {
-
-    // Calculate percentage from 10-point scale
-    const percentage = Math.round((overallScore || 0) * 10);
-
-    // Get color for the main score ring
-    const getScoreColor = () => {
-        if (percentage >= 70) return "#22c55e"; // Green
-        if (percentage >= 50) return "#eab308"; // Yellow
-        if (percentage >= 30) return "#f97316"; // Orange
-        return "#ef4444"; // Red
-    };
-
-    const scoreColor = getScoreColor();
-
-    // Explicitly check for data URIs to ensure no CORS issues
-    const bgImage = backdropBase64 || posterBase64 || backdropUrl || posterUrl;
-    const posterDisplay = posterBase64 || posterUrl || backdropBase64 || backdropUrl;
+const ShareableCard = React.forwardRef(({
+    movieTitle,
+    movieYear,
+    posterSrc,
+    backdropSrc,
+    ratings,
+    overallScore,
+}, ref) => {
+    const accent = getScoreAccentColor(overallScore);
+    const normalizedRatings = normalizeShareRatings(ratings);
 
     return (
         <div
             ref={ref}
-            className="w-[360px] h-[640px] bg-[#0a0a0a] relative overflow-hidden flex flex-col"
-            style={{ fontFamily: "'Inter', sans-serif" }}
+            className="w-[360px] h-[640px] bg-[#0a0a0a] relative overflow-hidden"
+            style={{ fontFamily: "Inter, Arial, sans-serif" }}
         >
-            {/* Background - Blurred Art with improved visibility */}
-            <div className="absolute inset-0 z-0">
-                {bgImage ? (
-                    <img
-                        src={bgImage}
-                        alt=""
-                        className="w-full h-full object-cover opacity-50 blur-[50px] scale-150"
-                        crossOrigin="anonymous"
-                    />
-                ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-gray-900 via-black to-gray-800" />
-                )}
-                {/* Dark Vignette */}
-                <div className="absolute inset-0 bg-radial-gradient from-transparent to-black/80" />
-                <div className="absolute inset-0 bg-black/40" />
-            </div>
+            {backdropSrc && (
+                <img
+                    src={backdropSrc}
+                    alt=""
+                    className="absolute inset-0 h-full w-full object-cover blur-2xl opacity-40 scale-110"
+                />
+            )}
+            <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/70 to-black" />
 
-            {/* Content Container */}
-            <div className="relative z-10 h-full flex flex-col p-5 items-center justify-between">
-
-                {/* Header Section - Compact */}
-                <div className="w-full flex items-start justify-between mb-2 shrink-0">
-                    <div className="flex flex-col flex-1 pr-2">
-                        <span className="text-orange-500 font-extrabold text-[8px] uppercase tracking-[0.4em] mb-1 opacity-80">Rating Card</span>
-                        <h2 className="text-white font-black text-2xl leading-[1.1] drop-shadow-2xl mb-1">
-                            {movieTitle}
-                        </h2>
-                        <span className="text-white/40 text-[10px] font-bold uppercase tracking-widest">{movieYear || '2024'}</span>
+            <div className="relative z-10 flex h-full flex-col px-5 py-5">
+                <div className="flex items-center justify-between mb-4">
+                    <div>
+                        <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-orange-400">TheaterOrStream</p>
+                        <p className="text-[10px] text-white/50 mt-1">My Rating Card</p>
                     </div>
-                    <div className="flex flex-col items-end">
-                        <div className="bg-white/10 px-2 py-1.5 rounded-lg backdrop-blur-md border border-white/10">
-                            <span className="text-orange-500 font-black text-xs tracking-tighter">TOS</span>
-                        </div>
+                    <span className="rounded-lg bg-orange-500/20 px-2.5 py-1 text-xs font-bold text-orange-300">TOS</span>
+                </div>
+
+                <div className="flex flex-col items-center text-center">
+                    <div className="h-[210px] w-[140px] overflow-hidden rounded-xl border border-white/20 bg-black/40 shadow-lg">
+                        {posterSrc ? (
+                            <img src={posterSrc} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                            <div className="flex h-full w-full items-center justify-center text-4xl text-white/20">🎬</div>
+                        )}
+                    </div>
+
+                    <h2 className="mt-4 text-2xl font-bold leading-tight text-white px-2">{movieTitle}</h2>
+                    <p className="mt-1 text-sm text-white/50">{movieYear || "2024"}</p>
+
+                    <div className="mt-4 flex items-end justify-center gap-1">
+                        <span className="text-5xl font-black leading-none" style={{ color: accent }}>
+                            {overallScore.toFixed(1)}
+                        </span>
+                        <span className="pb-1 text-base text-white/30">/10</span>
                     </div>
                 </div>
 
-                {/* Visual Content Area */}
-                <div className="flex-1 w-full flex flex-col items-center justify-center gap-2">
-
-                    {/* Poster - Centerpiece */}
-                    <div className="relative mb-4">
-                        {/* Dramatic Glow */}
-                        <div
-                            className="absolute -inset-6 rounded-3xl blur-[50px] opacity-30 z-0"
-                            style={{ backgroundColor: scoreColor }}
-                        />
-
-                        <div className="w-40 h-[240px] bg-black/60 rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.8)] border border-white/10 relative z-10 transition-transform hover:scale-105 duration-500">
-                            {posterDisplay ? (
-                                <img
-                                    src={posterDisplay}
-                                    alt=""
-                                    className="w-full h-full object-cover"
-                                    crossOrigin="anonymous"
-                                />
-                            ) : (
-                                <div className="w-full h-full flex items-center justify-center bg-gray-900">
-                                    <span className="text-4xl text-white/20 font-black">?</span>
-                                </div>
-                            )}
-                        </div>
+                <div className="mt-5 rounded-2xl border border-white/10 bg-black/50 p-3">
+                    <div className="grid grid-cols-4 gap-2">
+                        {TOS_SHARE_CATEGORIES.map((cat) => (
+                            <div key={cat.key} className="rounded-lg bg-white/5 px-1 py-2 text-center">
+                                <p className="text-[8px] uppercase tracking-wide text-white/50">{cat.label}</p>
+                                <p className="text-sm font-bold" style={{ color: cat.color }}>
+                                    {normalizedRatings[cat.key]?.toFixed(1) || "—"}
+                                </p>
+                            </div>
+                        ))}
                     </div>
-
-                    {/* Score Highlight - Improved Spacing */}
-                    <div className="flex flex-col items-center mb-4">
-                        <div className="flex items-baseline gap-1.5">
-                            <span className="text-6xl font-black tracking-tighter text-white" style={{
-                                textShadow: `0 0 20px ${scoreColor}80`
-                            }}>
-                                {(overallScore || 0).toFixed(1)}
-                            </span>
-                            <span className="text-white/20 text-lg font-bold">/10</span>
-                        </div>
-                        {/* Better Underline */}
-                        <div className="h-[2px] w-14 rounded-full mt-1.5" style={{ backgroundColor: scoreColor }} />
-                    </div>
-
-                    {/* Metrics Dashboard - Flexible Layout */}
-                    <div className="w-full bg-black/40 backdrop-blur-xl rounded-2xl p-3 border border-white/10 shadow-2xl mt-auto">
-                        <div className="flex flex-wrap justify-center gap-x-2 gap-y-3">
-                            {TOS_CATEGORIES.map((cat) => (
-                                <MiniTOSCircle
-                                    key={cat.key}
-                                    value={ratings?.[cat.key]}
-                                    label={cat.label}
-                                    color={cat.color}
-                                />
-                            ))}
-                        </div>
-                    </div>
-
                 </div>
 
-                {/* Footer Branding */}
-                <div className="w-full flex items-center justify-center pt-4">
-                    <p className="text-white/10 text-[7px] font-bold tracking-[0.6em] uppercase">
-                        theaterorstream.com
-                    </p>
-                </div>
+                <p className="mt-auto pt-4 text-center text-[9px] uppercase tracking-[0.35em] text-white/25">
+                    theaterorstream.com
+                </p>
             </div>
         </div>
     );
 });
 
+ShareableCard.displayName = "ShareableCard";
 
-// Main Share Modal Component
-const ShareMovieModal = ({ isOpen, onClose, movieTitle, movieYear, posterUrl, backdropUrl, ratings, imageURL, posterBase64: initialPosterBase64, backdropBase64: initialBackdropBase64 }) => {
+const SharePlatformButton = ({ icon: Icon, label, sublabel, onClick, disabled, className }) => (
+    <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        className={`flex flex-col items-center justify-center gap-1.5 rounded-2xl border p-3 transition-all active:scale-[0.98] disabled:opacity-35 ${className}`}
+    >
+        <Icon className="text-2xl" />
+        <span className="text-[10px] font-bold uppercase tracking-[0.14em]">{label}</span>
+        {sublabel && <span className="text-[9px] text-white/35">{sublabel}</span>}
+    </button>
+);
+
+const ShareMovieModal = ({
+    isOpen,
+    onClose,
+    movieTitle,
+    movieYear,
+    posterUrl,
+    backdropUrl,
+    ratings,
+    imageURL,
+    posterBase64: initialPosterBase64,
+    backdropBase64: initialBackdropBase64,
+}) => {
     const cardRef = useRef(null);
     const [generating, setGenerating] = useState(false);
     const [shareImage, setShareImage] = useState(null);
+    const [shareBlob, setShareBlob] = useState(null);
     const [copied, setCopied] = useState(false);
-    const [backdropBase64, setBackdropBase64] = useState(initialBackdropBase64);
-    const [posterBase64, setPosterBase64] = useState(initialPosterBase64);
+    const [statusMessage, setStatusMessage] = useState("");
+    const [cardImages, setCardImages] = useState(null);
 
-    // Calculate overall score
-    const calculateOverall = () => {
-        if (!ratings) return 0;
-        const values = Object.values(ratings).filter(v => typeof v === 'number');
-        if (values.length === 0) return 0;
-        return values.reduce((a, b) => a + b, 0) / values.length;
+    const overallScore = useMemo(() => calculateShareOverallScore(ratings), [ratings]);
+    const shareUrl = window.location.href;
+    const shareText = `🎬 ${movieTitle} — TOS Rating: ${overallScore.toFixed(1)}/10`;
+
+    const fullBackdropUrl = backdropUrl
+        ? (backdropUrl.startsWith("http") ? backdropUrl : `${imageURL}${backdropUrl}`)
+        : null;
+    const fullPosterUrl = posterUrl
+        ? (posterUrl.startsWith("http") ? posterUrl : `${imageURL}${posterUrl}`)
+        : null;
+
+    const showStatus = (message) => {
+        setStatusMessage(message);
+        window.setTimeout(() => setStatusMessage(""), 4000);
     };
 
-    const overallScore = calculateOverall();
-    const fullBackdropUrl = backdropUrl ? (backdropUrl.startsWith('http') ? backdropUrl : imageURL + backdropUrl) : null;
-    const fullPosterUrl = posterUrl ? (posterUrl.startsWith('http') ? posterUrl : imageURL + posterUrl) : null;
-
-    // Convert image URL to base64 to bypass CORS
     const convertToBase64 = async (url) => {
-        try {
-            if (!url) return null;
-            if (url.startsWith('data:')) return url;
+        if (!url) return null;
+        if (url.startsWith("data:")) return url;
 
-            const blobToDataURL = (blob) => {
-                return new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onloadend = () => resolve(reader.result);
-                    reader.onerror = reject;
-                    reader.readAsDataURL(blob);
-                });
-            };
-
-            // 1. Try Direct Fetch (TMDB supports CORS)
-            try {
-                const response = await fetch(url, { mode: 'cors', credentials: 'omit' });
-                if (response.ok) {
-                    const blob = await response.blob();
-                    return await blobToDataURL(blob);
-                }
-            } catch (e) {
-                // Ignore and try proxy
-            }
-
-            // 2. Fallback to reliable proxy
-            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-            const response = await fetch(proxyUrl);
-            const blob = await response.blob();
-            return await blobToDataURL(blob);
-        } catch (error) {
-            console.error('Error converting to base64:', error);
-            // Return original URL as last resort (html2canvas might handle it if crossOrigin set)
-            return url;
-        }
-    };
-
-    // Generate shareable image
-    const generateImage = async () => {
-        if (!cardRef.current) return;
-
-        // If we don't have base64 yet, get it
-        if (!backdropBase64 && fullBackdropUrl) {
-            setGenerating(true);
-            const b64 = await convertToBase64(fullBackdropUrl);
-            if (b64) setBackdropBase64(b64);
-        }
-        if (!posterBase64 && fullPosterUrl) {
-            setGenerating(true);
-            const b64 = await convertToBase64(fullPosterUrl);
-            if (b64) setPosterBase64(b64);
-        }
-
-        setGenerating(true);
-
-        try {
-            // Give extra time for images to settle in the DOM
-            await new Promise(resolve => setTimeout(resolve, 1500));
-
-            const canvas = await html2canvas(cardRef.current, {
-                backgroundColor: '#0a0a0a',
-                scale: 3, // Even higher quality
-                useCORS: true,
-                allowTaint: true,
-                logging: false,
-                imageTimeout: 0,
+        const blobToDataURL = (blob) =>
+            new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
             });
 
-            const imageUrl = canvas.toDataURL('image/png', 1.0);
-            setShareImage(imageUrl);
-        } catch (error) {
-            console.error('Error generating image:', error);
+        try {
+            const response = await fetch(url, { mode: "cors", credentials: "omit" });
+            if (response.ok) {
+                return await blobToDataURL(await response.blob());
+            }
+        } catch {
+            // try proxy
         }
 
-        setGenerating(false);
+        try {
+            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+            const response = await fetch(proxyUrl);
+            return await blobToDataURL(await response.blob());
+        } catch (error) {
+            console.error("Error converting to base64:", error);
+            return null;
+        }
     };
 
-    // Download image
-    const downloadImage = () => {
-        if (!shareImage) return;
+    useEffect(() => {
+        if (!isOpen) return;
 
-        const link = document.createElement('a');
-        link.download = `${movieTitle?.replace(/[^a-zA-Z0-9]/g, '_')}_TOS_Rating.png`;
-        link.href = shareImage;
-        link.click();
-    };
+        let cancelled = false;
 
-    // Copy link to clipboard
-    const copyLink = async () => {
-        const url = window.location.href;
-        await navigator.clipboard.writeText(url);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-    };
+        const prepareImages = async () => {
+            setGenerating(true);
+            setShareImage(null);
+            setShareBlob(null);
+            setStatusMessage("");
+            setCardImages(null);
 
-    // Share to Twitter
-    const shareToTwitter = () => {
-        const text = `🎬 ${movieTitle} - TOS Rating: ${overallScore.toFixed(1)}/10\n\n#TheaterOrStream #MovieReview`;
-        const url = window.location.href;
-        window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`, '_blank');
-    };
+            let poster = initialPosterBase64 || null;
+            let backdrop = initialBackdropBase64 || null;
 
-    // Share to Facebook
-    const shareToFacebook = () => {
-        const url = window.location.href;
-        window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`, '_blank');
-    };
+            if (!poster && fullPosterUrl) poster = await convertToBase64(fullPosterUrl);
+            if (!backdrop && fullBackdropUrl) backdrop = await convertToBase64(fullBackdropUrl);
 
-    // Share to Reddit
-    const shareToReddit = () => {
-        const title = `Review: ${movieTitle} - ${overallScore.toFixed(1)}/10`;
-        const url = window.location.href;
-        window.open(`https://www.reddit.com/submit?url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}`, '_blank');
-    };
+            if (!poster) poster = backdrop;
+            if (!backdrop) backdrop = poster;
 
-    // Native Share (Mobile)
-    const handleNativeShare = async () => {
-        if (navigator.share && shareImage) {
+            if (!cancelled) {
+                setCardImages({ poster, backdrop });
+            }
+        };
+
+        prepareImages();
+        return () => {
+            cancelled = true;
+        };
+    }, [isOpen, initialPosterBase64, initialBackdropBase64, fullPosterUrl, fullBackdropUrl]);
+
+    useEffect(() => {
+        if (!isOpen || !cardImages || !cardRef.current) return;
+
+        let cancelled = false;
+
+        const captureCard = async () => {
+            setGenerating(true);
+            await waitForImages(cardRef.current);
+            await new Promise((resolve) => window.setTimeout(resolve, 200));
+
+            if (cancelled || !cardRef.current) return;
+
             try {
-                const blob = await (await fetch(shareImage)).blob();
-                const file = new File([blob], `${movieTitle}.png`, { type: 'image/png' });
+                const canvas = await html2canvas(cardRef.current, {
+                    backgroundColor: "#0a0a0a",
+                    scale: 3,
+                    useCORS: true,
+                    allowTaint: false,
+                    logging: false,
+                    imageTimeout: 0,
+                });
 
-                if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                    await navigator.share({
-                        title: `Review: ${movieTitle}`,
-                        text: `Check out my rating for ${movieTitle}!`,
-                        files: [file],
-                        url: window.location.href
-                    });
-                } else {
-                    await navigator.share({
-                        title: `Review: ${movieTitle}`,
-                        text: `Check out my rating for ${movieTitle}!`,
-                        url: window.location.href
-                    });
+                const imageUrl = canvas.toDataURL("image/png", 1.0);
+                const blob = await dataUrlToBlob(imageUrl);
+                if (!cancelled) {
+                    setShareImage(imageUrl);
+                    setShareBlob(blob);
                 }
-            } catch (err) {
-                console.error("Native share failed:", err);
+            } catch (error) {
+                console.error("Error generating image:", error);
+                if (!cancelled) showStatus("Could not generate the share card. Please try again.");
+            } finally {
+                if (!cancelled) setGenerating(false);
+            }
+        };
+
+        captureCard();
+        return () => {
+            cancelled = true;
+        };
+    }, [isOpen, cardImages]);
+
+    const ensureBlob = async () => {
+        if (shareBlob) return shareBlob;
+        if (!shareImage) return null;
+        return dataUrlToBlob(shareImage);
+    };
+
+    const handleNativeShare = async () => {
+        const blob = await ensureBlob();
+        if (!blob) return;
+        const result = await shareImageFile(blob, { title: `Review: ${movieTitle}`, text: shareText, url: shareUrl });
+        if (result.ok) showStatus("Choose Instagram Stories, WhatsApp, Messages, or another app.");
+    };
+
+    const handleInstagramShare = async () => {
+        const blob = await ensureBlob();
+        if (!blob) return;
+        const result = await shareToInstagramStories(blob);
+        showStatus(result.message);
+    };
+
+    const handleWhatsAppShare = async () => {
+        const blob = await ensureBlob();
+        if (!blob) return;
+        const result = await shareToWhatsApp({ text: shareText, url: shareUrl, blob });
+        showStatus(result.message);
+    };
+
+    const handleTwitterShare = async () => {
+        const blob = await ensureBlob();
+        if (blob && isMobileDevice()) {
+            const result = await shareImageFile(blob, { title: movieTitle, text: shareText, url: shareUrl });
+            if (result.ok) {
+                showStatus("Choose X/Twitter in the share menu.");
+                return;
             }
         }
+        shareToTwitter({ text: shareText, url: shareUrl });
     };
 
-    // Initial effect to handle base64 update if they change
-    React.useEffect(() => {
-        if (isOpen) {
-            if (initialBackdropBase64) setBackdropBase64(initialBackdropBase64);
-            if (initialPosterBase64) setPosterBase64(initialPosterBase64);
-            setShareImage(null);
-            generateImage();
+    const handleFacebookShare = () => shareToFacebook({ url: shareUrl });
+    const handleTelegramShare = async () => {
+        const blob = await ensureBlob();
+        if (blob && isMobileDevice()) {
+            const result = await shareImageFile(blob, { title: movieTitle, text: shareText, url: shareUrl });
+            if (result.ok) return;
         }
-    }, [isOpen, initialBackdropBase64, initialPosterBase64]);
+        shareToTelegram({ text: shareText, url: shareUrl });
+    };
+    const handleRedditShare = () => shareToReddit({ title: `Review: ${movieTitle} — ${overallScore.toFixed(1)}/10`, url: shareUrl });
+
+    const copyLink = async () => {
+        await navigator.clipboard.writeText(shareUrl);
+        setCopied(true);
+        showStatus("Movie link copied.");
+        window.setTimeout(() => setCopied(false), 2000);
+    };
+
+    const copyImage = async () => {
+        const blob = await ensureBlob();
+        if (!blob) return;
+        const ok = await copyImageToClipboard(blob);
+        showStatus(ok ? "Share card copied!" : "Copy not supported — use Download.");
+    };
+
+    const downloadImage = async () => {
+        const blob = await ensureBlob();
+        if (!blob) return;
+        downloadBlob(blob, `${movieTitle?.replace(/[^a-zA-Z0-9]/g, "_") || "movie"}_TOS_Rating.png`);
+    };
 
     if (!isOpen) return null;
 
+    const shareDisabled = generating || !shareImage;
+
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
-            <div className="bg-[#111111] rounded-3xl max-w-lg w-full max-h-[90vh] overflow-hidden border border-white/10 shadow-2xl flex flex-col">
-                {/* Modal Header */}
-                <div className="flex items-center justify-between p-5 border-b border-white/5">
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-md p-0 sm:p-4">
+            <div className="flex h-[100dvh] sm:h-auto sm:max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-none sm:rounded-3xl border border-white/10 bg-[#101010] shadow-2xl">
+                <div className="flex items-center justify-between border-b border-white/5 px-5 py-4">
                     <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center">
-                            <FaShare className="text-green-500 text-sm" />
+                        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-green-500/15">
+                            <FaShare className="text-green-400" />
                         </div>
-                        <h3 className="text-white font-bold tracking-tight">Generate Share Card</h3>
+                        <div>
+                            <h3 className="text-white font-bold">Share Your Rating</h3>
+                            <p className="text-xs text-white/40">Stories, WhatsApp, and social posts</p>
+                        </div>
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="w-10 h-10 rounded-full hover:bg-white/5 flex items-center justify-center text-white/40 hover:text-white transition-all"
-                    >
+                    <button type="button" onClick={onClose} className="flex h-10 w-10 items-center justify-center rounded-full text-white/40 hover:bg-white/5 hover:text-white">
                         <FaTimes />
                     </button>
                 </div>
 
-                {/* Content Container */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
-                    {/* Preview Card (hidden, used for generation) */}
-                    <div className="absolute left-[-9999px]">
-                        <ShareableCard
-                            ref={cardRef}
-                            movieTitle={movieTitle}
-                            movieYear={movieYear}
-                            posterUrl={fullPosterUrl}
-                            backdropUrl={fullBackdropUrl}
-                            backdropBase64={backdropBase64}
-                            posterBase64={posterBase64}
-                            ratings={ratings}
-                            overallScore={overallScore}
-                        />
-                    </div>
-
-                    {/* Image Preview Area */}
-                    <div className="flex flex-col items-center">
-                        <div className="w-full relative group">
-                            {generating || !shareImage ? (
-                                <div className="aspect-[9/16] w-full max-w-[280px] mx-auto bg-white/5 rounded-3xl flex flex-col items-center justify-center border border-dashed border-white/20">
-                                    <div className="w-12 h-12 border-4 border-green-500/30 border-t-green-500 rounded-full animate-spin mb-4" />
-                                    <p className="text-white/40 text-sm font-medium">Drafting your card...</p>
-                                </div>
-                            ) : (
-                                <div className="flex justify-center animate-in fade-in zoom-in duration-500">
-                                    <img
-                                        src={shareImage}
-                                        alt="Share preview"
-                                        className="w-full max-w-[300px] rounded-3xl shadow-[0_30px_60px_rgba(0,0,0,0.5)] border border-white/10"
-                                    />
-                                </div>
+                <div className="flex flex-1 flex-col lg:flex-row overflow-hidden">
+                    <div className="flex flex-1 items-center justify-center overflow-y-auto bg-[#0a0a0a] px-5 py-6">
+                        <div className="absolute left-[-9999px] top-0">
+                            {cardImages && (
+                                <ShareableCard
+                                    ref={cardRef}
+                                    movieTitle={movieTitle}
+                                    movieYear={movieYear}
+                                    posterSrc={cardImages.poster}
+                                    backdropSrc={cardImages.backdrop}
+                                    ratings={ratings}
+                                    overallScore={overallScore}
+                                />
                             )}
                         </div>
-                    </div>
-                </div>
 
-                {/* Footer Actions */}
-                <div className="p-6 bg-[#161616] border-t border-white/5">
-                    {/* Primary Share Action */}
-                    {navigator.share && (
-                        <button
-                            onClick={handleNativeShare}
-                            disabled={!shareImage}
-                            className="w-full py-4 mb-5 rounded-2xl bg-gradient-to-r from-green-600 to-emerald-600 text-white font-bold hover:from-green-500 hover:to-emerald-500 transition-all shadow-lg active:scale-95 flex items-center justify-center gap-3 disabled:opacity-50 disabled:grayscale"
-                        >
-                            <FaShare className="text-lg" /> Send to Instagram Stories, WhatsApp...
-                        </button>
-                    )}
-
-                    <div className="grid grid-cols-4 gap-3 mb-5">
-                        <button onClick={shareToTwitter} disabled={!shareImage} className="flex flex-col items-center justify-center gap-2 p-3 rounded-2xl bg-[#1DA1F2]/5 hover:bg-[#1DA1F2]/10 text-[#1DA1F2] transition-all border border-[#1DA1F2]/10 disabled:opacity-30">
-                            <FaTwitter className="text-xl" />
-                            <span className="text-[10px] font-bold uppercase tracking-wider">Twitter</span>
-                        </button>
-
-                        <button onClick={shareToFacebook} disabled={!shareImage} className="flex flex-col items-center justify-center gap-2 p-3 rounded-2xl bg-[#1877F2]/5 hover:bg-[#1877F2]/10 text-[#1877F2] transition-all border border-[#1877F2]/10 disabled:opacity-30">
-                            <FaFacebook className="text-xl" />
-                            <span className="text-[10px] font-bold uppercase tracking-wider">FB</span>
-                        </button>
-
-                        <button onClick={shareToReddit} disabled={!shareImage} className="flex flex-col items-center justify-center gap-2 p-3 rounded-2xl bg-[#FF4500]/5 hover:bg-[#FF4500]/10 text-[#FF4500] transition-all border border-[#FF4500]/10 disabled:opacity-30">
-                            <FaReddit className="text-xl" />
-                            <span className="text-[10px] font-bold uppercase tracking-wider">Reddit</span>
-                        </button>
-
-                        <button onClick={copyLink} disabled={!shareImage} className="flex flex-col items-center justify-center gap-2 p-3 rounded-2xl bg-white/5 hover:bg-white/10 text-white/60 transition-all border border-white/10 disabled:opacity-30">
-                            <FaLink className="text-xl" />
-                            <span className="text-[10px] font-bold uppercase tracking-wider">{copied ? 'Done!' : 'Link'}</span>
-                        </button>
+                        {generating || !shareImage ? (
+                            <div className="flex aspect-[9/16] w-full max-w-[260px] flex-col items-center justify-center rounded-2xl border border-dashed border-white/15 bg-white/[0.03]">
+                                <div className="mb-4 h-10 w-10 animate-spin rounded-full border-4 border-green-500/20 border-t-green-500" />
+                                <p className="text-sm text-white/45">Building share card...</p>
+                            </div>
+                        ) : (
+                            <img src={shareImage} alt="Share preview" className="w-full max-w-[260px] rounded-2xl border border-white/10 shadow-2xl" />
+                        )}
                     </div>
 
-                    <button
-                        onClick={downloadImage}
-                        disabled={!shareImage}
-                        className="w-full py-3.5 rounded-2xl bg-white/5 text-white font-bold hover:bg-white/10 transition-all disabled:opacity-50 flex items-center justify-center gap-2 border border-white/10"
-                    >
-                        <FaDownload className="text-white/60" /> Download for later
-                    </button>
+                    <div className="flex w-full flex-col border-t border-white/5 bg-[#141414] lg:w-[340px] lg:border-t-0 lg:border-l">
+                        <div className="flex-1 overflow-y-auto px-5 py-5">
+                            {navigator.share && (
+                                <button type="button" onClick={handleNativeShare} disabled={shareDisabled} className="mb-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-green-600 to-emerald-600 py-3.5 text-sm font-bold text-white disabled:opacity-45">
+                                    <FaShare /> Quick Share
+                                </button>
+                            )}
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <SharePlatformButton icon={FaInstagram} label="Instagram" sublabel="Stories" onClick={handleInstagramShare} disabled={shareDisabled} className="border-[#E1306C]/20 bg-[#E1306C]/10 text-[#ff6cab]" />
+                                <SharePlatformButton icon={FaWhatsapp} label="WhatsApp" sublabel="Chat" onClick={handleWhatsAppShare} disabled={shareDisabled} className="border-[#25D366]/20 bg-[#25D366]/10 text-[#6dffb0]" />
+                                <SharePlatformButton icon={FaTwitter} label="X" sublabel="Post" onClick={handleTwitterShare} disabled={shareDisabled} className="border-[#1DA1F2]/20 bg-[#1DA1F2]/10 text-[#7cc9ff]" />
+                                <SharePlatformButton icon={FaFacebook} label="Facebook" sublabel="Feed" onClick={handleFacebookShare} disabled={shareDisabled} className="border-[#1877F2]/20 bg-[#1877F2]/10 text-[#8cb6ff]" />
+                                <SharePlatformButton icon={FaTelegramPlane} label="Telegram" sublabel="Send" onClick={handleTelegramShare} disabled={shareDisabled} className="border-[#229ED9]/20 bg-[#229ED9]/10 text-[#7fd3ff]" />
+                                <SharePlatformButton icon={FaReddit} label="Reddit" sublabel="Post" onClick={handleRedditShare} disabled={shareDisabled} className="border-[#FF4500]/20 bg-[#FF4500]/10 text-[#ff9b72]" />
+                            </div>
+
+                            <div className="mt-4 grid grid-cols-2 gap-3">
+                                <button type="button" onClick={copyImage} disabled={shareDisabled} className="rounded-2xl border border-white/10 bg-white/5 py-3 text-sm font-semibold text-white/75 disabled:opacity-45">Copy Image</button>
+                                <button type="button" onClick={copyLink} disabled={shareDisabled} className="rounded-2xl border border-white/10 bg-white/5 py-3 text-sm font-semibold text-white/75 disabled:opacity-45">{copied ? "Copied" : "Copy Link"}</button>
+                            </div>
+                        </div>
+
+                        <div className="border-t border-white/5 px-5 py-4">
+                            {statusMessage && <p className="mb-3 rounded-xl border border-green-500/20 bg-green-500/10 px-3 py-2 text-xs text-green-300">{statusMessage}</p>}
+                            <button type="button" onClick={downloadImage} disabled={shareDisabled} className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 py-3 text-sm font-bold text-white disabled:opacity-45">
+                                <FaDownload /> Download Card
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     );
 };
 
-// Share Button Component (to use on Details page)
 export const ShareButton = ({ movieTitle, movieYear, posterUrl, backdropUrl, ratings, imageURL, posterBase64, backdropBase64 }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
 
     return (
         <>
-            <button
-                onClick={() => setIsModalOpen(true)}
-                className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-white/5 border border-white/10 hover:border-green-500/50 hover:bg-green-500/10 text-white font-bold transition-all group scale-100 hover:scale-[1.02] active:scale-[0.98]"
-            >
-                <FaShare className="text-green-500 group-hover:rotate-12 transition-transform" />
+            <button type="button" onClick={() => setIsModalOpen(true)} className="group flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-6 py-3 font-bold text-white transition hover:border-green-500/50 hover:bg-green-500/10">
+                <FaShare className="text-green-500" />
                 <span className="text-sm">Share Review Card</span>
             </button>
 

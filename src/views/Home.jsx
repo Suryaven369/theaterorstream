@@ -4,8 +4,11 @@ import Card from "../components/Card";
 import { FaGlobe, FaChevronDown, FaCalendarAlt } from "react-icons/fa";
 import { Link } from "react-router-dom";
 import { getHomepageSectionsFromEdge } from "../lib/contentEdgeApi";
+import { getAllUserRatings } from "../lib/supabase";
+import { computeOverallFromRatingRow } from "../lib/ratingUtils";
 import { generateSlugWithId } from "../lib/slugUtils";
-import { setHomepageSections } from "../store/movieSlice";
+import { setHomepageSections, setUserRatedMovies } from "../store/movieSlice";
+import { useAuth } from "../context/AuthContext";
 
 const SECTIONS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
@@ -25,6 +28,7 @@ const REGIONS = [
 
 const Home = () => {
   const dispatch = useDispatch();
+  const { user } = useAuth();
   const cachedSections = useSelector((state) => state.movieData.homepageSections);
   const cachedTimestamp = useSelector((state) => state.movieData.homepageSectionsTimestamp);
 
@@ -40,6 +44,47 @@ const Home = () => {
   const [isRegionOpen, setIsRegionOpen] = useState(false);
   const [cmsSections, setCmsSections] = useState(cachedSections || []);
   const [loadingSections, setLoadingSections] = useState(!cachedSections);
+
+  // Keep local sections in sync when Redux cache is patched (e.g. after rating)
+  useEffect(() => {
+    if (cachedSections) {
+      setCmsSections(cachedSections);
+    }
+  }, [cachedSections]);
+
+  // Load movies the signed-in user has rated (for TOS badge on cards)
+  useEffect(() => {
+    const loadUserRatings = async () => {
+      if (!user?.id) {
+        dispatch(setUserRatedMovies({}));
+        return;
+      }
+
+      const ratings = await getAllUserRatings(user.id);
+      const ratedMap = {};
+
+      ratings.forEach((rating) => {
+        const score = computeOverallFromRatingRow(rating);
+        if (score != null) {
+          ratedMap[String(rating.movie_id)] = { score };
+        }
+      });
+
+      dispatch(setUserRatedMovies(ratedMap));
+    };
+
+    loadUserRatings();
+
+    const refreshOnFocus = () => {
+      if (document.visibilityState === "visible") loadUserRatings();
+    };
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener("visibilitychange", refreshOnFocus);
+    return () => {
+      window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshOnFocus);
+    };
+  }, [user?.id, dispatch]);
 
   // ============================================
   // FETCH ALL SECTIONS FROM DATABASE ONCE
@@ -206,7 +251,7 @@ const Home = () => {
                                     overview: movie.overview,
                                     genres: movie.genres,
                                     runtime: movie.runtime,
-                                    tos_rating: movie.tos_rating // Pass TOS rating for badge
+                                    tos_rating: movie.tos_rating,
                                   }}
                                   media_type={movie.media_type || "movie"}
                                   index={index}
