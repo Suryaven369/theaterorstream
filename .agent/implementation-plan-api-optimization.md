@@ -1,5 +1,7 @@
 # API & Admin Panel Optimization - Implementation Plan
 
+**Last updated:** May 2026 · synced with `main` @ `027f1d9`
+
 ## ✅ COMPLETED
 
 ### Phase 1: Database Schema Updates
@@ -102,10 +104,30 @@
 
 ## Files Changed
 
-### New Files
+### New Files (Phase 1 — May 2026)
+1. `api/_lib/content-server.js` — Shared Edge Supabase queries + hydration
+2. `api/content/homepage.js` — Cached homepage sections API
+3. `api/content/tv-sections.js` — Cached TV sections API
+4. `api/content/upcoming.js` — Cached upcoming calendar API
+5. `api/content/search.js` — Cached library search API
+6. `api/content/movie/[tmdbId].js` — Cached movie detail API
+7. `src/lib/contentEdgeApi.js` — Frontend client with DB fallback
+8. `.agent/implementation-work-log.md` — Session work log
+9. `.agent/tos-production-architecture-plan.md` — Full product + architecture roadmap
+
+### New Files (earlier)
 1. `supabase_production_optimization.sql` - Schema updates with TV sections
 
-### Modified Files
+### Modified Files (Phase 1 — May 2026)
+1. `src/views/upcoming.jsx` - DB-first upcoming calendar
+2. `src/lib/contentApi.js` - Extended `getUpcomingFromDb()`
+3. `src/lib/supabase.js` - Slim hydration, strip base64 on save
+4. `src/views/AdminPanel.jsx` - No base64 on sync upcoming
+5. `src/views/admin/AdminSectionsPage.jsx` - No base64 on section import
+6. `src/components/Card.jsx` - TMDB CDN posters first
+7. `src/views/Home.jsx`, `TVSeries.jsx`, `Search.jsx`, `Details.jsx` - Edge API reads
+
+### Modified Files (earlier)
 1. `src/views/TVSeries.jsx` - **Complete rewrite** - Database-driven, matches Home.jsx
 2. `src/views/Search.jsx` - Dual-source search
 3. `src/views/Explore.jsx` - Database-driven explore

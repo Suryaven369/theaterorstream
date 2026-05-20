@@ -2,6 +2,18 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
+**Last synced with `main`:** May 2026 · HEAD `027f1d9` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Git commit history (Phase 1)
+
+| Commit | Date | Summary |
+|--------|------|---------|
+| `027f1d9` | May 2026 | Vercel Edge `/api/content/*` routes + `contentEdgeApi.js` + docs |
+| `99c54f3` | May 2026 | Added TOS production architecture plan (`.agent/`) |
+| `1e2f319` | May 2026 | Upcoming DB-first, slim hydration, remove base64 admin sync |
+
 ---
 
 ## Session: May 2026 — Phase 1 Foundation
@@ -49,7 +61,7 @@ Session log for production architecture Phase 1 work (DB-first performance + Ver
 
 ### Task 3 — Vercel Edge content routes ✅
 
-**Commit:** *(this push)*
+**Commit:** `027f1d9` — *Add Vercel Edge content API and document Phase 1 implementation work.*
 
 **New files:**
 | File | URL | Cache |

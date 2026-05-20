@@ -101,18 +101,27 @@ flowchart TB
 
 You already have the right **content model**: TMDB is ingestion, `movies_library` is runtime source of truth.
 
-**Why it still feels slow online:**
+### Fixed in Phase 1 (deployed on `main`)
+
+| Item | Status | How |
+|------|--------|-----|
+| Upcoming page TMDB loop | ✅ Fixed | [`upcoming.jsx`](src/views/upcoming.jsx) → `getUpcomingFromEdge` / DB |
+| Heavy `images` JSONB on homepage | ✅ Fixed | Slim `LIBRARY_CARD_SELECT` hydration in [`supabase.js`](src/lib/supabase.js) |
+| Base64 images in admin sync | ✅ Fixed | Removed from Sync Upcoming + AdminSections |
+| Client-only caching (shared) | ✅ Improved | Vercel Edge `/api/content/*` with CDN cache headers |
+| Public reads via Edge | ✅ Live | [`contentEdgeApi.js`](src/lib/contentEdgeApi.js) on Home, TV, Upcoming, Search, Details |
+
+### Still open
 
 | Issue | Location | Impact |
 |-------|----------|--------|
-| Upcoming page hits TMDB (~25 paginated calls) | [`src/views/upcoming.jsx`](src/views/upcoming.jsx) | Major latency + API cost |
-| Details TMDB fallback | [`src/views/Details.jsx`](src/views/Details.jsx) | Slow pages, exposed API key |
-| Homepage hydration fetches heavy `images` JSONB | [`src/lib/supabase.js`](src/lib/supabase.js) | Bloated payloads |
-| Client-only caching | Redux + in-memory Map | Cold start every session |
-| No scheduled sync | [`AdminPanel.jsx`](src/views/AdminPanel.jsx) | Stale library |
+| Details TMDB fallback when missing from library | [`src/views/Details.jsx`](src/views/Details.jsx) | Slow pages, exposed API key |
+| No scheduled sync | [`AdminPanel.jsx`](src/views/AdminPanel.jsx) | Stale library; manual admin sync |
 | Permissive RLS | SQL schemas | Security risk at scale |
+| `content_snapshots` not yet created | DB | Edge could be faster with precomputed rows |
+| Explore still has TMDB toggle | [`Explore.jsx`](src/views/Explore.jsx) | Optional client TMDB usage |
 
-**Good news:** [`src/lib/contentApi.js`](src/lib/contentApi.js) already has DB-first reads. Explore uses them; Upcoming does not.
+**Stack:** React SPA on Vercel · Supabase Postgres · Edge functions in [`api/content/`](api/content/)
 
 ---
 
@@ -157,24 +166,27 @@ flowchart TB
 
 ## Phase 1 — Fix Slow Loads + DB-First (Weeks 1–2)
 
-*Unchanged from prior plan — foundation required before personalization.*
+**Status: mostly complete** — see [implementation-work-log.md](./implementation-work-log.md)
 
 ### 1.1 Frontend quick wins
-- Switch [`upcoming.jsx`](src/views/upcoming.jsx) → `getUpcomingFromDb()`
-- Remove public TMDB fallbacks from Details, Explore, Search
-- Slim homepage hydration (no base64 `images` JSONB)
-- Unify reads through [`contentApi.js`](src/lib/contentApi.js)
+- [x] Switch [`upcoming.jsx`](src/views/upcoming.jsx) → `getUpcomingFromDb()` / Edge
+- [ ] Remove public TMDB fallbacks from Details, Explore, Search
+- [x] Slim homepage hydration (no base64 `images` JSONB)
+- [~] Unify reads through Edge + [`contentEdgeApi.js`](src/lib/contentEdgeApi.js) (Home, TV, Upcoming, Search, Details done; Explore pending)
 
-### 1.2 Vercel Edge read API
+### 1.2 Vercel Edge read API ✅
 
-| Route | Purpose | Cache |
-|-------|---------|-------|
-| `GET /api/content/homepage` | Editorial sections (transitional) | `s-maxage=300` |
-| `GET /api/content/upcoming` | Upcoming by year/month | `s-maxage=600` |
-| `GET /api/content/movie/:tmdbId` | Detail + streaming + parent guide | `s-maxage=3600` |
-| `GET /api/content/search?q=` | Full-text search | `s-maxage=120` |
+| Route | Purpose | Cache | File |
+|-------|---------|-------|------|
+| `GET /api/content/homepage` | Hydrated homepage sections | `s-maxage=300` | [`api/content/homepage.js`](api/content/homepage.js) |
+| `GET /api/content/tv-sections` | Hydrated TV sections | `s-maxage=300` | [`api/content/tv-sections.js`](api/content/tv-sections.js) |
+| `GET /api/content/upcoming` | Upcoming by year/month | `s-maxage=600` | [`api/content/upcoming.js`](api/content/upcoming.js) |
+| `GET /api/content/movie/:tmdbId` | Detail + streaming + parent guide | `s-maxage=3600` | [`api/content/movie/[tmdbId].js`](api/content/movie/[tmdbId].js) |
+| `GET /api/content/search?q=` | Full-text search | `s-maxage=120` | [`api/content/search.js`](api/content/search.js) |
 
-### 1.3 Database + security
+Shared logic: [`api/_lib/content-server.js`](api/_lib/content-server.js) · Client: [`src/lib/contentEdgeApi.js`](src/lib/contentEdgeApi.js)
+
+### 1.3 Database + security (next)
 - `content_snapshots`, `tmdb_sync_runs`, `tmdb_sync_state`, `content_events`
 - Fix RLS on `movies_library`, sections tables
 - Move `TMDB_API_KEY` server-side
@@ -647,15 +659,17 @@ This is production-viable on Supabase + Vercel without a separate backend servic
 
 See [implementation-work-log.md](./implementation-work-log.md) for session-by-session changes, commits, and deploy notes.
 
-### Completed (Phase 1 — as of May 2026)
+### Completed (Phase 1 — as of May 2026, `main` @ `027f1d9`)
 
 | Task | Status | Summary |
 |------|--------|---------|
-| Upcoming → DB-first | Done | Removed ~25 TMDB calls per visit; loads from `movies_library` |
-| Slim homepage hydration | Done | Card-only projection; no base64 in admin sync |
-| Vercel Edge read API | Done | `/api/content/*` routes + CDN cache; frontend via `contentEdgeApi.js` |
+| Upcoming → DB-first | ✅ Done | Removed ~25 TMDB calls per visit; loads from `movies_library` |
+| Slim homepage hydration | ✅ Done | Card-only projection; no base64 in admin sync |
+| Vercel Edge read API | ✅ Done | `/api/content/*` routes + CDN cache; frontend via `contentEdgeApi.js` |
 
-### Next up
+**Docs:** [implementation-work-log.md](./implementation-work-log.md) · **Repo:** [theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+### Next up (Phase 1 remainder + Phase 2)
 
 - DB migrations (`content_snapshots`, RLS hardening)
 - Move TMDB key server-side
