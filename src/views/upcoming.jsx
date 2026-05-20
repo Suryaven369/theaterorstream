@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { FaCalendarAlt, FaChevronDown, FaFilm, FaStar } from "react-icons/fa";
-import { getUpcomingFromDb } from "../lib/contentApi";
+import { getUpcomingFromEdge } from "../lib/contentEdgeApi";
 import { generateSlugWithId } from "../lib/slugUtils";
 
 const REGIONS = [
@@ -118,7 +118,7 @@ const UpcomingPage = () => {
       setFetchError(null);
 
       try {
-        const { data, error } = await getUpcomingFromDb({
+        const { data, error } = await getUpcomingFromEdge({
           yearFrom: CALENDAR_START_YEAR,
           yearTo: CALENDAR_END_YEAR,
           minReleaseDate: `${CALENDAR_START_YEAR}-01-01`,

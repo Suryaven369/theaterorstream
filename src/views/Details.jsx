@@ -12,7 +12,8 @@ import axios from "axios";
 import { FaStar, FaClock, FaCalendar, FaPlay } from "react-icons/fa";
 import { IoArrowBack } from "react-icons/io5";
 import UserRatingSystem, { RatingModal } from "../components/UserRatingSystem";
-import { getMovieRatings, getUserRatingForMovie, getAdvancedMovieFromLibrary, toggleWatchedMovie } from "../lib/supabase";
+import { getMovieRatings, getUserRatingForMovie, toggleWatchedMovie } from "../lib/supabase";
+import { getMovieDetailFromEdge } from "../lib/contentEdgeApi";
 import { ShareButton } from "../components/ShareMovie";
 import ParentGuide from "../components/ParentGuide";
 import VibeChart from "../components/VibeChart";
@@ -82,7 +83,7 @@ const Details = () => {
       try {
         // 1. Try DB first
         console.log(`Fetching details for ${movieId} (${mediaType})`);
-        const { success, data: dbData } = await getAdvancedMovieFromLibrary(movieId);
+        const { success, data: dbData } = await getMovieDetailFromEdge(movieId);
 
         let fetchedData = null;
         let fetchedCast = null;

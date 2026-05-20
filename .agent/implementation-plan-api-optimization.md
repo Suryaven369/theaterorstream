@@ -82,6 +82,11 @@
 
 ## 📋 REMAINING / OPTIONAL
 
+### Phase 1 follow-up (see `.agent/implementation-work-log.md`)
+- [x] Upcoming page → DB-first (`getUpcomingFromDb`)
+- [x] Slim homepage/TV hydration (no base64 blobs)
+- [x] Vercel Edge routes `/api/content/*` + `contentEdgeApi.js`
+
 ### Database (REQUIRED)
 - [ ] Run `supabase_production_optimization.sql` in Supabase SQL Editor
 - [ ] This will create the `tv_sections` table with default sections

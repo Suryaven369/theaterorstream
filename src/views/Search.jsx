@@ -5,7 +5,7 @@ import Card from "../components/Card";
 import { IoSearchOutline } from "react-icons/io5";
 import { FaUser, FaFilm, FaDatabase, FaGlobe } from "react-icons/fa";
 import { searchProfiles } from "../lib/supabase";
-import { searchContentFromDb } from "../lib/contentApi";
+import { searchContentFromEdge } from "../lib/contentEdgeApi";
 
 // Avatar options for profile display
 const AVATARS = {
@@ -80,7 +80,7 @@ const Search = () => {
       const limit = 24;
       const offset = (page - 1) * limit;
 
-      const result = await searchContentFromDb(displayQuery, {
+      const result = await searchContentFromEdge(displayQuery, {
         limit,
         offset,
       });

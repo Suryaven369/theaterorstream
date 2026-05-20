@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import Card from "../components/Card";
 import { FaGlobe, FaChevronDown, FaCalendarAlt } from "react-icons/fa";
 import { Link } from "react-router-dom";
-import { supabase, getTVSections } from "../lib/supabase";
+import { getTVSectionsFromEdge } from "../lib/contentEdgeApi";
 import { generateSlugWithId } from "../lib/slugUtils";
 
 // Available regions for content filtering
@@ -41,11 +41,10 @@ const TVSeries = () => {
     useEffect(() => {
         const fetchTvSections = async () => {
             setLoadingSections(true);
-            console.log("📺 Fetching TV sections from database...");
+            console.log("📺 Fetching TV sections from edge API...");
 
             try {
-                // Use centralized fetching with hydration
-                const sections = await getTVSections(true);
+                const sections = await getTVSectionsFromEdge(true);
 
                 // Count total TV shows across all regions
                 const totalShows = sections?.reduce((acc, s) => {

@@ -10,7 +10,7 @@ todos:
     status: completed
   - id: edge-read-api
     content: Create Vercel Edge routes (/api/content/*) with CDN cache headers; switch Home/Details/Search to use them
-    status: pending
+    status: completed
   - id: db-migrations
     content: Add content_snapshots, tmdb_sync_runs/state, content_events tables; fix RLS; run production optimization SQL
     status: pending
@@ -640,3 +640,23 @@ The app evolves from **"a movie catalog with CMS sections"** to **"your personal
 7. **Voyage embeddings + SQL scoring** do the heavy recommendation lifting at scale
 
 This is production-viable on Supabase + Vercel without a separate backend service, and scales to millions by keeping personalization async and cached.
+
+---
+
+## Implementation Work Log
+
+See [implementation-work-log.md](./implementation-work-log.md) for session-by-session changes, commits, and deploy notes.
+
+### Completed (Phase 1 — as of May 2026)
+
+| Task | Status | Summary |
+|------|--------|---------|
+| Upcoming → DB-first | Done | Removed ~25 TMDB calls per visit; loads from `movies_library` |
+| Slim homepage hydration | Done | Card-only projection; no base64 in admin sync |
+| Vercel Edge read API | Done | `/api/content/*` routes + CDN cache; frontend via `contentEdgeApi.js` |
+
+### Next up
+
+- DB migrations (`content_snapshots`, RLS hardening)
+- Move TMDB key server-side
+- Automated TMDB sync (Vercel Cron)

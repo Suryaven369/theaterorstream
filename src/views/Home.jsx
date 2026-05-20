@@ -3,7 +3,7 @@ import { useSelector, useDispatch } from "react-redux";
 import Card from "../components/Card";
 import { FaGlobe, FaChevronDown, FaCalendarAlt } from "react-icons/fa";
 import { Link } from "react-router-dom";
-import { getHomepageSections } from "../lib/supabase";
+import { getHomepageSectionsFromEdge } from "../lib/contentEdgeApi";
 import { generateSlugWithId } from "../lib/slugUtils";
 import { setHomepageSections } from "../store/movieSlice";
 
@@ -57,10 +57,9 @@ const Home = () => {
 
     const fetchCmsSections = async () => {
       setLoadingSections(true);
-      console.log("📦 Fetching all sections from database...");
+      console.log("📦 Fetching all sections from edge API...");
 
-      // Fetch all active sections (movies_by_region contains regional data)
-      const sections = await getHomepageSections(true);
+      const sections = await getHomepageSectionsFromEdge(true);
 
       // Count total movies across all regions
       const totalMovies = sections?.reduce((acc, s) => {
