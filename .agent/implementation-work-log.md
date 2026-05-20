@@ -101,9 +101,32 @@ TMDB is still used from the **admin panel** for import/sync — not from public 
 
 ---
 
+### Task 4 — Database migrations + RLS ✅
+
+**Commit:** *(this push)* — `supabase_phase1_content_pipeline.sql`
+
+**New tables:**
+| Table | Purpose |
+|-------|---------|
+| `content_snapshots` | Precomputed JSON for Edge reads (homepage, upcoming, etc.) |
+| `tmdb_sync_runs` | Sync job audit log (status, counts, errors) |
+| `tmdb_sync_state` | Per-job watermarks for delta sync |
+| `content_events` | Admin queue (ingest, enrich, snapshot rebuild) |
+
+**Security:**
+- `is_admin_user()` helper (checks `user_profiles.is_admin`)
+- `movies_library`, `homepage_sections`, `tv_sections`: public read active rows; writes admin-only
+- New pipeline tables: admin-only (service_role used by future Cron workers)
+
+**Manual step (Supabase SQL Editor):**
+1. Run `supabase_production_optimization.sql` if not already applied
+2. Run `supabase_phase1_content_pipeline.sql`
+
+---
+
 ## Remaining (from master plan)
 
-- [ ] `content_snapshots`, `tmdb_sync_runs`, RLS migrations
+- [ ] Apply SQL migrations in Supabase dashboard (see Task 4)
 - [ ] TMDB API key server-side only
 - [ ] Vercel Cron + automated delta sync
 - [ ] Admin control tower dashboard
