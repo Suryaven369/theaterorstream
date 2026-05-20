@@ -1,6 +1,6 @@
 # API & Admin Panel Optimization - Implementation Plan
 
-**Last updated:** May 2026 · synced with `main` @ `786207a`
+**Last updated:** May 2026 · synced with `main` @ `424b999`
 
 ---
 
@@ -12,9 +12,16 @@
 | 2 | `slim-hydration` | ✅ | See work log Task 2 |
 | 3 | `edge-read-api` | ✅ | See work log Task 3 |
 | 4 | `db-migrations` | ✅ | Applied in Supabase (May 2026) |
-| 4–7 | Phase 1–2 backend | ⬜ | TMDB proxy, cron, admin tower (#5–7) |
+| 5 | `server-tmdb-proxy` | ⬜ | TMDB key off client — **next** |
+| 6 | `automated-sync` | ⬜ | Vercel Cron + delta sync |
+| 7 | `admin-control-tower` | ⬜ | Sync history, events queue |
 | 8 | `unify-content-api` | 🔄 | Explore + Details TMDB remain |
-| 9–14 | Phase 3–7 product | ⬜ | Onboarding, reco, UX, social, AI |
+| 9 | `onboarding-redesign` | ⬜ | Phase 3 |
+| 10 | `taste-profile-schema` | ⬜ | Phase 3 |
+| 11 | `recommendation-engine` | ⬜ | Phase 4 |
+| 12 | `ux-redesign` | ⬜ | Phase 5 |
+| 13 | `phase3-social-schema` | ⬜ | Phase 6 |
+| 14 | `ai-agents-stack` | ⬜ | Phase 7 |
 
 Full table: [tos-production-architecture-plan.md](./tos-production-architecture-plan.md#master-task-list)
 

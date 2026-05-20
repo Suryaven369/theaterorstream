@@ -49,7 +49,7 @@ isProject: false
 
 # TheaterOrStream — Production Architecture & Product Redesign Plan
 
-**Branch:** `main` · **HEAD:** `6b79231` · **Progress:** 4 / 14 tasks complete (Phase 1 foundation)
+**Branch:** `main` · **HEAD:** `424b999` · **Progress:** 4 / 14 tasks complete (Phase 1 foundation)
 
 ---
 
@@ -691,14 +691,13 @@ This is production-viable on Supabase + Vercel without a separate backend servic
 
 See [implementation-work-log.md](./implementation-work-log.md) for session-by-session changes, commits, and deploy notes.
 
-### Completed (Phase 1 — as of May 2026, `main` @ `786207a`)
+### Completed (Phase 1 — as of May 2026, `main` @ `424b999`)
 
 | # | Task ID | Status | Summary |
 |---|---------|--------|---------|
 | 1 | `fix-upcoming-db` | ✅ | Removed ~25 TMDB calls per visit; loads from `movies_library` |
 | 2 | `slim-hydration` | ✅ | Card-only projection; no base64 in admin sync |
 | 3 | `edge-read-api` | ✅ | `/api/content/*` routes + CDN cache; `contentEdgeApi.js` |
-
 | 4 | `db-migrations` | ✅ | Snapshots, sync tables, RLS — applied in Supabase (May 2026) |
 
 ### In progress

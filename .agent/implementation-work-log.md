@@ -2,7 +2,7 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** May 2026 · HEAD `786207a` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** May 2026 · HEAD `424b999` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
 
 ---
 
@@ -35,7 +35,9 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
-| `786207a` | May 2026 | Updated agent docs — task list + Phase 1 status |
+| `424b999` | May 2026 | Mark Task 4 `db-migrations` complete in docs |
+| `6b79231` | May 2026 | Sync master task list across all agent docs |
+| `786207a` | May 2026 | Updated agent docs — Phase 1 status |
 | `027f1d9` | May 2026 | Vercel Edge `/api/content/*` routes + `contentEdgeApi.js` |
 | `99c54f3` | May 2026 | Added TOS production architecture plan (`.agent/`) |
 | `1e2f319` | May 2026 | Upcoming DB-first, slim hydration, remove base64 admin sync |
