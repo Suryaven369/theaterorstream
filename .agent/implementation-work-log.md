@@ -8,19 +8,19 @@ Session log for production architecture Phase 1 work (DB-first performance + Ver
 
 ## Session sync protocol
 
-**Run at session start** — especially after `git pull` or when work was done from phone (Supabase SQL, Vercel, GitHub mobile).
+**On push (agent):** Update this file with session notes + git history row + HEAD **before** every `git push`. See [`.cursor/rules/task-list-sync.mdc`](../.cursor/rules/task-list-sync.mdc).
+
+**On pull (phone/desktop):** Read this file first after `git pull origin main` — it is the handoff source of truth.
 
 1. **Inspect git:** `git log --oneline -15` + diff vs `origin/main` for task-related commits.
 2. **Ask about off-git work:** SQL in Supabase Editor, env vars, deploys — these won't show in commits.
-3. **Update all four sources in one pass:**
-   - `.agent/tos-production-architecture-plan.md` (YAML todos + master table + HEAD + progress)
+3. **Update all four sources in one pass** when task status changes:
    - `.agent/implementation-work-log.md` (this file)
-   - `.agent/implementation-plan-api-optimization.md` (cross-ref table)
-   - `~/.cursor/plans/tos_production_architecture_e5360011.plan.md` (Cursor plan — copy from repo plan if drifted)
-4. **Tick marks:** ✅ done · 🔄 partial · ⬜ pending — in YAML `status`, tables, and Phase 1 checkboxes.
-5. **Set HEAD** to latest `git log -1` short hash; update progress count (e.g. `5 / 14`).
-
-Cursor rule: [`.cursor/rules/task-list-sync.mdc`](../.cursor/rules/task-list-sync.mdc)
+   - `.agent/tos-production-architecture-plan.md`
+   - `.agent/implementation-plan-api-optimization.md`
+   - `~/.cursor/plans/tos_production_architecture_e5360011.plan.md`
+4. **Tick marks:** ✅ done · 🔄 partial · ⬜ pending
+5. **Set HEAD** to latest `git log -1` short hash
 
 ---
 
@@ -208,5 +208,11 @@ TMDB still used: **admin panel** (import/sync), **Explore** (optional toggle), *
 - `.agent/implementation-work-log.md` — session sync protocol + this session log
 
 **Next recommended task:** `server-tmdb-proxy` (Task #5)
+
+---
+
+### Work log on every push (agent rule) ✅
+
+**Updated:** `.cursor/rules/task-list-sync.mdc` — agents must update `.agent/implementation-work-log.md` before every `git push` so phone `git pull` includes handoff notes.
 
 ---
