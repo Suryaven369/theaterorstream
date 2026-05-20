@@ -49,7 +49,7 @@ isProject: false
 
 # TheaterOrStream — Production Architecture & Product Redesign Plan
 
-**Branch:** `main` · **HEAD:** `8da7637` · **Progress:** 4 / 14 tasks complete (Phase 1 foundation)
+**Branch:** `main` · **HEAD:** `32e3a8e` · **Progress:** 4 / 14 tasks complete (Phase 1 foundation)
 
 ---
 
@@ -693,7 +693,7 @@ This is production-viable on Supabase + Vercel without a separate backend servic
 
 See [implementation-work-log.md](./implementation-work-log.md) for session-by-session changes, commits, and deploy notes.
 
-### Completed (Phase 1 — as of May 2026, `main` @ `8da7637`)
+### Completed (Phase 1 — as of May 2026, `main` @ `32e3a8e`)
 
 | # | Task ID | Status | Summary |
 |---|---------|--------|---------|

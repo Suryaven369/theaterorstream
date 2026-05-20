@@ -2,7 +2,7 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** May 2026 · HEAD `29a0a6b` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** May 2026 · HEAD `32e3a8e` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
 
 ---
 
@@ -53,8 +53,8 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `32e3a8e` | May 2026 | Fix share card text clipping; larger modal preview |
 | `8da7637` | May 2026 | Share card polish: logo, yellow border, compact modal, no backdrop |
-| `7973ff8` | May 2026 | Work log HEAD sync (prior push) |
 | `5dce9b3` | May 2026 | TOS home card badge + share card UI/sharing + work log |
 | `22eceed` | May 2026 | Sync HEAD refs + align 14-task lists across agent docs |
 | `424b999` | May 2026 | Mark Task 4 `db-migrations` complete in docs |
