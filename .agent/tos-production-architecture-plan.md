@@ -13,7 +13,7 @@ todos:
     status: completed
   - id: db-migrations
     content: Add content_snapshots, tmdb_sync_runs/state, content_events tables; fix RLS; run production optimization SQL
-    status: pending
+    status: completed
   - id: server-tmdb-proxy
     content: Move TMDB_API_KEY server-side; add admin-only proxy route; remove client axios TMDB config
     status: pending
@@ -49,7 +49,7 @@ isProject: false
 
 # TheaterOrStream — Production Architecture & Product Redesign Plan
 
-**Branch:** `main` · **HEAD:** `786207a` · **Progress:** 3 / 14 tasks complete (Phase 1 foundation)
+**Branch:** `main` · **HEAD:** `6b79231` · **Progress:** 4 / 14 tasks complete (Phase 1 foundation)
 
 ---
 
@@ -60,7 +60,7 @@ isProject: false
 | 1 | `fix-upcoming-db` | Replace upcoming.jsx TMDB loop with `getUpcomingFromDb()`; year/month filters | 1 | ✅ **Done** |
 | 2 | `slim-hydration` | Slim homepage hydration; remove base64 from admin sync | 1 | ✅ **Done** |
 | 3 | `edge-read-api` | Vercel Edge `/api/content/*` + CDN cache; wire public pages | 1 | ✅ **Done** |
-| 4 | `db-migrations` | `content_snapshots`, sync tables, RLS; run production optimization SQL | 1–2 | ⬜ Pending |
+| 4 | `db-migrations` | `content_snapshots`, sync tables, RLS; run production optimization SQL | 1–2 | ✅ **Done** (Supabase, May 2026) |
 | 5 | `server-tmdb-proxy` | Move TMDB key server-side; admin-only proxy route | 1–2 | ⬜ Pending |
 | 6 | `automated-sync` | Supabase `tmdb-sync` + Vercel Cron (trending, upcoming, now_playing) | 2 | ⬜ Pending |
 | 7 | `admin-control-tower` | Admin dashboard: sync history, content_events, settings in DB | 2 | ⬜ Pending |
@@ -74,7 +74,7 @@ isProject: false
 
 **Legend:** ✅ Done · 🔄 Partial · ⬜ Pending
 
-**Next recommended:** `db-migrations` → `server-tmdb-proxy` → `automated-sync`
+**Next recommended:** `server-tmdb-proxy` → `automated-sync` → `admin-control-tower`
 
 ---
 
@@ -139,6 +139,7 @@ You already have the right **content model**: TMDB is ingestion, `movies_library
 | Base64 images in admin sync | ✅ Fixed | Removed from Sync Upcoming + AdminSections |
 | Client-only caching (shared) | ✅ Improved | Vercel Edge `/api/content/*` with CDN cache headers |
 | Public reads via Edge | ✅ Live | [`contentEdgeApi.js`](src/lib/contentEdgeApi.js) on Home, TV, Upcoming, Search, Details |
+| DB migrations + RLS | ✅ Applied | `content_snapshots`, sync tables, production optimization SQL (Supabase, May 2026) |
 
 ### Still open
 
@@ -146,9 +147,8 @@ You already have the right **content model**: TMDB is ingestion, `movies_library
 |-------|----------|--------|
 | Details TMDB fallback when missing from library | [`src/views/Details.jsx`](src/views/Details.jsx) | Slow pages, exposed API key |
 | No scheduled sync | [`AdminPanel.jsx`](src/views/AdminPanel.jsx) | Stale library; manual admin sync |
-| Permissive RLS | SQL schemas | Security risk at scale |
-| `content_snapshots` not yet created | DB | Edge could be faster with precomputed rows |
 | Explore still has TMDB toggle | [`Explore.jsx`](src/views/Explore.jsx) | Optional client TMDB usage |
+| TMDB key still in client bundle | [`src/main.jsx`](src/main.jsx) | Task #5 — server-side proxy pending |
 
 **Stack:** React SPA on Vercel · Supabase Postgres · Edge functions in [`api/content/`](api/content/)
 
@@ -215,10 +215,13 @@ flowchart TB
 
 Shared logic: [`api/_lib/content-server.js`](api/_lib/content-server.js) · Client: [`src/lib/contentEdgeApi.js`](src/lib/contentEdgeApi.js)
 
-### 1.3 Database + security (next)
-- `content_snapshots`, `tmdb_sync_runs`, `tmdb_sync_state`, `content_events`
-- Fix RLS on `movies_library`, sections tables
-- Move `TMDB_API_KEY` server-side
+### 1.3 Database + security ✅ (applied in Supabase)
+
+- [x] `content_snapshots`, `tmdb_sync_runs`, `tmdb_sync_state`, `content_events`
+- [x] RLS fixes on `movies_library`, sections tables
+- [x] `supabase_production_optimization.sql` run
+
+*Completed manually via Supabase SQL Editor (May 2026).*
 
 ---
 
@@ -696,6 +699,8 @@ See [implementation-work-log.md](./implementation-work-log.md) for session-by-se
 | 2 | `slim-hydration` | ✅ | Card-only projection; no base64 in admin sync |
 | 3 | `edge-read-api` | ✅ | `/api/content/*` routes + CDN cache; `contentEdgeApi.js` |
 
+| 4 | `db-migrations` | ✅ | Snapshots, sync tables, RLS — applied in Supabase (May 2026) |
+
 ### In progress
 
 | # | Task ID | Status | Notes |
@@ -706,7 +711,6 @@ See [implementation-work-log.md](./implementation-work-log.md) for session-by-se
 
 | # | Task ID | Priority |
 |---|---------|----------|
-| 4 | `db-migrations` | **High** — snapshots, sync tables, RLS |
 | 5 | `server-tmdb-proxy` | **High** — hide TMDB key from browser |
 | 6 | `automated-sync` | **High** — Vercel Cron + delta sync |
 | 7 | `admin-control-tower` | Medium |

@@ -11,7 +11,8 @@
 | 1 | `fix-upcoming-db` | ✅ | See work log Task 1 |
 | 2 | `slim-hydration` | ✅ | See work log Task 2 |
 | 3 | `edge-read-api` | ✅ | See work log Task 3 |
-| 4–7 | Phase 1–2 backend | ⬜ | Migrations, TMDB proxy, cron, admin tower |
+| 4 | `db-migrations` | ✅ | Applied in Supabase (May 2026) |
+| 4–7 | Phase 1–2 backend | ⬜ | TMDB proxy, cron, admin tower (#5–7) |
 | 8 | `unify-content-api` | 🔄 | Explore + Details TMDB remain |
 | 9–14 | Phase 3–7 product | ⬜ | Onboarding, reco, UX, social, AI |
 
@@ -103,7 +104,7 @@ Full table: [tos-production-architecture-plan.md](./tos-production-architecture-
 
 ### Master plan tasks — pending (see full list in architecture plan)
 
-- [ ] **#4** `db-migrations` — snapshots, sync tables, RLS
+- [x] **#4** `db-migrations` — snapshots, sync tables, RLS ✅ (Supabase, May 2026)
 - [ ] **#5** `server-tmdb-proxy` — TMDB key off client
 - [ ] **#6** `automated-sync` — Vercel Cron
 - [ ] **#7** `admin-control-tower` — admin dashboard upgrades
@@ -116,9 +117,9 @@ Full table: [tos-production-architecture-plan.md](./tos-production-architecture-
 - [x] Vercel Edge routes `/api/content/*` + `contentEdgeApi.js`
 
 ### Database (REQUIRED)
-- [ ] Run `supabase_production_optimization.sql` in Supabase SQL Editor
-- [ ] This will create the `tv_sections` table with default sections
-- [ ] Backfill genre_ids for existing records
+- [x] Run `supabase_production_optimization.sql` in Supabase SQL Editor ✅ (May 2026)
+- [x] `content_snapshots`, `tmdb_sync_runs`, `content_events` + RLS ✅ (May 2026)
+- [ ] Backfill genre_ids for existing records (if not done during migration)
 
 ### Optional Enhancements
 - [ ] Add bulk operations UI (feature/hide multiple items)

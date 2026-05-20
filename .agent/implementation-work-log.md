@@ -13,7 +13,7 @@ Session log for production architecture Phase 1 work (DB-first performance + Ver
 | 1 | `fix-upcoming-db` | Upcoming page DB-first (`getUpcomingFromDb` / Edge) | ✅ Done |
 | 2 | `slim-hydration` | Slim card hydration; no base64 in admin sync | ✅ Done |
 | 3 | `edge-read-api` | Vercel Edge `/api/content/*` + `contentEdgeApi.js` | ✅ Done |
-| 4 | `db-migrations` | Snapshots, sync tables, RLS, production SQL | ⬜ Pending |
+| 4 | `db-migrations` | Snapshots, sync tables, RLS, production SQL | ✅ Done |
 | 5 | `server-tmdb-proxy` | TMDB key server-side; admin proxy | ⬜ Pending |
 | 6 | `automated-sync` | Cron + delta TMDB sync | ⬜ Pending |
 | 7 | `admin-control-tower` | Sync history, events queue, DB settings | ⬜ Pending |
@@ -25,7 +25,7 @@ Session log for production architecture Phase 1 work (DB-first performance + Ver
 | 13 | `phase3-social-schema` | Diary, badges, following feed | ⬜ Pending |
 | 14 | `ai-agents-stack` | Background AI agents (Gateway) | ⬜ Pending |
 
-**Progress:** 3 complete · 1 partial · 10 pending
+**Progress:** 4 complete · 1 partial · 9 pending
 
 Full roadmap: [tos-production-architecture-plan.md](./tos-production-architecture-plan.md)
 
@@ -94,6 +94,20 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 | `src/lib/contentEdgeApi.js` | (client wrapper) | — |
 
 **Frontend wired:** Home, TVSeries, Upcoming, Search, Details → Edge API (DB fallback on local dev)
+
+---
+
+### Task 4 — Database migrations + RLS ✅
+
+**Task ID:** `db-migrations` · **Completed:** May 2026 (Supabase SQL Editor, from phone)
+
+**Applied in Supabase:**
+- [x] `content_snapshots` table
+- [x] `tmdb_sync_runs`, `tmdb_sync_state`, `content_events` tables
+- [x] RLS policy updates on `movies_library`, `homepage_sections`, `tv_sections`
+- [x] `supabase_production_optimization.sql` (indexes, `tv_sections`, search functions)
+
+**Note:** SQL run directly in Supabase — not yet committed as a repo migration file. Code can now use these tables in Tasks #6–7 (automated sync, admin tower).
 
 ---
 
