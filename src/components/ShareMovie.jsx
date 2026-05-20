@@ -75,17 +75,28 @@ const ShareableCard = React.forwardRef(({
     return (
         <div
             ref={ref}
-            className="relative h-[640px] w-[360px] overflow-hidden bg-[#0a0a0a]"
-            style={{ fontFamily: "Inter, Arial, sans-serif" }}
+            data-share-card
+            className="relative w-[360px] bg-[#0a0a0a]"
+            style={{
+                fontFamily: "Inter, Arial, sans-serif",
+                minHeight: "640px",
+                overflow: "visible",
+            }}
         >
-            <div className="absolute inset-0 bg-gradient-to-b from-[#111111] via-[#0a0a0a] to-[#050505]" />
+            <div
+                className="absolute inset-0 bg-gradient-to-b from-[#111111] via-[#0a0a0a] to-[#050505]"
+                style={{ minHeight: "640px" }}
+            />
 
-            <p className="pointer-events-none absolute bottom-5 left-0 right-0 z-0 text-center text-[11px] font-medium tracking-[0.35em] text-white/[0.08]">
+            <p
+                className="pointer-events-none absolute bottom-5 left-0 right-0 z-0 text-center text-[11px] font-medium tracking-[0.35em] text-white/[0.08]"
+                style={{ lineHeight: 1.4 }}
+            >
                 theaterorstream.com
             </p>
 
-            <div className="relative z-10 flex h-full flex-col px-5 pb-5 pt-5">
-                <div className="mb-4 flex items-center gap-2.5">
+            <div className="relative z-10 flex flex-col px-5 pb-6 pt-6" style={{ overflow: "visible" }}>
+                <div className="mb-4 flex items-center gap-2.5" style={{ overflow: "visible" }}>
                     {logoSrc ? (
                         <img
                             src={logoSrc}
@@ -97,13 +108,23 @@ const ShareableCard = React.forwardRef(({
                             TOS
                         </div>
                     )}
-                    <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-white">TheaterOrStream</p>
-                        <p className="text-[10px] uppercase tracking-[0.18em] text-white/45">My Rating Card</p>
+                    <div style={{ overflow: "visible", minWidth: 0 }}>
+                        <p
+                            className="text-sm font-semibold text-white"
+                            style={{ lineHeight: 1.35, overflow: "visible", whiteSpace: "normal" }}
+                        >
+                            TheaterOrStream
+                        </p>
+                        <p
+                            className="text-[10px] uppercase tracking-[0.18em] text-white/45"
+                            style={{ lineHeight: 1.4, marginTop: 2 }}
+                        >
+                            My Rating Card
+                        </p>
                     </div>
                 </div>
 
-                <div className="flex flex-col items-center text-center">
+                <div className="flex flex-col items-center text-center" style={{ overflow: "visible" }}>
                     <div className="h-[200px] w-[134px] overflow-hidden rounded-lg border border-yellow-500/45 bg-black/30 shadow-md">
                         {posterSrc ? (
                             <img src={posterSrc} alt="" className="h-full w-full object-cover" />
@@ -112,16 +133,26 @@ const ShareableCard = React.forwardRef(({
                         )}
                     </div>
 
-                    <h2 className="mt-3 line-clamp-2 px-2 text-xl font-bold leading-snug text-white">
+                    <p
+                        className="mt-4 px-3 text-xl font-bold text-white"
+                        style={{
+                            lineHeight: 1.35,
+                            overflow: "visible",
+                            wordBreak: "break-word",
+                            maxWidth: "100%",
+                        }}
+                    >
                         {movieTitle}
-                    </h2>
-                    <p className="mt-1 text-xs text-white/45">{movieYear || "2024"}</p>
+                    </p>
+                    <p className="mt-1.5 text-xs text-white/45" style={{ lineHeight: 1.4 }}>
+                        {movieYear || "2024"}
+                    </p>
 
-                    <div className="mt-3 flex items-baseline justify-center gap-1">
-                        <span className="text-5xl font-black leading-none text-yellow-400">
+                    <div className="mt-3 flex items-baseline justify-center gap-1" style={{ lineHeight: 1 }}>
+                        <span className="text-5xl font-black text-yellow-400" style={{ lineHeight: 1 }}>
                             {overallScore.toFixed(1)}
                         </span>
-                        <span className="text-base text-white/30">/10</span>
+                        <span className="pb-1 text-base text-white/30">/10</span>
                     </div>
                 </div>
 
@@ -129,8 +160,10 @@ const ShareableCard = React.forwardRef(({
                     <div className="grid grid-cols-4 gap-1.5">
                         {TOS_SHARE_CATEGORIES.map((cat) => (
                             <div key={cat.key} className="rounded-md bg-white/[0.04] px-1 py-1.5 text-center">
-                                <p className="text-[7px] uppercase tracking-wide text-white/45">{cat.label}</p>
-                                <p className="text-xs font-bold" style={{ color: cat.color }}>
+                                <p className="text-[7px] uppercase tracking-wide text-white/45" style={{ lineHeight: 1.3 }}>
+                                    {cat.label}
+                                </p>
+                                <p className="text-xs font-bold" style={{ color: cat.color, lineHeight: 1.3 }}>
                                     {normalizedRatings[cat.key]?.toFixed(1) || "—"}
                                 </p>
                             </div>
@@ -263,6 +296,16 @@ const ShareMovieModal = ({
                     allowTaint: false,
                     logging: false,
                     imageTimeout: 0,
+                    onclone: (clonedDoc) => {
+                        const card = clonedDoc.querySelector("[data-share-card]");
+                        if (!card) return;
+                        card.style.overflow = "visible";
+                        card.querySelectorAll("p, span, div").forEach((node) => {
+                            node.style.overflow = "visible";
+                            node.style.textOverflow = "clip";
+                            node.style.webkitLineClamp = "unset";
+                        });
+                    },
                 });
 
                 const imageUrl = canvas.toDataURL("image/png", 1.0);
@@ -358,7 +401,7 @@ const ShareMovieModal = ({
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-3 sm:p-4">
-            <div className="flex h-auto max-h-[min(560px,92dvh)] w-full max-w-[720px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#101010] shadow-2xl sm:max-h-[560px]">
+            <div className="flex h-auto max-h-[min(620px,94dvh)] w-full max-w-[860px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#101010] shadow-2xl sm:max-h-[620px]">
                 <div className="flex shrink-0 items-center justify-between border-b border-white/5 px-4 py-3">
                     <div className="flex items-center gap-2.5">
                         <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-green-500/15">
@@ -375,8 +418,8 @@ const ShareMovieModal = ({
                 </div>
 
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden sm:flex-row">
-                    <div className="flex shrink-0 items-center justify-center bg-[#0a0a0a] px-4 py-3 sm:w-[200px] sm:border-r sm:border-white/5">
-                        <div className="absolute left-[-9999px] top-0">
+                    <div className="flex shrink-0 items-center justify-center bg-[#0a0a0a] px-5 py-4 sm:w-[260px] sm:border-r sm:border-white/5">
+                        <div className="absolute left-0 top-0 -z-10 opacity-0 pointer-events-none" aria-hidden="true">
                             {cardImages && (
                                 <ShareableCard
                                     ref={cardRef}
@@ -391,15 +434,15 @@ const ShareMovieModal = ({
                         </div>
 
                         {generating || !shareImage ? (
-                            <div className="flex h-[280px] w-[158px] flex-col items-center justify-center rounded-xl border border-dashed border-white/15 bg-white/[0.03]">
-                                <div className="mb-3 h-8 w-8 animate-spin rounded-full border-[3px] border-yellow-500/20 border-t-yellow-500" />
+                            <div className="flex h-[380px] w-[214px] flex-col items-center justify-center rounded-xl border border-dashed border-white/15 bg-white/[0.03]">
+                                <div className="mb-3 h-9 w-9 animate-spin rounded-full border-[3px] border-yellow-500/20 border-t-yellow-500" />
                                 <p className="text-xs text-white/45">Building...</p>
                             </div>
                         ) : (
                             <img
                                 src={shareImage}
                                 alt="Share preview"
-                                className="h-[280px] w-auto rounded-xl border border-white/10 object-contain shadow-lg"
+                                className="h-[380px] w-auto max-w-[214px] rounded-xl border border-white/10 object-contain shadow-lg"
                             />
                         )}
                     </div>

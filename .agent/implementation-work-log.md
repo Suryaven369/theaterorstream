@@ -54,7 +54,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 | Commit | Date | Summary |
 |--------|------|---------|
 | `8da7637` | May 2026 | Share card polish: logo, yellow border, compact modal, no backdrop |
-| `9c53290` | May 2026 | Fix work log git history rows |
+| `7973ff8` | May 2026 | Work log HEAD sync (prior push) |
 | `5dce9b3` | May 2026 | TOS home card badge + share card UI/sharing + work log |
 | `22eceed` | May 2026 | Sync HEAD refs + align 14-task lists across agent docs |
 | `424b999` | May 2026 | Mark Task 4 `db-migrations` complete in docs |
@@ -232,6 +232,19 @@ TMDB still used: **admin panel** (import/sync), **Explore** (optional toggle), *
 - **No backdrop image** — solid gradient BG + subtle `theaterorstream.com` watermark
 - Poster only at **w500** (faster generation)
 - Desktop modal: compact **720×560px**, no scroll
+
+---
+
+### Share card text clipping + larger modal preview ✅
+
+**Problem:** Brand name and movie title cut off in exported PNG. Modal preview too small.
+
+**Files changed:** `src/components/ShareMovie.jsx`
+
+**Fixes:**
+- Removed `line-clamp` / `truncate` (html2canvas clipping bug)
+- `onclone` overflow cleanup; card captured in-layout not off-screen
+- Modal preview **380px** tall; dialog **860×620px** max
 
 **Next recommended task:** `server-tmdb-proxy` (Task #5)
 
