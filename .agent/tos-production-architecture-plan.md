@@ -13,7 +13,7 @@ todos:
     status: completed
   - id: db-migrations
     content: Add content_snapshots, tmdb_sync_runs/state, content_events tables; fix RLS; run production optimization SQL
-    status: pending
+    status: completed
   - id: server-tmdb-proxy
     content: Move TMDB_API_KEY server-side; add admin-only proxy route; remove client axios TMDB config
     status: pending
