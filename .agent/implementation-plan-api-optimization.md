@@ -1,6 +1,23 @@
 # API & Admin Panel Optimization - Implementation Plan
 
-**Last updated:** May 2026 · synced with `main` @ `027f1d9`
+**Last updated:** May 2026 · synced with `main` @ `786207a`
+
+---
+
+## Master Task List (cross-ref)
+
+| # | ID | Status | Notes |
+|---|-----|--------|-------|
+| 1 | `fix-upcoming-db` | ✅ | See work log Task 1 |
+| 2 | `slim-hydration` | ✅ | See work log Task 2 |
+| 3 | `edge-read-api` | ✅ | See work log Task 3 |
+| 4–7 | Phase 1–2 backend | ⬜ | Migrations, TMDB proxy, cron, admin tower |
+| 8 | `unify-content-api` | 🔄 | Explore + Details TMDB remain |
+| 9–14 | Phase 3–7 product | ⬜ | Onboarding, reco, UX, social, AI |
+
+Full table: [tos-production-architecture-plan.md](./tos-production-architecture-plan.md#master-task-list)
+
+---
 
 ## ✅ COMPLETED
 
@@ -84,7 +101,16 @@
 
 ## 📋 REMAINING / OPTIONAL
 
-### Phase 1 follow-up (see `.agent/implementation-work-log.md`)
+### Master plan tasks — pending (see full list in architecture plan)
+
+- [ ] **#4** `db-migrations` — snapshots, sync tables, RLS
+- [ ] **#5** `server-tmdb-proxy` — TMDB key off client
+- [ ] **#6** `automated-sync` — Vercel Cron
+- [ ] **#7** `admin-control-tower` — admin dashboard upgrades
+- [ ] **#8** `unify-content-api` — finish Explore/Details (partial done)
+- [ ] **#9–14** — onboarding, taste profiles, reco engine, UX redesign, social, AI
+
+### Phase 1 follow-up (completed ✅)
 - [x] Upcoming page → DB-first (`getUpcomingFromDb`)
 - [x] Slim homepage/TV hydration (no base64 blobs)
 - [x] Vercel Edge routes `/api/content/*` + `contentEdgeApi.js`

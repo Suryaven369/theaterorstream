@@ -2,7 +2,32 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** May 2026 · HEAD `027f1d9` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** May 2026 · HEAD `786207a` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Master Task List
+
+| # | ID | Task | Status |
+|---|-----|------|--------|
+| 1 | `fix-upcoming-db` | Upcoming page DB-first (`getUpcomingFromDb` / Edge) | ✅ Done |
+| 2 | `slim-hydration` | Slim card hydration; no base64 in admin sync | ✅ Done |
+| 3 | `edge-read-api` | Vercel Edge `/api/content/*` + `contentEdgeApi.js` | ✅ Done |
+| 4 | `db-migrations` | Snapshots, sync tables, RLS, production SQL | ⬜ Pending |
+| 5 | `server-tmdb-proxy` | TMDB key server-side; admin proxy | ⬜ Pending |
+| 6 | `automated-sync` | Cron + delta TMDB sync | ⬜ Pending |
+| 7 | `admin-control-tower` | Sync history, events queue, DB settings | ⬜ Pending |
+| 8 | `unify-content-api` | Full Edge adoption; remove Explore/Details TMDB | 🔄 Partial |
+| 9 | `onboarding-redesign` | 5-step taste onboarding wizard | ⬜ Pending |
+| 10 | `taste-profile-schema` | User taste profiles + rebuild worker | ⬜ Pending |
+| 11 | `recommendation-engine` | Hybrid reco API | ⬜ Pending |
+| 12 | `ux-redesign` | Watch Tonight, Family hub, personalized home | ⬜ Pending |
+| 13 | `phase3-social-schema` | Diary, badges, following feed | ⬜ Pending |
+| 14 | `ai-agents-stack` | Background AI agents (Gateway) | ⬜ Pending |
+
+**Progress:** 3 complete · 1 partial · 10 pending
+
+Full roadmap: [tos-production-architecture-plan.md](./tos-production-architecture-plan.md)
 
 ---
 
@@ -10,7 +35,8 @@ Session log for production architecture Phase 1 work (DB-first performance + Ver
 
 | Commit | Date | Summary |
 |--------|------|---------|
-| `027f1d9` | May 2026 | Vercel Edge `/api/content/*` routes + `contentEdgeApi.js` + docs |
+| `786207a` | May 2026 | Updated agent docs — task list + Phase 1 status |
+| `027f1d9` | May 2026 | Vercel Edge `/api/content/*` routes + `contentEdgeApi.js` |
 | `99c54f3` | May 2026 | Added TOS production architecture plan (`.agent/`) |
 | `1e2f319` | May 2026 | Upcoming DB-first, slim hydration, remove base64 admin sync |
 
@@ -28,40 +54,33 @@ Session log for production architecture Phase 1 work (DB-first performance + Ver
 
 ### Task 1 — Upcoming page DB-first ✅
 
-**Commit:** `1e2f319` — *Switch upcoming page and homepage hydration to DB-first reads.*
+**Task ID:** `fix-upcoming-db` · **Commit:** `1e2f319`
 
 **Files changed:**
-- `src/views/upcoming.jsx` — Replaced TMDB axios loop with `getUpcomingFromDb()`
+- `src/views/upcoming.jsx` — Replaced TMDB axios loop with `getUpcomingFromDb()` / Edge
 - `src/lib/contentApi.js` — Extended `getUpcomingFromDb()` (year range, `fetchAll`, slim select, `normalizeLibraryItem`)
 
 **Before:** ~25 TMDB API calls per Upcoming page visit (2026–2030 discover loop)  
-**After:** 1 Supabase query, cached 2 min in client; zero TMDB on that page
-
-**Notes:**
-- Empty library shows admin hint to run **Sync Upcoming**
-- Cards use slug URLs (`/movies/...`, `/tv/...`)
+**After:** 1 Supabase query (Edge-cached in production); zero TMDB on that page
 
 ---
 
 ### Task 2 — Slim hydration + remove base64 storage ✅
 
-**Included in commit:** `1e2f319`
+**Task ID:** `slim-hydration` · **Commit:** `1e2f319`
 
 **Files changed:**
-- `src/lib/supabase.js` — `LIBRARY_CARD_SELECT`; slim `getHomepageSections` / `getTVSections`; strip base64 in `saveFullMovieToLibrary`
-- `src/views/AdminPanel.jsx` — Removed base64 conversion from Sync Upcoming
-- `src/views/admin/AdminSectionsPage.jsx` — Removed base64 + cast image embedding on section import
-- `src/components/Card.jsx` — TMDB CDN poster first; base64 legacy fallback only
-- `src/views/Home.jsx`, `TVSeries.jsx`, `Search.jsx` — Stop passing `images` JSONB to cards
-
-**Before:** Homepage hydration fetched heavy `images` JSONB (often base64) for every card  
-**After:** ~12-field card projection; new saves use TMDB paths only
+- `src/lib/supabase.js` — `LIBRARY_CARD_SELECT`; slim hydration; strip base64 on save
+- `src/views/AdminPanel.jsx` — Removed base64 from Sync Upcoming
+- `src/views/admin/AdminSectionsPage.jsx` — Removed base64 on section import
+- `src/components/Card.jsx` — TMDB CDN posters first
+- `src/views/Home.jsx`, `TVSeries.jsx`, `Search.jsx` — Stop passing `images` JSONB
 
 ---
 
 ### Task 3 — Vercel Edge content routes ✅
 
-**Commit:** `027f1d9` — *Add Vercel Edge content API and document Phase 1 implementation work.*
+**Task ID:** `edge-read-api` · **Commit:** `027f1d9`
 
 **New files:**
 | File | URL | Cache |
@@ -74,51 +93,42 @@ Session log for production architecture Phase 1 work (DB-first performance + Ver
 | `api/content/movie/[tmdbId].js` | `GET /api/content/movie/:id` | 1 hr + SWR |
 | `src/lib/contentEdgeApi.js` | (client wrapper) | — |
 
-**Frontend wired:**
-- `Home.jsx` → `getHomepageSectionsFromEdge`
-- `TVSeries.jsx` → `getTVSectionsFromEdge`
-- `upcoming.jsx` → `getUpcomingFromEdge`
-- `Search.jsx` → `searchContentFromEdge`
-- `Details.jsx` → `getMovieDetailFromEdge`
+**Frontend wired:** Home, TVSeries, Upcoming, Search, Details → Edge API (DB fallback on local dev)
 
-**Fallback:** If Edge API unavailable (local `npm run dev`), auto-falls back to direct Supabase via dynamic import.
+---
+
+### Task 8 — Unify content API 🔄 Partial
+
+**Task ID:** `unify-content-api` · **Not started fully**
+
+| Page | Read path | TMDB fallback? |
+|------|-----------|----------------|
+| Home | Edge ✅ | No |
+| TV Series | Edge ✅ | No |
+| Upcoming | Edge ✅ | No |
+| Search | Edge ✅ | No |
+| Details | Edge ✅ | Yes — if not in library |
+| Explore | `contentApi.js` | Yes — user toggle |
 
 ---
 
 ## Deploy checklist (Vercel)
 
-1. **Env vars** (Production + Preview):
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
+1. **Env vars** (Production + Preview): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
 2. Redeploy after env changes
-3. **Verify after deploy:**
-   - `https://www.theaterorstream.com/api/content/homepage` → JSON `{ data: [...] }`
-   - Homepage Network tab shows `/api/content/homepage` (200)
-4. **Local dev:** `npm run dev` uses DB fallback; use `vercel dev` to test Edge routes locally
+3. **Verify:** `https://www.theaterorstream.com/api/content/homepage` → JSON `{ data: [...] }`
+4. **Local dev:** `npm run dev` → DB fallback; `vercel dev` → Edge routes
 
 ---
 
-## Architecture after this session
+## Architecture (current)
 
 ```
 Browser (React SPA)
     │
-    ├── GET /api/content/*  →  Vercel Edge (cached)  →  Supabase
-    │       (production)
+    ├── GET /api/content/*  →  Vercel Edge (cached)  →  Supabase   [production]
     │
-    └── Direct Supabase     (local dev fallback)
+    └── Direct Supabase                                         [local dev fallback]
 ```
 
-TMDB is still used from the **admin panel** for import/sync — not from public Upcoming page.
-
----
-
-## Remaining (from master plan)
-
-- [ ] `content_snapshots`, `tmdb_sync_runs`, RLS migrations
-- [ ] TMDB API key server-side only
-- [ ] Vercel Cron + automated delta sync
-- [ ] Admin control tower dashboard
-- [ ] Onboarding + taste profiles + recommendations (Phase 3+)
-
-See [tos-production-architecture-plan.md](./tos-production-architecture-plan.md) for full roadmap.
+TMDB still used: **admin panel** (import/sync), **Explore** (optional toggle), **Details** (missing library fallback).

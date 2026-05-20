@@ -24,7 +24,7 @@ todos:
     content: "Refactor AdminPanel dashboard: sync history, content_events queue, persist settings to Supabase"
     status: pending
   - id: unify-content-api
-    content: Consolidate public reads into contentApi.js; remove TMDB fallbacks from public pages
+    content: "Partial — Home/TV/Upcoming/Search/Details on Edge; remove TMDB fallbacks from Explore/Details"
     status: pending
   - id: onboarding-redesign
     content: "Multi-step onboarding: OTT platforms, genres, mood, family mode, rate 10 seed movies; write to user_taste_profiles"
@@ -48,6 +48,35 @@ isProject: false
 ---
 
 # TheaterOrStream — Production Architecture & Product Redesign Plan
+
+**Branch:** `main` · **HEAD:** `786207a` · **Progress:** 3 / 14 tasks complete (Phase 1 foundation)
+
+---
+
+## Master Task List
+
+| # | ID | Task | Phase | Status |
+|---|-----|------|-------|--------|
+| 1 | `fix-upcoming-db` | Replace upcoming.jsx TMDB loop with `getUpcomingFromDb()`; year/month filters | 1 | ✅ **Done** |
+| 2 | `slim-hydration` | Slim homepage hydration; remove base64 from admin sync | 1 | ✅ **Done** |
+| 3 | `edge-read-api` | Vercel Edge `/api/content/*` + CDN cache; wire public pages | 1 | ✅ **Done** |
+| 4 | `db-migrations` | `content_snapshots`, sync tables, RLS; run production optimization SQL | 1–2 | ⬜ Pending |
+| 5 | `server-tmdb-proxy` | Move TMDB key server-side; admin-only proxy route | 1–2 | ⬜ Pending |
+| 6 | `automated-sync` | Supabase `tmdb-sync` + Vercel Cron (trending, upcoming, now_playing) | 2 | ⬜ Pending |
+| 7 | `admin-control-tower` | Admin dashboard: sync history, content_events, settings in DB | 2 | ⬜ Pending |
+| 8 | `unify-content-api` | Remove TMDB fallbacks on Explore/Details; full Edge adoption | 1 | 🔄 **Partial** (Home, TV, Upcoming, Search, Details on Edge) |
+| 9 | `onboarding-redesign` | 5-step onboarding: OTT, genres, moods, seed ratings, family mode | 3 | ⬜ Pending |
+| 10 | `taste-profile-schema` | `user_taste_profiles`, streaming services, profile rebuild worker | 3 | ⬜ Pending |
+| 11 | `recommendation-engine` | Hybrid reco + `/api/recommendations/for-you` | 4 | ⬜ Pending |
+| 12 | `ux-redesign` | Personalized home, Watch Tonight, Family hub, Decision Mode | 5 | ⬜ Pending |
+| 13 | `phase3-social-schema` | Diary logs, badges, activity feed, following feed | 6 | ⬜ Pending |
+| 14 | `ai-agents-stack` | Taste Summarizer, Parent Guide, Editorial, Moderation agents | 7 | ⬜ Pending |
+
+**Legend:** ✅ Done · 🔄 Partial · ⬜ Pending
+
+**Next recommended:** `db-migrations` → `server-tmdb-proxy` → `automated-sync`
+
+---
 
 ## Product North Star
 
@@ -659,18 +688,36 @@ This is production-viable on Supabase + Vercel without a separate backend servic
 
 See [implementation-work-log.md](./implementation-work-log.md) for session-by-session changes, commits, and deploy notes.
 
-### Completed (Phase 1 — as of May 2026, `main` @ `027f1d9`)
+### Completed (Phase 1 — as of May 2026, `main` @ `786207a`)
 
-| Task | Status | Summary |
-|------|--------|---------|
-| Upcoming → DB-first | ✅ Done | Removed ~25 TMDB calls per visit; loads from `movies_library` |
-| Slim homepage hydration | ✅ Done | Card-only projection; no base64 in admin sync |
-| Vercel Edge read API | ✅ Done | `/api/content/*` routes + CDN cache; frontend via `contentEdgeApi.js` |
+| # | Task ID | Status | Summary |
+|---|---------|--------|---------|
+| 1 | `fix-upcoming-db` | ✅ | Removed ~25 TMDB calls per visit; loads from `movies_library` |
+| 2 | `slim-hydration` | ✅ | Card-only projection; no base64 in admin sync |
+| 3 | `edge-read-api` | ✅ | `/api/content/*` routes + CDN cache; `contentEdgeApi.js` |
 
-**Docs:** [implementation-work-log.md](./implementation-work-log.md) · **Repo:** [theaterorstream](https://github.com/Suryaven369/theaterorstream)
+### In progress
 
-### Next up (Phase 1 remainder + Phase 2)
+| # | Task ID | Status | Notes |
+|---|---------|--------|-------|
+| 8 | `unify-content-api` | 🔄 | Edge wired for 5 pages; Explore TMDB toggle + Details fallback remain |
 
-- DB migrations (`content_snapshots`, RLS hardening)
-- Move TMDB key server-side
-- Automated TMDB sync (Vercel Cron)
+### Next up (Phase 1 remainder → Phase 2)
+
+| # | Task ID | Priority |
+|---|---------|----------|
+| 4 | `db-migrations` | **High** — snapshots, sync tables, RLS |
+| 5 | `server-tmdb-proxy` | **High** — hide TMDB key from browser |
+| 6 | `automated-sync` | **High** — Vercel Cron + delta sync |
+| 7 | `admin-control-tower` | Medium |
+
+### Later (Phase 3+)
+
+| # | Task ID | Phase |
+|---|---------|-------|
+| 9 | `onboarding-redesign` | 3 |
+| 10 | `taste-profile-schema` | 3 |
+| 11 | `recommendation-engine` | 4 |
+| 12 | `ux-redesign` | 5 |
+| 13 | `phase3-social-schema` | 6 |
+| 14 | `ai-agents-stack` | 7 |
