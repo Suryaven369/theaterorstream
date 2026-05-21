@@ -603,6 +603,7 @@ const Details = () => {
               hasUserRated={!!userRating}
               existingRating={userRating}
               userId={user?.id}
+              onRatingSubmitted={handleRatingSubmitSuccess}
             />
           )}
         </div>
