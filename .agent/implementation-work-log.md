@@ -2,7 +2,7 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** May 2026 · HEAD `601e837` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** May 2026 · HEAD `8fbcd11` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
 
 ---
 
@@ -53,6 +53,8 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `8fbcd11` | May 2026 | Agent HEAD sync after merge handoff |
+| `601e837` | May 2026 | Merge handoff session notes (intermediate) |
 | `55e507a` | May 2026 | Merge handoff docs + branch merge to main |
 | `efc6c79` | May 2026 | Merge rating re-update (upsert + RLS UPDATE) |
 | `fc68884` | May 2026 | Merge db-migrations (`supabase_phase1_content_pipeline.sql`) |
