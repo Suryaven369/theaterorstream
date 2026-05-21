@@ -2,7 +2,7 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** May 2026 · HEAD `e56f1b2` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** May 2026 · HEAD `03659ec`
 
 ---
 
@@ -53,7 +53,8 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
-| `e56f1b2` | May 2026 | Sync work log git history rows + HEAD |
+| *(pending)* | May 2026 | Supabase CLI init + versioned migrations + db push |
+| `03659ec` | May 2026 | Work log git history + HEAD sync (post-merge) |
 | `a176952` | May 2026 | Work log HEAD sync to 2775166 |
 | `2775166` | May 2026 | Work log HEAD sync to 2a7ef03 |
 | `2a7ef03` | May 2026 | Work log HEAD sync after merge handoff push |
@@ -292,8 +293,24 @@ TMDB still used: **admin panel** (import/sync), **Explore** (optional toggle), *
 - Rating re-update — upsert path, `20260521_ratings_update_policy.sql`, Details optimistic sync
 
 **Off-git (run once on Supabase if not done):**
-1. `supabase/migrations/20260521_ratings_update_policy.sql`
-2. `supabase_phase1_content_pipeline.sql` (if pipeline tables not already applied from phone)
+1. ~~`supabase/migrations/20260521_ratings_update_policy.sql`~~ ✅ Applied via `supabase db push` (May 2026, desktop)
+2. ~~`supabase_phase1_content_pipeline.sql`~~ ✅ Applied as `20260520000000_phase1_content_pipeline.sql` via `supabase db push`
+
+**Next recommended task:** `server-tmdb-proxy` (Task #5)
+
+---
+
+## Session: May 2026 — Pull merge + Supabase CLI db push ✅
+
+### Git pull ✅
+
+**Pulled:** `b8f20da` → `03659ec` (17 commits) — rating re-update + Phase 1 SQL + work log merge.
+
+### Supabase CLI ✅
+
+- `npx supabase init` + `link --project-ref kfdeyggjsmltnmszhtfk` (project **tos**)
+- Committed `supabase/config.toml`, `.gitignore`, `migrations/20260520000000_phase1_content_pipeline.sql`
+- **`npx supabase db push`** — both migrations applied to production DB
 
 **Next recommended task:** `server-tmdb-proxy` (Task #5)
 
