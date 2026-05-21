@@ -2,7 +2,7 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** May 2026 · HEAD pending push · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** May 2026 · HEAD `def1998` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
 
 ---
 
@@ -53,7 +53,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
-| *(this push)* | May 2026 | Fix mobile detail page poster/backdrop/cast image loading |
+| `def1998` | May 2026 | Fix mobile detail page poster/backdrop/cast image loading |
 | `9f73fe0` | May 2026 | Agent docs HEAD sync to 75b67e2 |
 | `4a35fb9` | May 2026 | Supabase CLI init + migrations db push to tos project |
 | `03659ec` | May 2026 | Work log git history + HEAD sync (post-merge) |
@@ -313,6 +313,23 @@ TMDB still used: **admin panel** (import/sync), **Explore** (optional toggle), *
 - `npx supabase init` + `link --project-ref kfdeyggjsmltnmszhtfk` (project **tos**)
 - Committed `supabase/config.toml`, `.gitignore`, `migrations/20260520000000_phase1_content_pipeline.sql`
 - **`npx supabase db push`** — both migrations applied to production DB
+
+**Next recommended task:** `server-tmdb-proxy` (Task #5)
+
+---
+
+## Session: May 2026 — Mobile detail page poster fix ✅
+
+### Problem
+On mobile, movie detail page showed no poster/backdrop/cast images after tapping a card from home.
+
+### Root cause
+`Details.jsx` preferred stale `images.poster_base64` over TMDB `poster_path`, and lacked the CDN fallback used by `Card.jsx`.
+
+### Fix
+- `src/utils/imageHelper.js` — `resolveTmdbImageUrl()` (path first, valid base64 fallback, TMDB CDN default)
+- `src/views/Details.jsx` — poster, backdrop, cast use shared helper
+- `api/_lib/content-server.js` — removed `is_active` filter on detail fetch so homepage movies resolve
 
 **Next recommended task:** `server-tmdb-proxy` (Task #5)
 
