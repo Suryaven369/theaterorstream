@@ -2,7 +2,7 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** May 2026 · HEAD *(pending push)* · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** May 2026 · HEAD `601e837` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
 
 ---
 
@@ -53,7 +53,9 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
-| *(this push)* | May 2026 | Merge handoff: Phase 1 SQL repo + rating re-update fix |
+| `55e507a` | May 2026 | Merge handoff docs + branch merge to main |
+| `efc6c79` | May 2026 | Merge rating re-update (upsert + RLS UPDATE) |
+| `fc68884` | May 2026 | Merge db-migrations (`supabase_phase1_content_pipeline.sql`) |
 | `b8f20da` | May 2026 | Work log HEAD sync (pre-merge) |
 | `32e3a8e` | May 2026 | Fix share card text clipping; larger modal preview |
 | `8da7637` | May 2026 | Share card polish: logo, yellow border, compact modal, no backdrop |
