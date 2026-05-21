@@ -21,6 +21,7 @@ import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import MovieActionButtons from "../components/MovieActionButtons";
 import { extractIdFromSlug } from "../lib/slugUtils";
+import { resolveTmdbImageUrl } from "../utils/imageHelper";
 
 const DETAILS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
@@ -63,6 +64,31 @@ const Details = () => {
   const [data, setData] = useState(null);
   const [castData, setCastData] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const posterSrc = useMemo(
+    () => resolveTmdbImageUrl(data?.poster_path, {
+      base64: data?.images?.poster_base64,
+      baseUrl: imageURL,
+      size: 'w500',
+    }),
+    [data?.poster_path, data?.images?.poster_base64, imageURL]
+  );
+
+  const backdropSrc = useMemo(
+    () => resolveTmdbImageUrl(data?.backdrop_path, {
+      base64: data?.images?.backdrop_base64,
+      baseUrl: imageURL,
+      size: 'original',
+    }),
+    [data?.backdrop_path, data?.images?.backdrop_base64, imageURL]
+  );
+
+  const getProfileSrc = (profilePath, profileBase64) =>
+    resolveTmdbImageUrl(profilePath, {
+      base64: profileBase64,
+      baseUrl: imageURL,
+      size: 'w185',
+    });
 
   useEffect(() => {
     const fetchDetails = async () => {
@@ -318,9 +344,9 @@ const Details = () => {
       {/* Hero Backdrop - Extended height */}
       <div className="relative h-[55vh] md:h-[65vh] lg:h-[75vh]">
         <div className="absolute inset-0">
-          {data?.backdrop_path && (
+          {backdropSrc && (
             <img
-              src={data.images && data.images.backdrop_base64 ? data.images.backdrop_base64 : imageURL + data?.backdrop_path}
+              src={backdropSrc}
               className="w-full h-full object-cover object-top"
               alt={data?.title || data?.name}
             />
@@ -365,9 +391,9 @@ const Details = () => {
           <div className="flex-shrink-0 w-full lg:w-72">
             {/* Poster */}
             <div className="w-48 md:w-64 lg:w-full mx-auto lg:mx-0 rounded-2xl overflow-hidden shadow-2xl">
-              {data?.poster_path ? (
+              {posterSrc ? (
                 <img
-                  src={data.images && data.images.poster_base64 ? data.images.poster_base64 : imageURL + data?.poster_path}
+                  src={posterSrc}
                   className="w-full aspect-[2/3] object-cover"
                   alt={data?.title || data?.name}
                 />
@@ -569,7 +595,7 @@ const Details = () => {
                         className="flex-shrink-0 flex items-center gap-2 bg-white/5 rounded-full pr-3"
                       >
                         <img
-                          src={actor.profile_base64 ? actor.profile_base64 : imageURL + actor.profile_path}
+                          src={getProfileSrc(actor.profile_path, actor.profile_base64)}
                           className="w-10 h-10 rounded-full object-cover"
                           alt={actor.name}
                         />

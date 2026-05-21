@@ -265,7 +265,6 @@ export async function fetchMovieDetail(tmdbId) {
         .from('movies_library')
         .select(MOVIE_DETAIL_SELECT)
         .eq('tmdb_id', String(tmdbId))
-        .eq('is_active', true)
         .single();
 
     if (error) {
