@@ -33,9 +33,9 @@ Session log for production architecture Phase 1 work (DB-first performance + Ver
 | 3 | `edge-read-api` | Vercel Edge `/api/content/*` + `contentEdgeApi.js` | ✅ Done |
 | 4 | `db-migrations` | Snapshots, sync tables, RLS, production SQL | ✅ Done |
 | 5 | `server-tmdb-proxy` | TMDB key server-side; admin proxy | ✅ Done |
-| 6 | `automated-sync` | Cron + delta TMDB sync | ⬜ Pending |
+| 6 | `automated-sync` | Cron + delta TMDB sync | ✅ Done |
 | 7 | `admin-control-tower` | Sync history, events queue, DB settings | ⬜ Pending |
-| 8 | `unify-content-api` | Full Edge adoption; remove Explore/Details TMDB | ✅ Done |
+| 8 | `unify-content-api` | Full Edge adoption; remove Explore/Details TMDB | 🔄 Partial |
 | 9 | `onboarding-redesign` | 5-step taste onboarding wizard | ⬜ Pending |
 | 10 | `taste-profile-schema` | User taste profiles + rebuild worker | ⬜ Pending |
 | 11 | `recommendation-engine` | Hybrid reco API | ⬜ Pending |
@@ -43,7 +43,7 @@ Session log for production architecture Phase 1 work (DB-first performance + Ver
 | 13 | `phase3-social-schema` | Diary, badges, following feed | ⬜ Pending |
 | 14 | `ai-agents-stack` | Background AI agents (Gateway) | ⬜ Pending |
 
-**Progress:** 6 complete · 0 partial · 8 pending
+**Progress:** 6 complete · 1 partial · 7 pending
 
 Full roadmap: [tos-production-architecture-plan.md](./tos-production-architecture-plan.md)
 
@@ -152,7 +152,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 ### Task 8 — Unify content API 🔄 Partial
 
-**Task ID:** `unify-content-api` · **Not started fully**
+**Task ID:** `unify-content-api` · **Partial** (TMDB fallbacks removed May 2026; Edge unify pending)
 
 | Page | Read path | TMDB fallback? |
 |------|-----------|----------------|
@@ -160,8 +160,11 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 | TV Series | Edge ✅ | No |
 | Upcoming | Edge ✅ | No |
 | Search | Edge ✅ | No |
-| Details | Edge ✅ | Yes — if not in library |
-| Explore | `contentApi.js` | Yes — user toggle |
+| Details | Edge ✅ | No ✅ (removed Task #5) |
+| Explore | `contentApi.js` direct | No ✅ (removed Task #5) — **not yet on Edge** |
+| CollectionDetails | Edge search/detail ✅ | No |
+
+**Remaining for full Task #8:** Add Edge route(s) for Explore categories; route Explore through `contentEdgeApi.js`; optional single public read facade.
 
 ---
 
@@ -344,6 +347,41 @@ On mobile, movie detail page showed no poster/backdrop/cast images after tapping
 ### Deploy note
 Add **`TMDB_API_KEY`** (no `VITE_` prefix) to Vercel project env. Optional `VITE_MOVIE_API_KEY` only for local vite admin dev.
 
-**Next recommended task:** `automated-sync` (Task #6)
+**Next recommended task:** `admin-control-tower` (Task #7)
+
+---
+
+## Session: May 2026 — Task #6 automated-sync ✅
+
+### Server cron routes
+- `api/_lib/supabase-admin.js` — service-role Supabase client
+- `api/_lib/cron-auth.js` — `CRON_SECRET` verification (Vercel Cron Bearer)
+- `api/_lib/movie-library-server.js` — TMDB → `movies_library` mapping + delta upsert
+- `api/_lib/tmdb-sync-server.js` — `runSyncJob()`, job config, `createCronHandler()`
+- `api/cron/trending-daily.js` — Fridays 06:00 UTC
+- `api/cron/now-playing-daily.js` — Fridays 06:30 UTC
+- `api/cron/upcoming-weekly.js` — Fridays 07:00 UTC
+
+### Sync behavior
+- Fetches TMDB list endpoints (trending / now_playing / upcoming) for region `IN`
+- Delta strategy: full detail fetch for new titles or large popularity/vote drift; lightweight upsert otherwise
+- Writes audit rows to `tmdb_sync_runs` and watermarks in `tmdb_sync_state`
+
+### Vercel config
+- `vercel.json` — `crons` array for the three routes above
+
+### Deploy env (Vercel)
+| Variable | Purpose |
+|----------|---------|
+| `TMDB_ACCESS_TOKEN` or `TMDB_API_KEY` | TMDB fetch (already set) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Bypass RLS for cron upserts |
+| `CRON_SECRET` | Auth for cron + manual trigger |
+
+### Manual trigger (after deploy)
+```bash
+curl -H "Authorization: Bearer $CRON_SECRET" https://www.theaterorstream.com/api/cron/trending-daily
+```
+
+**Next recommended task:** `admin-control-tower` (Task #7)
 
 ---

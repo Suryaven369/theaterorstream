@@ -1,4 +1,18 @@
 {
+    "crons": [
+        {
+            "path": "/api/cron/trending-daily",
+            "schedule": "0 6 * * 5"
+        },
+        {
+            "path": "/api/cron/now-playing-daily",
+            "schedule": "30 6 * * 5"
+        },
+        {
+            "path": "/api/cron/upcoming-weekly",
+            "schedule": "0 7 * * 5"
+        }
+    ],
     "rewrites": [
         {
             "source": "/sitemap.xml",

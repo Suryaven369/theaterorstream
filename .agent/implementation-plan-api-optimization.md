@@ -13,9 +13,9 @@
 | 3 | `edge-read-api` | ✅ | See work log Task 3 |
 | 4 | `db-migrations` | ✅ | Applied in Supabase (May 2026) |
 | 5 | `server-tmdb-proxy` | ✅ | Admin `/api/tmdb/*` proxy; key off client |
-| 6 | `automated-sync` | ⬜ | Vercel Cron + delta sync — **next** |
-| 7 | `admin-control-tower` | ⬜ | Sync history, events queue |
-| 8 | `unify-content-api` | ✅ | Public pages DB/Edge only |
+| 6 | `automated-sync` | ✅ | Vercel Cron + delta sync → `movies_library` |
+| 7 | `admin-control-tower` | ⬜ | Sync history, events queue — **next** |
+| 8 | `unify-content-api` | 🔄 | TMDB off public pages ✅; Explore → Edge still pending |
 | 9 | `onboarding-redesign` | ⬜ | Phase 3 |
 | 10 | `taste-profile-schema` | ⬜ | Phase 3 |
 | 11 | `recommendation-engine` | ⬜ | Phase 4 |
@@ -113,9 +113,9 @@ Full table: [tos-production-architecture-plan.md](./tos-production-architecture-
 
 - [x] **#4** `db-migrations` — snapshots, sync tables, RLS ✅ (Supabase, May 2026)
 - [x] **#5** `server-tmdb-proxy` — TMDB key off client ✅
-- [ ] **#6** `automated-sync` — Vercel Cron
+- [x] **#6** `automated-sync` — Vercel Cron + delta sync
 - [ ] **#7** `admin-control-tower` — admin dashboard upgrades
-- [x] **#8** `unify-content-api` — public pages DB/Edge only ✅
+- [~] **#8** `unify-content-api` — TMDB fallbacks removed; Explore Edge route pending
 - [ ] **#9–14** — onboarding, taste profiles, reco engine, UX redesign, social, AI
 
 ### Phase 1 follow-up (completed ✅)
