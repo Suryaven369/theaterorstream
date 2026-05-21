@@ -140,6 +140,9 @@ CREATE INDEX IF NOT EXISTS idx_reviews_parent_id ON reviews(parent_id);
 
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_ratings_movie_id ON ratings(movie_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ratings_user_movie
+  ON ratings(user_id, movie_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_movie_id ON reviews(movie_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_upvotes ON reviews(upvotes DESC);
 
