@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import tmdbApi from "../lib/tmdbApi";
 import {
     getMoviesLibrary,
@@ -26,6 +27,8 @@ import {
     addMovieToSection,
     removeMovieFromSection,
     getGlobalUserStats,
+    getSyncState,
+    getSyncRuns,
     supabase
 } from "../lib/supabase";
 import { convertImageToBase64 } from "../utils/imageHelper";
@@ -368,6 +371,8 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
 
     // Homepage Sections state
     const [homepageSections, setHomepageSections] = useState([]);
+    const [syncState, setSyncState] = useState([]);
+    const [recentSyncRuns, setRecentSyncRuns] = useState([]);
     const [newSection, setNewSection] = useState({ name: '', icon: '🎬', section_type: 'manual', max_movies: 10 });
     const [editingSection, setEditingSection] = useState(null);
     const [sectionMovieSearch, setSectionMovieSearch] = useState('');
@@ -445,13 +450,15 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
 
     const loadData = async () => {
         setLoading(true);
-        const [statsData, libraryData, collectionsData, advStatsData, sectionsData, userData] = await Promise.all([
+        const [statsData, libraryData, collectionsData, advStatsData, sectionsData, userData, syncStateData, syncRunsData] = await Promise.all([
             getLibraryStats(),
             getMoviesLibrary({ limit: 200 }),
             getCollections(),
             getAdvancedLibraryStats(),
             getHomepageSections(),
-            getGlobalUserStats()
+            getGlobalUserStats(),
+            getSyncState(),
+            getSyncRuns({ limit: 5 }),
         ]);
         setStats({
             ...statsData,
@@ -462,6 +469,8 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
         setCollections(collectionsData);
         setAdvancedStats(advStatsData);
         setHomepageSections(sectionsData);
+        setSyncState(syncStateData);
+        setRecentSyncRuns(syncRunsData);
         setLoading(false);
     };
 
@@ -1255,6 +1264,45 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                                 <div className="text-2xl font-bold text-white">{stats.active}</div>
                                 <div className="text-xs text-green-300/70">Active</div>
                             </div>
+                        </div>
+
+                        <div className="mt-8">
+                            <div className="flex items-center justify-between mb-3">
+                                <h2 className="text-sm font-semibold text-white/70 uppercase tracking-wide">Sync Pipeline</h2>
+                                <Link to="/admin/pipeline" className="text-xs text-orange-400 hover:text-orange-300">
+                                    Open Control Tower →
+                                </Link>
+                            </div>
+                            <div className="grid gap-3 md:grid-cols-3 mb-4">
+                                {syncState.slice(0, 3).map((job) => (
+                                    <div key={job.job_name} className="bg-white/5 rounded-xl p-4 border border-white/10">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="text-white text-sm font-medium">{job.job_name}</span>
+                                            <span className={`text-[10px] px-2 py-0.5 rounded-full uppercase ${job.last_status === 'completed' ? 'bg-green-500/20 text-green-400' : job.last_status === 'failed' ? 'bg-red-500/20 text-red-400' : 'bg-white/10 text-white/50'}`}>
+                                                {job.last_status || 'idle'}
+                                            </span>
+                                        </div>
+                                        <div className="text-[11px] text-white/45">
+                                            Last success: {job.last_success_at ? new Date(job.last_success_at).toLocaleString() : '—'}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            {recentSyncRuns.length > 0 && (
+                                <div className="bg-white/5 rounded-xl border border-white/10 overflow-hidden">
+                                    <div className="px-4 py-3 border-b border-white/10 text-xs text-white/50">Recent runs</div>
+                                    <div className="divide-y divide-white/5">
+                                        {recentSyncRuns.map((run) => (
+                                            <div key={run.id} className="px-4 py-2 flex items-center gap-3 text-xs">
+                                                <span className="text-white/80">{run.job_name}</span>
+                                                <span className={`px-2 py-0.5 rounded-full uppercase ${run.status === 'completed' ? 'bg-green-500/20 text-green-400' : run.status === 'failed' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>{run.status}</span>
+                                                <span className="text-white/40 ml-auto">+{run.movies_added} / ~{run.movies_updated} upd</span>
+                                                <span className="text-white/30">{new Date(run.started_at).toLocaleString()}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}

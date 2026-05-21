@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { checkUsernameAvailable, completeOnboarding } from '../lib/supabase';
+import { checkUsernameAvailable, completeOnboarding, isProfileOnboarded } from '../lib/supabase';
 
 // Predefined avatars
 const AVATARS = [
@@ -21,7 +21,7 @@ const AVATARS = [
 
 const OnboardingPage = () => {
     const navigate = useNavigate();
-    const { user, profile, isAuthenticated, isOnboarded, refreshProfile } = useAuth();
+    const { user, profile, refreshProfile, loading: authLoading } = useAuth();
 
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
@@ -34,14 +34,13 @@ const OnboardingPage = () => {
     const [dateOfBirth, setDateOfBirth] = useState('');
     const [selectedAvatar, setSelectedAvatar] = useState(null);
 
-    // Redirect if not authenticated or already onboarded
+    // Pre-fill if user partially completed profile before
     useEffect(() => {
-        if (!isAuthenticated) {
-            navigate('/auth');
-        } else if (isOnboarded) {
-            navigate('/');
-        }
-    }, [isAuthenticated, isOnboarded, navigate]);
+        if (!profile || authLoading) return;
+        if (profile.username && !username) setUsername(profile.username);
+        if (profile.date_of_birth && !dateOfBirth) setDateOfBirth(profile.date_of_birth);
+        if (profile.avatar_id && !selectedAvatar) setSelectedAvatar(profile.avatar_id);
+    }, [profile, authLoading, username, dateOfBirth, selectedAvatar]);
 
     // Check username availability with debounce
     useEffect(() => {
@@ -50,15 +49,20 @@ const OnboardingPage = () => {
             return;
         }
 
+        if (profile?.username === username.toLowerCase()) {
+            setUsernameAvailable(true);
+            return;
+        }
+
         const timer = setTimeout(async () => {
             setCheckingUsername(true);
-            const available = await checkUsernameAvailable(username);
+            const available = await checkUsernameAvailable(username, user?.id);
             setUsernameAvailable(available);
             setCheckingUsername(false);
         }, 500);
 
         return () => clearTimeout(timer);
-    }, [username]);
+    }, [username, user?.id, profile?.username]);
 
     const validateUsername = (value) => {
         // Only allow letters, numbers, underscores
@@ -80,7 +84,7 @@ const OnboardingPage = () => {
                 setError('Username must be at least 3 characters');
                 return;
             }
-            if (!usernameAvailable) {
+            if (!usernameAvailable && profile?.username !== username.toLowerCase()) {
                 setError('This username is taken');
                 return;
             }
@@ -121,8 +125,12 @@ const OnboardingPage = () => {
         setLoading(false);
 
         if (result.success) {
-            await refreshProfile();
-            navigate('/');
+            const refreshed = await refreshProfile();
+            if (refreshed && isProfileOnboarded(refreshed)) {
+                navigate('/', { replace: true });
+                return;
+            }
+            navigate('/', { replace: true });
         } else {
             setError(result.error?.message || 'Failed to complete setup');
         }

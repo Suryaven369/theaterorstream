@@ -1,11 +1,12 @@
 import { Outlet, Link, useLocation } from "react-router-dom";
-import { FiHome, FiFilm, FiGrid, FiTag, FiSettings, FiLogOut, FiLayout } from "react-icons/fi";
+import { FiHome, FiFilm, FiGrid, FiTag, FiSettings, FiLogOut, FiLayout, FiActivity } from "react-icons/fi";
 
 const AdminLayout = () => {
     const location = useLocation();
 
     const navItems = [
         { path: "/admin", label: "Dashboard", icon: FiHome },
+        { path: "/admin/pipeline", label: "Pipeline", icon: FiActivity },
         { path: "/admin/library", label: "Library", icon: FiFilm },
         { path: "/admin/sections", label: "Sections", icon: FiLayout },
         { path: "/admin/collections", label: "Collections", icon: FiTag },

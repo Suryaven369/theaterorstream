@@ -303,3 +303,73 @@ export async function searchContent(query, options = {}) {
         total: count || 0,
     };
 }
+
+export async function fetchExploreContent(options = {}) {
+    const supabase = getSupabase();
+    const {
+        mediaType = 'movie',
+        category = 'popular',
+        genreId = null,
+        limit = 20,
+        offset = 0,
+    } = options;
+
+    let query = supabase
+        .from('movies_library')
+        .select(LIBRARY_CARD_SELECT, { count: 'exact' })
+        .eq('is_active', true)
+        .eq('media_type', mediaType);
+
+    if (genreId) {
+        query = query.contains('genres', [{ id: Number(genreId) }]);
+    }
+
+    switch (category) {
+        case 'top_rated':
+            query = query
+                .gte('vote_count', 50)
+                .order('vote_average', { ascending: false, nullsFirst: false });
+            break;
+        case 'new_releases':
+            {
+                const sixMonthsAgo = new Date();
+                sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+                query = query
+                    .gte('release_date', sixMonthsAgo.toISOString().split('T')[0])
+                    .order('release_date', { ascending: false, nullsFirst: false });
+            }
+            break;
+        case 'popular':
+        default:
+            query = query.order('popularity', { ascending: false, nullsFirst: false });
+            break;
+    }
+
+    const { data, error, count } = await query.range(offset, offset + limit - 1);
+    if (error) throw error;
+
+    return {
+        data: (data || []).map(normalizeLibraryItem),
+        total: count || 0,
+    };
+}
+
+export async function fetchTrendingContent(mediaType = null, limit = 20) {
+    const supabase = getSupabase();
+
+    let query = supabase
+        .from('movies_library')
+        .select(LIBRARY_CARD_SELECT)
+        .eq('is_active', true)
+        .order('popularity', { ascending: false, nullsFirst: false })
+        .limit(limit);
+
+    if (mediaType) {
+        query = query.eq('media_type', mediaType);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    return (data || []).map(normalizeLibraryItem);
+}

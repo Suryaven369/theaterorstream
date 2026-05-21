@@ -34,8 +34,8 @@ Session log for production architecture Phase 1 work (DB-first performance + Ver
 | 4 | `db-migrations` | Snapshots, sync tables, RLS, production SQL | ✅ Done |
 | 5 | `server-tmdb-proxy` | TMDB key server-side; admin proxy | ✅ Done |
 | 6 | `automated-sync` | Cron + delta TMDB sync | ✅ Done |
-| 7 | `admin-control-tower` | Sync history, events queue, DB settings | ⬜ Pending |
-| 8 | `unify-content-api` | Full Edge adoption; remove Explore/Details TMDB | 🔄 Partial |
+| 7 | `admin-control-tower` | Sync history, events queue, DB settings | ✅ Done |
+| 8 | `unify-content-api` | Full Edge adoption; remove Explore/Details TMDB | ✅ Done |
 | 9 | `onboarding-redesign` | 5-step taste onboarding wizard | ⬜ Pending |
 | 10 | `taste-profile-schema` | User taste profiles + rebuild worker | ⬜ Pending |
 | 11 | `recommendation-engine` | Hybrid reco API | ⬜ Pending |
@@ -43,7 +43,7 @@ Session log for production architecture Phase 1 work (DB-first performance + Ver
 | 13 | `phase3-social-schema` | Diary, badges, following feed | ⬜ Pending |
 | 14 | `ai-agents-stack` | Background AI agents (Gateway) | ⬜ Pending |
 
-**Progress:** 6 complete · 1 partial · 7 pending
+**Progress:** 8 complete · 0 partial · 6 pending
 
 Full roadmap: [tos-production-architecture-plan.md](./tos-production-architecture-plan.md)
 
@@ -150,9 +150,9 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 ---
 
-### Task 8 — Unify content API 🔄 Partial
+### Task 8 — Unify content API ✅ Done
 
-**Task ID:** `unify-content-api` · **Partial** (TMDB fallbacks removed May 2026; Edge unify pending)
+**Task ID:** `unify-content-api` · **Completed:** May 2026
 
 | Page | Read path | TMDB fallback? |
 |------|-----------|----------------|
@@ -160,11 +160,18 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 | TV Series | Edge ✅ | No |
 | Upcoming | Edge ✅ | No |
 | Search | Edge ✅ | No |
-| Details | Edge ✅ | No ✅ (removed Task #5) |
-| Explore | `contentApi.js` direct | No ✅ (removed Task #5) — **not yet on Edge** |
+| Details | Edge ✅ | No |
+| Explore | Edge ✅ (`/api/content/explore`, `/api/content/trending`) | No |
 | CollectionDetails | Edge search/detail ✅ | No |
 
-**Remaining for full Task #8:** Add Edge route(s) for Explore categories; route Explore through `contentEdgeApi.js`; optional single public read facade.
+**Delivered:**
+- `api/content/explore.js` — category/genre browse with pagination
+- `api/content/trending.js` — popularity-sorted trending feed
+- `api/_lib/content-server.js` — `fetchExploreContent`, `fetchTrendingContent`
+- `src/lib/contentEdgeApi.js` — `getExploreContentFromEdge`, `getTrendingContentFromEdge`
+- `src/views/Explore.jsx` — wired to Edge client (genres still from `contentApi` constants)
+
+TMDB remains **admin-only** (`AdminPanel`, `AdminSectionsPage`, cron sync).
 
 ---
 
@@ -187,7 +194,7 @@ Browser (React SPA)
     └── Direct Supabase                                         [local dev fallback]
 ```
 
-TMDB still used: **admin panel** (import/sync), **Explore** (optional toggle), **Details** (missing library fallback).
+TMDB still used: **admin panel** (import/sync) and **cron sync** only.
 
 ---
 
@@ -347,7 +354,47 @@ On mobile, movie detail page showed no poster/backdrop/cast images after tapping
 ### Deploy note
 Add **`TMDB_API_KEY`** (no `VITE_` prefix) to Vercel project env. Optional `VITE_MOVIE_API_KEY` only for local vite admin dev.
 
-**Next recommended task:** `admin-control-tower` (Task #7)
+**Next recommended task:** `onboarding-redesign` (Task #9)
+
+---
+
+## Session: May 2026 — Task #7 admin-control-tower ✅
+
+### Admin UI
+- `src/views/admin/AdminControlTowerPage.jsx` — sync jobs, run history, content events queue
+- `/admin/pipeline` route + **Pipeline** nav item in `AdminLayout`
+- `AdminPanel` dashboard — sync pipeline summary + link to control tower
+- `AdminSettingsPage` — settings persisted to Supabase `app_settings` (not localStorage)
+
+### API + data
+- `supabase/migrations/20260521000000_app_settings.sql` — `app_settings` table + admin RLS
+- `api/admin/sync.js` — admin-authenticated manual sync trigger (`POST { jobName }`)
+- `src/lib/adminSyncApi.js` — client helper for manual runs
+- `src/lib/supabase.js` — `getSyncState`, `getSyncRuns`, `getContentEvents`, `createContentEvent`, `getAppSettings`, `saveAppSettings`
+
+### Apply migration
+```bash
+supabase db push
+```
+
+**Next recommended task:** `onboarding-redesign` (Task #9)
+
+---
+
+## Session: May 2026 — Task #8 unify-content-api ✅
+
+### Edge routes
+- `api/content/explore.js` — browse by mediaType, category, genre, pagination
+- `api/content/trending.js` — popularity-sorted trending feed
+- `api/_lib/content-server.js` — `fetchExploreContent`, `fetchTrendingContent`
+
+### Client
+- `src/lib/contentEdgeApi.js` — `getExploreContentFromEdge`, `getTrendingContentFromEdge`
+- `src/views/Explore.jsx` — all reads via Edge (genres from static constants)
+
+**Verify:** `/api/content/explore?mediaType=movie&category=popular&limit=24` and `/api/content/trending?limit=24`
+
+**Next recommended task:** `onboarding-redesign` (Task #9)
 
 ---
 

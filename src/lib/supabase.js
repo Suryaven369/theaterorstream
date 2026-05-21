@@ -20,116 +20,8 @@ export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {
 
 
 // =============================================
-// AUTHENTICATION FUNCTIONS
+// AUTHENTICATION — use src/lib/auth.js
 // =============================================
-
-// Allowed email providers
-const ALLOWED_EMAIL_PROVIDERS = [
-    'gmail.com', 'yahoo.com', 'yahoo.in', 'yahoo.co.in',
-    'outlook.com', 'hotmail.com', 'live.com',
-    'icloud.com', 'me.com', 'mac.com'
-];
-
-// Check if email provider is allowed
-export const isEmailAllowed = (email) => {
-    const domain = email.split('@')[1]?.toLowerCase();
-    return ALLOWED_EMAIL_PROVIDERS.includes(domain);
-};
-
-// Send OTP to email
-export const sendEmailOTP = async (email) => {
-    if (!isEmailAllowed(email)) {
-        return { success: false, error: { message: 'Please use Gmail, Yahoo, Outlook, or iCloud email' } };
-    }
-
-    const { data, error } = await supabase.auth.signInWithOtp({
-        email: email.toLowerCase(),
-        options: { shouldCreateUser: true }
-    });
-    if (error) {
-        console.error('Error sending OTP:', error);
-        return { success: false, error };
-    }
-    return { success: true, data };
-};
-
-// Verify email OTP
-export const verifyEmailOTP = async (email, token) => {
-    const { data, error } = await supabase.auth.verifyOtp({
-        email: email.toLowerCase(),
-        token: token,
-        type: 'email'
-    });
-    if (error) {
-        console.error('Error verifying OTP:', error);
-        return { success: false, error };
-    }
-    return { success: true, data };
-};
-
-// Sign up with email and password
-export const signUpWithEmail = async (email, password) => {
-    if (!isEmailAllowed(email)) {
-        return { success: false, error: { message: 'Please use Gmail, Yahoo, Outlook, or iCloud email' } };
-    }
-
-    const { data, error } = await supabase.auth.signUp({
-        email: email.toLowerCase(),
-        password: password,
-    });
-    if (error) {
-        console.error('Error signing up:', error);
-        return { success: false, error };
-    }
-    return { success: true, data };
-};
-
-// Sign in with email and password
-export const signInWithEmail = async (email, password) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.toLowerCase(),
-        password: password,
-    });
-    if (error) {
-        console.error('Error signing in:', error);
-        return { success: false, error };
-    }
-    return { success: true, data };
-};
-
-// Send password reset email
-export const resetPassword = async (email) => {
-    const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
-    });
-    if (error) {
-        console.error('Error sending reset email:', error);
-        return { success: false, error };
-    }
-    return { success: true, data };
-};
-
-// Sign out
-export const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-        console.error('Error signing out:', error);
-        return { success: false, error };
-    }
-    return { success: true };
-};
-
-// Update password (for password reset)
-export const updatePassword = async (newPassword) => {
-    const { data, error } = await supabase.auth.updateUser({
-        password: newPassword
-    });
-    if (error) {
-        console.error('Error updating password:', error);
-        return { success: false, error };
-    }
-    return { success: true, data };
-};
 
 // Get current user
 export const getCurrentUser = async () => {
@@ -152,54 +44,47 @@ export const getSession = async () => {
 // Get user profile - Using direct REST API
 export const getUserProfile = async (userId) => {
     try {
-        const restUrl = `${supabaseUrl}/rest/v1/user_profiles?id=eq.${userId}&select=*`;
+        const { data, error } = await supabase
+            .from('user_profiles')
+            .select('*')
+            .eq('id', userId)
+            .maybeSingle();
 
-        // Get auth token directly from localStorage
-        let authToken = supabaseAnonKey;
-        try {
-            const storedSession = localStorage.getItem('theaterorstream-auth');
-            if (storedSession) {
-                const parsed = JSON.parse(storedSession);
-                if (parsed?.access_token) {
-                    authToken = parsed.access_token;
-                }
-            }
-        } catch (e) {
-            // Use anon key as fallback
-        }
-
-        const response = await fetch(restUrl, {
-            headers: {
-                'apikey': supabaseAnonKey,
-                'Authorization': `Bearer ${authToken}`,
-                'Content-Type': 'application/json',
-                'Accept': 'application/vnd.pgrst.object+json'
-            }
-        });
-
-        if (response.status === 406) {
-            return null; // No profile found
-        }
-
-        if (!response.ok) {
+        if (error) {
+            console.error('Error fetching user profile:', error);
             return null;
         }
 
-        return await response.json();
+        return data;
     } catch (err) {
+        console.error('Error fetching user profile:', err);
         return null;
     }
 };
 
+export function isProfileOnboarded(profile) {
+    if (!profile) return false;
+    return !!(profile.is_onboarded || (profile.username && profile.avatar_id));
+}
+
 // Check if username is available
-export const checkUsernameAvailable = async (username) => {
-    const { data, error } = await supabase
+export const checkUsernameAvailable = async (username, excludeUserId = null) => {
+    let query = supabase
         .from('user_profiles')
         .select('id')
-        .eq('username', username.toLowerCase())
-        .single();
+        .eq('username', username.toLowerCase());
 
-    // If no data found, username is available
+    if (excludeUserId) {
+        query = query.neq('id', excludeUserId);
+    }
+
+    const { data, error } = await query.maybeSingle();
+
+    if (error) {
+        console.error('Error checking username:', error);
+        return false;
+    }
+
     return !data;
 };
 
@@ -220,23 +105,45 @@ export const updateUserProfile = async (userId, updates) => {
 
 // Complete onboarding
 export const completeOnboarding = async (userId, profileData) => {
+    const payload = {
+        id: userId,
+        username: profileData.username?.toLowerCase(),
+        display_name: profileData.displayName || profileData.username?.toLowerCase(),
+        avatar_id: profileData.avatarId,
+        date_of_birth: profileData.dateOfBirth,
+        is_onboarded: true,
+        updated_at: new Date().toISOString(),
+    };
+
+    const { data: updated, error: updateError } = await supabase
+        .from('user_profiles')
+        .update({
+            username: payload.username,
+            display_name: payload.display_name,
+            avatar_id: payload.avatar_id,
+            date_of_birth: payload.date_of_birth,
+            is_onboarded: true,
+            updated_at: payload.updated_at,
+        })
+        .eq('id', userId)
+        .select('*')
+        .maybeSingle();
+
+    if (!updateError && updated) {
+        return { success: true, data: updated };
+    }
+
     const { data, error } = await supabase
         .from('user_profiles')
-        .upsert({
-            id: userId,
-            username: profileData.username?.toLowerCase(),
-            display_name: profileData.displayName,
-            avatar_id: profileData.avatarId,
-            date_of_birth: profileData.dateOfBirth,
-            is_onboarded: true,
-            updated_at: new Date().toISOString()
-        })
-        .select();
+        .upsert(payload, { onConflict: 'id' })
+        .select('*')
+        .single();
 
     if (error) {
         console.error('Error completing onboarding:', error);
         return { success: false, error };
     }
+
     return { success: true, data };
 };
 
@@ -2013,6 +1920,163 @@ export const getGlobalUserStats = async () => {
         return { totalUsers: 0 };
     }
     return { totalUsers: count || 0 };
+};
+
+// =============================================
+// CONTROL TOWER — SYNC + EVENTS + SETTINGS
+// =============================================
+
+export const DEFAULT_APP_SETTINGS = {
+    siteName: 'TheaterOrStream',
+    siteDescription: 'Discover what to watch and where to stream it',
+    defaultRegion: 'IN',
+    maxSectionsHome: 10,
+    cacheTimeout: 3600,
+    enableReviews: true,
+    enableRatings: true,
+    enableWatchlist: true,
+    enableCollections: true,
+};
+
+export const getAppSettings = async (key = 'site') => {
+    const { data, error } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', key)
+        .maybeSingle();
+
+    if (error) {
+        console.error('Error fetching app settings:', error);
+        return { ...DEFAULT_APP_SETTINGS };
+    }
+
+    return { ...DEFAULT_APP_SETTINGS, ...(data?.value || {}) };
+};
+
+export const saveAppSettings = async (settings, key = 'site') => {
+    const { data: { user } } = await supabase.auth.getUser();
+
+    const { data, error } = await supabase
+        .from('app_settings')
+        .upsert({
+            key,
+            value: settings,
+            updated_by: user?.id || null,
+            updated_at: new Date().toISOString(),
+        }, { onConflict: 'key' })
+        .select('value')
+        .single();
+
+    if (error) {
+        console.error('Error saving app settings:', error);
+        return { success: false, error };
+    }
+
+    return { success: true, data: data?.value };
+};
+
+export const getSyncState = async () => {
+    const { data, error } = await supabase
+        .from('tmdb_sync_state')
+        .select('*')
+        .order('job_name');
+
+    if (error) {
+        console.error('Error fetching sync state:', error);
+        return [];
+    }
+
+    return data || [];
+};
+
+export const getSyncRuns = async ({ limit = 25, jobName = null } = {}) => {
+    let query = supabase
+        .from('tmdb_sync_runs')
+        .select('*')
+        .order('started_at', { ascending: false })
+        .limit(limit);
+
+    if (jobName) {
+        query = query.eq('job_name', jobName);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+        console.error('Error fetching sync runs:', error);
+        return [];
+    }
+
+    return data || [];
+};
+
+export const getContentEvents = async ({ status = null, limit = 50 } = {}) => {
+    let query = supabase
+        .from('content_events')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+    if (status && status !== 'all') {
+        query = query.eq('status', status);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+        console.error('Error fetching content events:', error);
+        return [];
+    }
+
+    return data || [];
+};
+
+export const createContentEvent = async (event) => {
+    const { data: { user } } = await supabase.auth.getUser();
+
+    const { data, error } = await supabase
+        .from('content_events')
+        .insert({
+            ...event,
+            created_by: user?.id || null,
+        })
+        .select('*')
+        .single();
+
+    if (error) {
+        console.error('Error creating content event:', error);
+        return { success: false, error };
+    }
+
+    return { success: true, data };
+};
+
+export const updateContentEventStatus = async (id, status, extra = {}) => {
+    const patch = {
+        status,
+        ...extra,
+    };
+
+    if (status === 'processing') {
+        patch.started_at = new Date().toISOString();
+    }
+    if (status === 'done' || status === 'failed' || status === 'cancelled') {
+        patch.processed_at = new Date().toISOString();
+    }
+
+    const { data, error } = await supabase
+        .from('content_events')
+        .update(patch)
+        .eq('id', id)
+        .select('*')
+        .single();
+
+    if (error) {
+        console.error('Error updating content event:', error);
+        return { success: false, error };
+    }
+
+    return { success: true, data };
 };
 
 export default supabase;

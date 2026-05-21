@@ -2,7 +2,12 @@ import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import Card from "../components/Card";
 import { FaDatabase } from "react-icons/fa";
-import { getExploreContent, getTrendingContent, getUpcomingFromDb, MOVIE_GENRES, TV_GENRES } from "../lib/contentApi";
+import {
+  getExploreContentFromEdge,
+  getTrendingContentFromEdge,
+  getUpcomingFromEdge,
+} from "../lib/contentEdgeApi";
+import { MOVIE_GENRES, TV_GENRES } from "../lib/contentApi";
 
 const ExplorePage = () => {
   const params = useParams();
@@ -24,10 +29,10 @@ const ExplorePage = () => {
       let result;
 
       if (exploreType === "trending") {
-        const trending = await getTrendingContent(null, PAGE_SIZE);
+        const trending = await getTrendingContentFromEdge(null, PAGE_SIZE);
         result = { data: trending, total: trending.length };
       } else if (exploreType === "movie") {
-        result = await getExploreContent({
+        result = await getExploreContentFromEdge({
           mediaType: 'movie',
           category: 'popular',
           genreId: selectedGenre,
@@ -35,7 +40,7 @@ const ExplorePage = () => {
           offset,
         });
       } else if (exploreType === "tv") {
-        result = await getExploreContent({
+        result = await getExploreContentFromEdge({
           mediaType: 'tv',
           category: 'popular',
           genreId: selectedGenre,
@@ -43,7 +48,7 @@ const ExplorePage = () => {
           offset,
         });
       } else if (exploreType === "popular") {
-        result = await getExploreContent({
+        result = await getExploreContentFromEdge({
           mediaType: 'movie',
           category: 'popular',
           genreId: selectedGenre,
@@ -51,7 +56,7 @@ const ExplorePage = () => {
           offset,
         });
       } else if (exploreType === "top-rated") {
-        result = await getExploreContent({
+        result = await getExploreContentFromEdge({
           mediaType: 'movie',
           category: 'top_rated',
           genreId: selectedGenre,
@@ -59,7 +64,7 @@ const ExplorePage = () => {
           offset,
         });
       } else if (exploreType === "new-releases" || exploreType === "now-playing") {
-        result = await getExploreContent({
+        result = await getExploreContentFromEdge({
           mediaType: 'movie',
           category: 'new_releases',
           genreId: selectedGenre,
@@ -67,12 +72,12 @@ const ExplorePage = () => {
           offset,
         });
       } else if (exploreType === "upcoming" || exploreType === "coming-soon") {
-        result = await getUpcomingFromDb({
+        result = await getUpcomingFromEdge({
           limit: PAGE_SIZE,
           offset,
         });
       } else {
-        result = await getExploreContent({
+        result = await getExploreContentFromEdge({
           mediaType: 'movie',
           category: 'popular',
           limit: PAGE_SIZE,

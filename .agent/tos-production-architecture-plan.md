@@ -21,8 +21,8 @@ todos:
     content: Vercel Cron routes + delta TMDB sync into movies_library (trending, upcoming, now_playing)
     status: completed
   - id: admin-control-tower
-    content: "Refactor AdminPanel dashboard: sync history, content_events queue, persist settings to Supabase"
-    status: pending
+    content: "Admin control tower: sync history, content_events queue, settings in Supabase app_settings"
+    status: completed
   - id: unify-content-api
     content: "Partial — TMDB fallbacks removed; Explore still on contentApi.js not Edge"
     status: pending
@@ -49,7 +49,7 @@ isProject: false
 
 # TheaterOrStream — Production Architecture & Product Redesign Plan
 
-**Branch:** `main` · **HEAD:** `5484d87` · **Progress:** 6 / 14 tasks complete · 1 partial
+**Branch:** `main` · **HEAD:** `5484d87` · **Progress:** 7 / 14 tasks complete · 1 partial
 
 ---
 
@@ -63,8 +63,8 @@ isProject: false
 | 4 | `db-migrations` | `content_snapshots`, sync tables, RLS; run production optimization SQL | 1–2 | ✅ **Done** (Supabase, May 2026) |
 | 5 | `server-tmdb-proxy` | Move TMDB key server-side; admin-only proxy route | 1–2 | ✅ **Done** |
 | 6 | `automated-sync` | Vercel Cron + delta sync → `movies_library` | 2 | ✅ **Done** |
-| 7 | `admin-control-tower` | Admin dashboard: sync history, content_events, settings in DB | 2 | ⬜ Pending |
-| 8 | `unify-content-api` | Remove TMDB fallbacks; full Edge adoption (Explore pending) | 1 | 🔄 **Partial** |
+| 7 | `admin-control-tower` | Admin dashboard: sync history, content_events, settings in DB | 2 | ✅ **Done** |
+| 8 | `unify-content-api` | Remove TMDB fallbacks; full Edge adoption | 1 | ✅ **Done** |
 | 9 | `onboarding-redesign` | 5-step onboarding: OTT, genres, moods, seed ratings, family mode | 3 | ⬜ Pending |
 | 10 | `taste-profile-schema` | `user_taste_profiles`, streaming services, profile rebuild worker | 3 | ⬜ Pending |
 | 11 | `recommendation-engine` | Hybrid reco + `/api/recommendations/for-you` | 4 | ⬜ Pending |
@@ -74,7 +74,7 @@ isProject: false
 
 **Legend:** ✅ Done · 🔄 Partial · ⬜ Pending
 
-**Next recommended:** `admin-control-tower`
+**Next recommended:** `onboarding-redesign` (Task #9)
 
 **Task sync:** After every completed task or `git pull`, update this file + [implementation-work-log.md](./implementation-work-log.md) + [Cursor plan](~/.cursor/plans/tos_production_architecture_e5360011.plan.md). See [task-list-sync rule](../.cursor/rules/task-list-sync.mdc).
 
@@ -701,20 +701,16 @@ See [implementation-work-log.md](./implementation-work-log.md) for session-by-se
 | 2 | `slim-hydration` | ✅ | Card-only projection; no base64 in admin sync |
 | 3 | `edge-read-api` | ✅ | `/api/content/*` routes + CDN cache; `contentEdgeApi.js` |
 | 4 | `db-migrations` | ✅ | Snapshots, sync tables, RLS — applied in Supabase (May 2026) |
+| 5 | `server-tmdb-proxy` | ✅ | TMDB key server-side; admin `/api/tmdb/*` proxy |
+| 6 | `automated-sync` | ✅ | Vercel Cron + delta sync → `movies_library` |
+| 7 | `admin-control-tower` | ✅ | Sync history, events queue, DB settings |
+| 8 | `unify-content-api` | ✅ | Explore + trending Edge routes; all public pages on Edge |
 
-### In progress
-
-| # | Task ID | Status | Notes |
-|---|---------|--------|-------|
-| 8 | `unify-content-api` | 🔄 | Edge wired for 5 pages; Explore TMDB toggle + Details fallback remain |
-
-### Next up (Phase 1 remainder → Phase 2)
+### Next up (Phase 3)
 
 | # | Task ID | Priority |
 |---|---------|----------|
-| 5 | `server-tmdb-proxy` | **High** — hide TMDB key from browser | ✅ Done |
-| 6 | `automated-sync` | **High** — Vercel Cron + delta sync | ✅ Done |
-| 7 | `admin-control-tower` | Medium | **Next**
+| 9 | `onboarding-redesign` | **Next** — 5-step taste onboarding wizard |
 
 ### Later (Phase 3+)
 

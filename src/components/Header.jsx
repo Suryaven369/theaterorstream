@@ -3,7 +3,6 @@ import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { IoSearchOutline } from "react-icons/io5";
 import { navigation } from "../constants/navigation";
 import { useAuth } from "../context/AuthContext";
-import { supabase } from "../lib/supabase";
 
 // Avatar lookup
 const AVATARS = {
@@ -32,7 +31,7 @@ const Header = () => {
   const [hasTyped, setHasTyped] = useState(false);
   const navigate = useNavigate();
 
-  const { user, profile, isAuthenticated, isOnboarded } = useAuth();
+  const { user, profile, isAuthenticated, isOnboarded, signOut } = useAuth();
 
   // Only navigate when user types something, not on initial load
   useEffect(() => {
@@ -53,29 +52,18 @@ const Header = () => {
     e.preventDefault();
   };
 
-  const handleSignOut = async () => {
+  const handleSignOut = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowDropdown(false);
+
     try {
-      // Call Supabase signOut - this clears the session
-      await supabase.auth.signOut();
-
-      // Clear specific auth key and any other sb- keys
-      localStorage.removeItem('theaterorstream-auth');
-
-      const keysToRemove = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && (key.startsWith('sb-') || key.includes('supabase'))) {
-          keysToRemove.push(key);
-        }
-      }
-      keysToRemove.forEach(key => localStorage.removeItem(key));
-
+      await signOut();
     } catch (error) {
       console.error('Sign out error:', error);
     }
 
-    // Reload to home
-    window.location.href = '/';
+    navigate('/auth', { replace: true });
   };
 
   const getUserAvatar = () => {
@@ -237,7 +225,7 @@ const Header = () => {
               to="/auth"
               className="px-5 py-2.5 rounded-full bg-gradient-to-r from-orange-500 to-red-500 text-white text-sm font-medium hover:opacity-90 transition-all shadow-lg hover:shadow-orange-500/25"
             >
-              Login
+              Sign In
             </Link>
           )}
         </div>

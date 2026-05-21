@@ -17,8 +17,17 @@ function getSupabaseAuthClient(accessToken) {
     });
 }
 
+function getRequestHeader(request, name) {
+    const lower = name.toLowerCase();
+    if (request?.headers && typeof request.headers.get === 'function') {
+        return request.headers.get(name) || request.headers.get(lower);
+    }
+    const headers = request?.headers || {};
+    return headers[lower] || headers[name];
+}
+
 export async function requireAdmin(request) {
-    const authHeader = request.headers.get('authorization');
+    const authHeader = getRequestHeader(request, 'authorization');
     if (!authHeader?.startsWith('Bearer ')) {
         return { ok: false, status: 401, message: 'Missing authorization token' };
     }

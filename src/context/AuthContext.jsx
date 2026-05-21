@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { supabase, getUserProfile, ensureUserProfile } from '../lib/supabase';
+import { supabase, getUserProfile, ensureUserProfile, isProfileOnboarded } from '../lib/supabase';
+import { signOutUser } from '../lib/auth';
 
 const AuthContext = createContext({});
 
@@ -8,7 +9,8 @@ export const useAuth = () => useContext(AuthContext);
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [profile, setProfile] = useState(null);
-    const [loading, setLoading] = useState(true);
+    const [sessionReady, setSessionReady] = useState(false);
+    const [profileReady, setProfileReady] = useState(true);
 
     const loadProfile = useCallback(async (userId) => {
         try {
@@ -22,82 +24,42 @@ export const AuthProvider = ({ children }) => {
                 setProfile(userProfile);
                 return userProfile;
             }
+
+            setProfile(null);
             return null;
-        } catch (error) {
+        } catch {
+            setProfile(null);
             return null;
         }
     }, []);
 
+    const signOut = useCallback(async () => {
+        setUser(null);
+        setProfile(null);
+        setProfileReady(true);
+        await signOutUser();
+    }, []);
+
+    // Session listener only — never await Supabase data calls here (avoids auth deadlock).
     useEffect(() => {
         let mounted = true;
 
-        const initializeAuth = async () => {
-            try {
-                // Check active session
-                const { data: { session } } = await supabase.auth.getSession();
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            if (!mounted) return;
+            setUser(session?.user ?? null);
+            setSessionReady(true);
+        }).catch(() => {
+            if (mounted) setSessionReady(true);
+        });
 
-                if (mounted && session?.user) {
-                    setUser(session.user);
-                    await loadProfile(session.user.id);
-                    setLoading(false);
-                    return;
-                }
-
-                // If no session, try manual recovery from localStorage
-                const storedSessionStr = localStorage.getItem('theaterorstream-auth');
-                if (storedSessionStr) {
-                    try {
-                        const storedSession = JSON.parse(storedSessionStr);
-                        if (storedSession?.access_token && storedSession?.refresh_token) {
-                            const { data, error: refreshError } = await supabase.auth.setSession({
-                                access_token: storedSession.access_token,
-                                refresh_token: storedSession.refresh_token,
-                            });
-
-                            if (!refreshError && data?.session?.user) {
-                                if (mounted) {
-                                    setUser(data.session.user);
-                                    await loadProfile(data.session.user.id);
-                                    setLoading(false);
-                                    return;
-                                }
-                            }
-                        }
-                    } catch (e) {
-                        // Parse error, continue
-                    }
-                }
-
-                if (mounted) {
-                    setLoading(false);
-                }
-            } catch (error) {
-                if (mounted) setLoading(false);
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            if (!mounted) return;
+            setUser(session?.user ?? null);
+            if (!session?.user) {
+                setProfile(null);
+                setProfileReady(true);
             }
-        };
-
-        initializeAuth();
-
-        // Set up auth state listener
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(
-            async (event, session) => {
-                if (!mounted) return;
-
-                if (session?.user) {
-                    setUser(session.user);
-                    if (['SIGNED_IN', 'INITIAL_SESSION', 'USER_UPDATED'].includes(event)) {
-                        await loadProfile(session.user.id);
-                    }
-                    if (event === 'INITIAL_SESSION') {
-                        setLoading(false);
-                    }
-                } else if (event === 'SIGNED_OUT') {
-                    setUser(null);
-                    setProfile(null);
-                    setLoading(false);
-                }
-            }
-        );
+        });
 
         return () => {
             mounted = false;
@@ -105,21 +67,54 @@ export const AuthProvider = ({ children }) => {
         };
     }, []);
 
-    const refreshProfile = useCallback(async () => {
-        if (user?.id) {
-            return await loadProfile(user.id);
+    // Profile fetch runs in its own effect when user id changes.
+    useEffect(() => {
+        if (!user?.id) {
+            setProfile(null);
+            setProfileReady(true);
+            return undefined;
         }
-        return null;
+
+        let cancelled = false;
+        setProfileReady(false);
+
+        const timeoutId = setTimeout(() => {
+            if (!cancelled) setProfileReady(true);
+        }, 10000);
+
+        loadProfile(user.id).finally(() => {
+            clearTimeout(timeoutId);
+            if (!cancelled) {
+                setProfileReady(true);
+            }
+        });
+
+        return () => {
+            cancelled = true;
+        };
     }, [user?.id, loadProfile]);
+
+    const refreshProfile = useCallback(async () => {
+        if (!user?.id) return null;
+        setProfileReady(false);
+        try {
+            return await loadProfile(user.id);
+        } finally {
+            setProfileReady(true);
+        }
+    }, [user?.id, loadProfile]);
+
+    const loading = !sessionReady || (!!user && !profileReady);
 
     const value = {
         user,
         profile,
         loading,
         isAuthenticated: !!user,
-        isOnboarded: !!profile?.is_onboarded,
+        isOnboarded: isProfileOnboarded(profile),
         isAdmin: !!profile?.is_admin,
         refreshProfile,
+        signOut,
     };
 
     return (

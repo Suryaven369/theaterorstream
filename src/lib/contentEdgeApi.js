@@ -93,3 +93,37 @@ export async function getMovieDetailFromEdge(tmdbId) {
         }
     );
 }
+
+export async function getExploreContentFromEdge(options = {}) {
+    const params = new URLSearchParams();
+    if (options.mediaType) params.set('mediaType', options.mediaType);
+    if (options.category) params.set('category', options.category);
+    if (options.genreId != null) params.set('genreId', String(options.genreId));
+    if (options.limit != null) params.set('limit', String(options.limit));
+    if (options.offset != null) params.set('offset', String(options.offset));
+
+    return fetchFromEdge(
+        `${API_BASE}/explore?${params.toString()}`,
+        async () => {
+            const { getExploreContent } = await import('./contentApi.js');
+            return getExploreContent(options);
+        },
+    );
+}
+
+export async function getTrendingContentFromEdge(mediaType = null, limit = 24) {
+    const params = new URLSearchParams();
+    if (mediaType) params.set('mediaType', mediaType);
+    if (limit != null) params.set('limit', String(limit));
+
+    const payload = await fetchFromEdge(
+        `${API_BASE}/trending?${params.toString()}`,
+        async () => {
+            const { getTrendingContent } = await import('./contentApi.js');
+            const data = await getTrendingContent(mediaType, limit);
+            return { data, total: data.length };
+        },
+    );
+
+    return payload.data || [];
+}
