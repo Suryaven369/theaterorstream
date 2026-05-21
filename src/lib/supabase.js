@@ -269,12 +269,28 @@ export const ensureUserProfile = async (userId) => {
 
 // Helper functions for movie ratings and reviews
 
+const normalizeMovieId = (movieId) => String(movieId);
+
+const ratingPayloadFromInput = (movieId, movieTitle, ratings, userId) => ({
+    movie_id: normalizeMovieId(movieId),
+    movie_title: movieTitle,
+    user_id: userId,
+    acting: ratings.acting,
+    screenplay: ratings.screenplay,
+    sound: ratings.sound,
+    direction: ratings.direction,
+    entertainment: ratings.entertainment,
+    pacing: ratings.pacing,
+    cinematography: ratings.cinematography,
+    updated_at: new Date().toISOString(),
+});
+
 // Get all reviews for a movie (including replies)
 export const getMovieReviews = async (movieId) => {
     const { data, error } = await supabase
         .from('reviews')
         .select('*')
-        .eq('movie_id', movieId)
+        .eq('movie_id', normalizeMovieId(movieId))
         .order('created_at', { ascending: true });
 
     if (error) {
@@ -289,7 +305,7 @@ export const getMovieRatings = async (movieId) => {
     const { data, error } = await supabase
         .from('ratings')
         .select('*')
-        .eq('movie_id', movieId);
+        .eq('movie_id', normalizeMovieId(movieId));
 
     if (error) {
         console.error('Error fetching ratings:', error);
@@ -376,69 +392,70 @@ export const getUserRatingForMovie = async (userId, movieId) => {
         .from('ratings')
         .select('*')
         .eq('user_id', userId)
-        .eq('movie_id', movieId)
-        .single();
+        .eq('movie_id', normalizeMovieId(movieId))
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
     if (error) {
-        // PGRST116 = no rows found, not an error
-        if (error.code === 'PGRST116') return null;
+        console.error('Error fetching user rating:', error);
         return null;
     }
     return data;
 };
 
-// Submit or update a rating (upsert based on user_id + movie_id)
+// Submit or update a rating (upsert on user_id + movie_id)
 export const submitRating = async (movieId, movieTitle, ratings, userId = 'anonymous') => {
-    // First check if user already has a rating for this movie
-    const existingRating = await getUserRatingForMovie(userId, movieId);
+    const normalizedMovieId = normalizeMovieId(movieId);
+    const row = ratingPayloadFromInput(normalizedMovieId, movieTitle, ratings, userId);
 
-    if (existingRating) {
-        // Update existing rating
-        const { data, error } = await supabase
-            .from('ratings')
-            .update({
-                acting: ratings.acting,
-                screenplay: ratings.screenplay,
-                sound: ratings.sound,
-                direction: ratings.direction,
-                entertainment: ratings.entertainment,
-                pacing: ratings.pacing,
-                cinematography: ratings.cinematography,
-                updated_at: new Date().toISOString()
-            })
-            .eq('id', existingRating.id)
-            .select();
+    const { data, error } = await supabase
+        .from('ratings')
+        .upsert(row, { onConflict: 'user_id,movie_id' })
+        .select()
+        .maybeSingle();
 
-        if (error) {
-            console.error('Error updating rating:', error);
-            return { success: false, error };
+    if (error) {
+        const existingRating = await getUserRatingForMovie(userId, normalizedMovieId);
+
+        if (existingRating) {
+            const { data: updated, error: updateError } = await supabase
+                .from('ratings')
+                .update({
+                    acting: row.acting,
+                    screenplay: row.screenplay,
+                    sound: row.sound,
+                    direction: row.direction,
+                    entertainment: row.entertainment,
+                    pacing: row.pacing,
+                    cinematography: row.cinematography,
+                    updated_at: row.updated_at,
+                })
+                .eq('id', existingRating.id)
+                .select()
+                .maybeSingle();
+
+            if (updateError) {
+                console.error('Error updating rating:', updateError);
+                return { success: false, error: updateError };
+            }
+            return { success: true, data: updated, updated: true };
         }
-        return { success: true, data, updated: true };
-    } else {
-        // Insert new rating
-        const { data, error } = await supabase
-            .from('ratings')
-            .insert({
-                movie_id: movieId,
-                movie_title: movieTitle,
-                user_id: userId,
-                acting: ratings.acting,
-                screenplay: ratings.screenplay,
-                sound: ratings.sound,
-                direction: ratings.direction,
-                entertainment: ratings.entertainment,
-                pacing: ratings.pacing,
-                cinematography: ratings.cinematography,
-                created_at: new Date().toISOString()
-            })
-            .select();
 
-        if (error) {
-            console.error('Error submitting rating:', error);
-            return { success: false, error };
+        const { data: inserted, error: insertError } = await supabase
+            .from('ratings')
+            .insert({ ...row, created_at: new Date().toISOString() })
+            .select()
+            .maybeSingle();
+
+        if (insertError) {
+            console.error('Error submitting rating:', insertError);
+            return { success: false, error: insertError };
         }
-        return { success: true, data, updated: false };
+        return { success: true, data: inserted, updated: false };
     }
+
+    return { success: true, data, updated: !!data?.updated_at };
 };
 
 // Get all ratings by a specific user (for profile feed)

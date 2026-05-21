@@ -173,6 +173,11 @@ CREATE POLICY "Allow public insert on ratings" ON ratings
   FOR INSERT TO public
   WITH CHECK (true);
 
+CREATE POLICY "Allow public update on ratings" ON ratings
+  FOR UPDATE TO public
+  USING (true)
+  WITH CHECK (true);
+
 CREATE POLICY "Allow public insert on reviews" ON reviews
   FOR INSERT TO public
   WITH CHECK (true);

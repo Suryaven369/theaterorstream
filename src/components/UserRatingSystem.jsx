@@ -319,11 +319,15 @@ export const RatingModal = ({ isOpen, onClose, movieId, movieTitle, onSubmitSucc
                 }
             }
 
+            const savedRating = ratingResult.data
+                ? { ...userRatings, ...ratingResult.data }
+                : userRatings;
+
             setShowSuccess(true);
             setTimeout(() => {
                 setShowSuccess(false);
                 onClose();
-                onSubmitSuccess?.(userRatings);
+                onSubmitSuccess?.(savedRating);
             }, 1500);
         }
 
