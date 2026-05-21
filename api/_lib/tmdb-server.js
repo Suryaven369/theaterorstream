@@ -9,7 +9,26 @@ export function buildTmdbUrl(path) {
 }
 
 export function getTmdbApiKey() {
-    return process.env.TMDB_API_KEY || process.env.VITE_MOVIE_API_KEY || null;
+    return (
+        process.env.TMDB_ACCESS_TOKEN
+        || process.env.TMDB_API_KEY
+        || process.env.VITE_MOVIE_API_KEY
+        || null
+    );
+}
+
+/** v4 JWT read token → Bearer header; v3 API key → api_key query param */
+export function applyTmdbAuth(url, credential) {
+    const headers = { Accept: 'application/json' };
+    const token = credential.trim();
+
+    if (token.startsWith('eyJ')) {
+        headers.Authorization = `Bearer ${token}`;
+        return headers;
+    }
+
+    url.searchParams.set('api_key', token);
+    return headers;
 }
 
 export function isAllowedTmdbPath(path) {
@@ -41,12 +60,9 @@ export async function fetchTmdbApi(path, params = {}) {
         }
     });
 
-    const response = await fetch(url.toString(), {
-        headers: {
-            Authorization: `Bearer ${apiKey}`,
-            Accept: 'application/json',
-        },
-    });
+    const headers = applyTmdbAuth(url, apiKey);
+
+    const response = await fetch(url.toString(), { headers });
 
     if (!response.ok) {
         let detail = '';

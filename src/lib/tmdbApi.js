@@ -27,12 +27,15 @@ async function devDirectTmdbFetch(path, params = {}) {
         }
     });
 
-    const response = await fetch(url.toString(), {
-        headers: {
-            Authorization: `Bearer ${apiKey}`,
-            Accept: 'application/json',
-        },
-    });
+    const headers = { Accept: 'application/json' };
+    const token = apiKey.trim();
+    if (token.startsWith('eyJ')) {
+        headers.Authorization = `Bearer ${token}`;
+    } else {
+        url.searchParams.set('api_key', token);
+    }
+
+    const response = await fetch(url.toString(), { headers });
 
     if (!response.ok) {
         throw new Error(`TMDB request failed (${response.status})`);
