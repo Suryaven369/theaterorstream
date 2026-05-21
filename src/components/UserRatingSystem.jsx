@@ -240,6 +240,7 @@ export const RatingModal = ({ isOpen, onClose, movieId, movieTitle, onSubmitSucc
     const dispatch = useDispatch();
     const [submitting, setSubmitting] = useState(false);
     const [showSuccess, setShowSuccess] = useState(false);
+    const [submitError, setSubmitError] = useState(null);
 
     // Initialize with existing rating or defaults
     const getInitialRatings = () => {
@@ -272,6 +273,7 @@ export const RatingModal = ({ isOpen, onClose, movieId, movieTitle, onSubmitSucc
         if (isOpen) {
             setUserRatings(getInitialRatings());
             setShowSuccess(false);
+            setSubmitError(null);
         }
     }, [isOpen, existingRating]);
 
@@ -291,10 +293,11 @@ export const RatingModal = ({ isOpen, onClose, movieId, movieTitle, onSubmitSucc
 
     const handleSubmit = async () => {
         setSubmitting(true);
+        setSubmitError(null);
 
         const ratingResult = await submitRating(movieId, movieTitle, userRatings, userId || 'anonymous');
 
-        if (ratingResult.success) {
+        if (ratingResult.success && ratingResult.data) {
             const userScore = computeOverallFromCategories(userRatings);
             if (userId && userId !== 'anonymous' && userScore != null) {
                 dispatch(markUserRatedMovie({ movieId: String(movieId), score: userScore }));
@@ -329,6 +332,11 @@ export const RatingModal = ({ isOpen, onClose, movieId, movieTitle, onSubmitSucc
                 onClose();
                 onSubmitSuccess?.(savedRating);
             }, 1500);
+        } else {
+            setSubmitError(
+                ratingResult.error?.message
+                || 'Could not save your rating. Run the ratings migration in Supabase if this keeps failing.'
+            );
         }
 
         setSubmitting(false);
@@ -366,7 +374,15 @@ export const RatingModal = ({ isOpen, onClose, movieId, movieTitle, onSubmitSucc
                 {showSuccess && (
                     <div className="p-4 m-4 rounded-lg bg-green-500/20 border border-green-500/30 flex items-center gap-2">
                         <span className="text-green-400">✓</span>
-                        <span className="text-sm text-green-400">Rating submitted successfully!</span>
+                        <span className="text-sm text-green-400">
+                            {isUpdating ? 'Rating updated successfully!' : 'Rating submitted successfully!'}
+                        </span>
+                    </div>
+                )}
+
+                {submitError && (
+                    <div className="p-4 m-4 rounded-lg bg-red-500/20 border border-red-500/30">
+                        <span className="text-sm text-red-400">{submitError}</span>
                     </div>
                 )}
 
@@ -823,9 +839,14 @@ export const ReviewsList = ({ movieId, movieTitle, onRateClick, hasUserRated }) 
 };
 
 // Main UserRatingSystem Component
-const UserRatingSystem = ({ movieId, movieTitle, hasUserRated, existingRating, userId }) => {
+const UserRatingSystem = ({ movieId, movieTitle, hasUserRated, existingRating, userId, onRatingSubmitted }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
+
+    const handleRatingSaved = (savedRating) => {
+        setRefreshKey(prev => prev + 1);
+        onRatingSubmitted?.(savedRating);
+    };
 
     return (
         <>
@@ -841,7 +862,7 @@ const UserRatingSystem = ({ movieId, movieTitle, hasUserRated, existingRating, u
                 onClose={() => setIsModalOpen(false)}
                 movieId={movieId}
                 movieTitle={movieTitle}
-                onSubmitSuccess={() => setRefreshKey(prev => prev + 1)}
+                onSubmitSuccess={handleRatingSaved}
                 existingRating={existingRating}
                 userId={userId}
             />

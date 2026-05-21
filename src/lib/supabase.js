@@ -404,58 +404,66 @@ export const getUserRatingForMovie = async (userId, movieId) => {
     return data;
 };
 
-// Submit or update a rating (upsert on user_id + movie_id)
+// Submit or update a rating (update existing row by id, else insert)
 export const submitRating = async (movieId, movieTitle, ratings, userId = 'anonymous') => {
     const normalizedMovieId = normalizeMovieId(movieId);
     const row = ratingPayloadFromInput(normalizedMovieId, movieTitle, ratings, userId);
+    const scoreFields = {
+        acting: row.acting,
+        screenplay: row.screenplay,
+        sound: row.sound,
+        direction: row.direction,
+        entertainment: row.entertainment,
+        pacing: row.pacing,
+        cinematography: row.cinematography,
+        updated_at: row.updated_at,
+    };
 
-    const { data, error } = await supabase
-        .from('ratings')
-        .upsert(row, { onConflict: 'user_id,movie_id' })
-        .select()
-        .maybeSingle();
+    const existingRating = await getUserRatingForMovie(userId, normalizedMovieId);
 
-    if (error) {
-        const existingRating = await getUserRatingForMovie(userId, normalizedMovieId);
-
-        if (existingRating) {
-            const { data: updated, error: updateError } = await supabase
-                .from('ratings')
-                .update({
-                    acting: row.acting,
-                    screenplay: row.screenplay,
-                    sound: row.sound,
-                    direction: row.direction,
-                    entertainment: row.entertainment,
-                    pacing: row.pacing,
-                    cinematography: row.cinematography,
-                    updated_at: row.updated_at,
-                })
-                .eq('id', existingRating.id)
-                .select()
-                .maybeSingle();
-
-            if (updateError) {
-                console.error('Error updating rating:', updateError);
-                return { success: false, error: updateError };
-            }
-            return { success: true, data: updated, updated: true };
-        }
-
-        const { data: inserted, error: insertError } = await supabase
+    if (existingRating?.id) {
+        const { data: updated, error: updateError } = await supabase
             .from('ratings')
-            .insert({ ...row, created_at: new Date().toISOString() })
+            .update(scoreFields)
+            .eq('id', existingRating.id)
             .select()
-            .maybeSingle();
+            .single();
 
-        if (insertError) {
-            console.error('Error submitting rating:', insertError);
-            return { success: false, error: insertError };
+        if (updateError) {
+            console.error('Error updating rating:', updateError);
+            return { success: false, error: updateError };
         }
-        return { success: true, data: inserted, updated: false };
+        return { success: true, data: updated, updated: true };
     }
 
-    return { success: true, data, updated: !!data?.updated_at };
+    const { data: inserted, error: insertError } = await supabase
+        .from('ratings')
+        .insert({ ...row, created_at: new Date().toISOString() })
+        .select()
+        .single();
+
+    if (insertError?.code === '23505') {
+        const raced = await getUserRatingForMovie(userId, normalizedMovieId);
+        if (raced?.id) {
+            const { data: updated, error: updateError } = await supabase
+                .from('ratings')
+                .update(scoreFields)
+                .eq('id', raced.id)
+                .select()
+                .single();
+
+            if (!updateError) {
+                return { success: true, data: updated, updated: true };
+            }
+        }
+    }
+
+    if (insertError) {
+        console.error('Error submitting rating:', insertError);
+        return { success: false, error: insertError };
+    }
+
+    return { success: true, data: inserted, updated: false };
 };
 
 // Get all ratings by a specific user (for profile feed)

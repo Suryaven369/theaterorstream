@@ -2,7 +2,7 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** May 2026 · HEAD `e56f1b2` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** May 2026 · HEAD `0797cb5` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
 
 ---
 
@@ -53,6 +53,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `0797cb5` | May 2026 | Fix rating re-update save + display (Reviews callback, refetch race) |
 | `e56f1b2` | May 2026 | Sync work log git history rows + HEAD |
 | `a176952` | May 2026 | Work log HEAD sync to 2775166 |
 | `2775166` | May 2026 | Work log HEAD sync to 2a7ef03 |
@@ -296,5 +297,28 @@ TMDB still used: **admin panel** (import/sync), **Explore** (optional toggle), *
 2. `supabase_phase1_content_pipeline.sql` (if pipeline tables not already applied from phone)
 
 **Next recommended task:** `server-tmdb-proxy` (Task #5)
+
+---
+
+## Session: May 2026 — Rating re-update display + save (follow-up)
+
+### Rating re-update (2nd save + UI) ✅
+
+**Problem:** Changing an existing rating did not persist or show the new scores after submit (Reviews modal path + race with refetch).
+
+**Root causes:**
+1. `UserRatingSystem` ignored `onRatingSubmitted` — parent `userRating` never updated from Reviews “Rated” flow
+2. `handleRatingSubmitSuccess` bumped `ratingsKey` before optimistic update, so refetch overwrote UI with stale DB row
+3. `submitRating` relied on upsert + `maybeSingle`; success could return with no row when SELECT after write failed
+
+**Files changed:**
+- `src/lib/supabase.js` — update-by-id when row exists, insert otherwise, duplicate-key retry
+- `src/components/UserRatingSystem.jsx` — wire `onRatingSubmitted`, require `data` on success, show errors
+- `src/views/Details.jsx` — set `userRating` from saved row, refetch from DB, then refresh community aggregates
+- `supabase_schema.sql` — `idx_ratings_user_movie` unique index
+
+**Off-git required:** Run `supabase/migrations/20260521_ratings_update_policy.sql` in Supabase SQL Editor if re-rate still fails (RLS UPDATE policy).
+
+**Behavior:** Re-rate from TOS “Update Rating” or Reviews “Rated ✓”; modal shows latest sliders; submit saves and UI shows updated scores.
 
 ---

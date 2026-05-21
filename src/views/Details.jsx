@@ -214,21 +214,33 @@ const Details = () => {
 
   // Handle rating submission success
   const handleRatingSubmitSuccess = async (submittedRatings) => {
-    // 1. Keep UI in sync immediately, then refetch aggregates
-    setRatingsKey(prev => prev + 1);
+    if (user?.id && movieId) {
+      if (submittedRatings) {
+        setUserRating({
+          ...(submittedRatings.id ? submittedRatings : {}),
+          user_id: user.id,
+          movie_id: String(movieId),
+          movie_title: data?.title || data?.name,
+          acting: submittedRatings.acting,
+          screenplay: submittedRatings.screenplay,
+          sound: submittedRatings.sound,
+          direction: submittedRatings.direction,
+          entertainment: submittedRatings.entertainment,
+          pacing: submittedRatings.pacing,
+          cinematography: submittedRatings.cinematography,
+          updated_at: submittedRatings.updated_at || new Date().toISOString(),
+        });
+      }
 
-    if (submittedRatings && user?.id && movieId) {
-      setUserRating((prev) => ({
-        ...(prev || {}),
-        user_id: user.id,
-        movie_id: String(movieId),
-        movie_title: data?.title || data?.name,
-        ...submittedRatings,
-        updated_at: new Date().toISOString(),
-      }));
+      const fresh = await getUserRatingForMovie(user.id, movieId);
+      if (fresh) {
+        setUserRating(fresh);
+      }
     }
 
-    // 2. Automatically mark as watched if authenticated
+    setRatingsKey((prev) => prev + 1);
+
+    // Automatically mark as watched if authenticated
     if (isAuthenticated && user?.id && data) {
       try {
         console.log("Automatically marking as watched on rating...");
