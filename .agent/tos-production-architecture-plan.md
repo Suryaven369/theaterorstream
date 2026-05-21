@@ -49,7 +49,7 @@ isProject: false
 
 # TheaterOrStream — Production Architecture & Product Redesign Plan
 
-**Branch:** `main` · **HEAD:** `8fbcd11` · **Progress:** 4 / 14 tasks complete (Phase 1 foundation)
+**Branch:** `main` · **HEAD:** `2a7ef03` · **Progress:** 4 / 14 tasks complete (Phase 1 foundation)
 
 ---
 
