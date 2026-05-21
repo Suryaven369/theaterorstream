@@ -2,7 +2,7 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** May 2026 · HEAD `348a9a9` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** May 2026 · HEAD `86f2a84` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
 
 ---
 
@@ -53,7 +53,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
-| *(this push)* | May 2026 | Task #5 server-tmdb-proxy + unify-content-api |
+| `86f2a84` | May 2026 | Task #5 server-tmdb-proxy + unify-content-api |
 | `348a9a9` | May 2026 | Agent docs HEAD sync after detail poster fix |
 | `def1998` | May 2026 | Fix mobile detail page poster/backdrop/cast image loading |
 | `9f73fe0` | May 2026 | Agent docs HEAD sync to 75b67e2 |
