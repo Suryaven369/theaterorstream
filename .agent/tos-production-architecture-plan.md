@@ -24,8 +24,8 @@ todos:
     content: "Admin control tower: sync history, content_events queue, settings in Supabase app_settings"
     status: completed
   - id: unify-content-api
-    content: "Partial — TMDB fallbacks removed; Explore still on contentApi.js not Edge"
-    status: pending
+    content: "Full Edge adoption — explore/trending routes; all public reads via contentEdgeApi.js"
+    status: completed
   - id: onboarding-redesign
     content: "Multi-step onboarding: OTT platforms, genres, mood, family mode, rate 10 seed movies; write to user_taste_profiles"
     status: pending
@@ -49,7 +49,7 @@ isProject: false
 
 # TheaterOrStream — Production Architecture & Product Redesign Plan
 
-**Branch:** `main` · **HEAD:** `5484d87` · **Progress:** 7 / 14 tasks complete · 1 partial
+**Branch:** `main` · **HEAD:** `b42916d` · **Progress:** 8 / 14 tasks complete
 
 ---
 
@@ -143,14 +143,14 @@ You already have the right **content model**: TMDB is ingestion, `movies_library
 | Public reads via Edge | ✅ Live | [`contentEdgeApi.js`](src/lib/contentEdgeApi.js) on Home, TV, Upcoming, Search, Details |
 | DB migrations + RLS | ✅ Applied | `content_snapshots`, sync tables, production optimization SQL (Supabase, May 2026) |
 
-### Still open
+### Resolved (Phase 1–2)
 
-| Issue | Location | Impact |
-|-------|----------|--------|
-| Details TMDB fallback when missing from library | [`src/views/Details.jsx`](src/views/Details.jsx) | Slow pages, exposed API key |
-| No scheduled sync | [`AdminPanel.jsx`](src/views/AdminPanel.jsx) | Stale library; manual admin sync |
-| Explore still has TMDB toggle | [`Explore.jsx`](src/views/Explore.jsx) | Optional client TMDB usage |
-| TMDB key still in client bundle | [`src/main.jsx`](src/main.jsx) | Task #5 — server-side proxy pending |
+| Issue | Resolution |
+|-------|------------|
+| Public TMDB fallbacks | Removed — all public reads via Edge + `contentEdgeApi.js` |
+| TMDB key in client bundle | Server-side proxy (`/api/tmdb/*`); admin/cron only |
+| No scheduled sync | Vercel Cron (Fridays) + admin control tower manual trigger |
+| Explore direct DB reads | `api/content/explore` + `api/content/trending` Edge routes |
 
 **Stack:** React SPA on Vercel · Supabase Postgres · Edge functions in [`api/content/`](api/content/)
 
@@ -693,7 +693,7 @@ This is production-viable on Supabase + Vercel without a separate backend servic
 
 See [implementation-work-log.md](./implementation-work-log.md) for session-by-session changes, commits, and deploy notes.
 
-### Completed (Phase 1 — as of May 2026, `main` @ `32e3a8e`)
+### Completed (Phase 1–2 — as of May 2026, `main` @ `b42916d`)
 
 | # | Task ID | Status | Summary |
 |---|---------|--------|---------|
