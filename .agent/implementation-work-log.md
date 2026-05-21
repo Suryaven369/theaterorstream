@@ -249,3 +249,24 @@ TMDB still used: **admin panel** (import/sync), **Explore** (optional toggle), *
 **Next recommended task:** `server-tmdb-proxy` (Task #5)
 
 ---
+
+## Session: May 2026 — Fix rating re-update not saving
+
+### Rating update (re-rate) ✅
+
+**Problem:** First rating saved; changing the rating again did not persist (2nd+ updates).
+
+**Root cause:** Supabase RLS on `ratings` allowed `INSERT` and `SELECT` but had **no `UPDATE` policy**, so `submitRating` update path failed after the first insert.
+
+**Files changed:**
+- `supabase_schema.sql` — unique index `(user_id, movie_id)` + public UPDATE policy
+- `supabase/migrations/20260521_ratings_update_policy.sql` — production SQL (dedupe + index + policy)
+- `src/lib/supabase.js` — normalize `movie_id`, upsert + update fallback, `maybeSingle` fetch
+- `src/components/UserRatingSystem.jsx` — notify parent on submit; pass saved row to callback
+- `src/views/Details.jsx` — optimistic `userRating` sync on re-rate (both modals)
+
+**Off-git required:** Run `supabase/migrations/20260521_ratings_update_policy.sql` in Supabase SQL Editor once.
+
+**Behavior:** Re-opening the rating modal shows your latest scores; submitting again updates the same row.
+
+---

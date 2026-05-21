@@ -269,12 +269,28 @@ export const ensureUserProfile = async (userId) => {
 
 // Helper functions for movie ratings and reviews
 
+const normalizeMovieId = (movieId) => String(movieId);
+
+const ratingPayloadFromInput = (movieId, movieTitle, ratings, userId) => ({
+    movie_id: normalizeMovieId(movieId),
+    movie_title: movieTitle,
+    user_id: userId,
+    acting: ratings.acting,
+    screenplay: ratings.screenplay,
+    sound: ratings.sound,
+    direction: ratings.direction,
+    entertainment: ratings.entertainment,
+    pacing: ratings.pacing,
+    cinematography: ratings.cinematography,
+    updated_at: new Date().toISOString(),
+});
+
 // Get all reviews for a movie (including replies)
 export const getMovieReviews = async (movieId) => {
     const { data, error } = await supabase
         .from('reviews')
         .select('*')
-        .eq('movie_id', movieId)
+        .eq('movie_id', normalizeMovieId(movieId))
         .order('created_at', { ascending: true });
 
     if (error) {
