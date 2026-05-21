@@ -2,7 +2,7 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** May 2026 · HEAD `91d49b3` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** May 2026 · HEAD *(pending push)* · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
 
 ---
 
@@ -53,6 +53,8 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| *(this push)* | May 2026 | Merge handoff: Phase 1 SQL repo + rating re-update fix |
+| `b8f20da` | May 2026 | Work log HEAD sync (pre-merge) |
 | `32e3a8e` | May 2026 | Fix share card text clipping; larger modal preview |
 | `8da7637` | May 2026 | Share card polish: logo, yellow border, compact modal, no backdrop |
 | `5dce9b3` | May 2026 | TOS home card badge + share card UI/sharing + work log |
@@ -268,5 +270,23 @@ TMDB still used: **admin panel** (import/sync), **Explore** (optional toggle), *
 **Off-git required:** Run `supabase/migrations/20260521_ratings_update_policy.sql` in Supabase SQL Editor once.
 
 **Behavior:** Re-opening the rating modal shows your latest scores; submitting again updates the same row.
+
+---
+
+## Session: May 2026 — Merge branches to main (desktop handoff)
+
+### Branch merge ✅
+
+**Problem:** Work lived on `cursor/db-migrations-phase1-2b4b` and `cursor/fix-rating-reupdate-708f` while `main` had share-card + agent-doc commits ahead.
+
+**Merged into `main`:**
+- `supabase_phase1_content_pipeline.sql` — snapshots, sync tables, admin-gated RLS
+- Rating re-update — upsert path, `20260521_ratings_update_policy.sql`, Details optimistic sync
+
+**Off-git (run once on Supabase if not done):**
+1. `supabase/migrations/20260521_ratings_update_policy.sql`
+2. `supabase_phase1_content_pipeline.sql` (if pipeline tables not already applied from phone)
+
+**Next recommended task:** `server-tmdb-proxy` (Task #5)
 
 ---

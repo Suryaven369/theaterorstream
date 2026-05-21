@@ -49,7 +49,7 @@ isProject: false
 
 # TheaterOrStream — Production Architecture & Product Redesign Plan
 
-**Branch:** `main` · **HEAD:** `32e3a8e` · **Progress:** 4 / 14 tasks complete (Phase 1 foundation)
+**Branch:** `main` · **HEAD:** *(merge push pending)* · **Progress:** 4 / 14 tasks complete (Phase 1 foundation)
 
 ---
 
