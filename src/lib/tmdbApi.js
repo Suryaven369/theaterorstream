@@ -19,7 +19,7 @@ async function devDirectTmdbFetch(path, params = {}) {
     }
 
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-    const url = new URL(`${TMDB_BASE_URL}${normalizedPath.replace(/^\//, '')}`);
+    const url = new URL(normalizedPath.replace(/^\//, ''), `${TMDB_BASE_URL}/`);
 
     Object.entries(params).forEach(([key, value]) => {
         if (value != null && value !== '') {
@@ -71,7 +71,10 @@ export async function tmdbFetch(path, params = {}) {
         let message = `TMDB proxy failed (${response.status})`;
         try {
             const payload = await response.json();
-            if (payload?.error) message = payload.error;
+            const err = payload?.error;
+            if (typeof err === 'string') message = err;
+            else if (err?.message) message = err.message;
+            else if (err) message = JSON.stringify(err);
         } catch {
             // ignore parse errors
         }

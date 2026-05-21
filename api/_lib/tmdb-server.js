@@ -3,6 +3,11 @@ const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const ALLOWED_PATH =
     /^\/(movie|tv|search|discover|trending|person|collection|configuration|genre|find|review|company|network|keyword|certification|watch|list)(\/|$)/;
 
+export function buildTmdbUrl(path) {
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    return new URL(normalizedPath.replace(/^\//, ''), `${TMDB_BASE_URL}/`);
+}
+
 export function getTmdbApiKey() {
     return process.env.TMDB_API_KEY || process.env.VITE_MOVIE_API_KEY || null;
 }
@@ -29,7 +34,7 @@ export async function fetchTmdbApi(path, params = {}) {
         throw error;
     }
 
-    const url = new URL(`${TMDB_BASE_URL}${normalizedPath.replace(/^\//, '')}`);
+    const url = buildTmdbUrl(normalizedPath);
     Object.entries(params).forEach(([key, value]) => {
         if (value != null && value !== '') {
             url.searchParams.set(key, String(value));
@@ -44,7 +49,14 @@ export async function fetchTmdbApi(path, params = {}) {
     });
 
     if (!response.ok) {
-        const error = new Error(`TMDB request failed (${response.status})`);
+        let detail = '';
+        try {
+            const body = await response.json();
+            detail = body?.status_message || body?.error || JSON.stringify(body);
+        } catch {
+            detail = response.statusText;
+        }
+        const error = new Error(`TMDB request failed (${response.status}): ${detail}`);
         error.status = response.status;
         throw error;
     }
