@@ -131,7 +131,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 - [x] RLS policy updates on `movies_library`, `homepage_sections`, `tv_sections`
 - [x] `supabase_production_optimization.sql` (indexes, `tv_sections`, search functions)
 
-**Note:** SQL run directly in Supabase — not yet committed as a repo migration file. Code can now use these tables in Tasks #6–7 (automated sync, admin tower).
+**Repo SQL:** `supabase_phase1_content_pipeline.sql` (content_snapshots, sync tables, admin-gated RLS). Apply in Supabase SQL Editor if not already run. Code can use these tables in Tasks #6–7 (automated sync, admin tower).
 
 ---
 
