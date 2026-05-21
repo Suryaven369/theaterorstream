@@ -2,7 +2,7 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** May 2026 · HEAD `b42916d` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** May 2026 · HEAD `b210481` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
 
 ---
 
@@ -53,6 +53,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `b210481` | May 2026 | Agent docs HEAD sync — Tasks 7–8 checkmarks |
 | `b42916d` | May 2026 | Task #7 control tower + Task #8 Explore Edge + auth overhaul |
 | `6c0f3d4` | May 2026 | Agent docs HEAD sync after automated-sync push |
 | `5484d87` | May 2026 | Weekly Vercel Cron jobs for automated TMDB library sync |
