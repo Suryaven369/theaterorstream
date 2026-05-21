@@ -53,7 +53,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
-| *(pending)* | May 2026 | Supabase CLI init + versioned migrations + db push |
+| `4a35fb9` | May 2026 | Supabase CLI init + migrations db push to tos project |
 | `03659ec` | May 2026 | Work log git history + HEAD sync (post-merge) |
 | `a176952` | May 2026 | Work log HEAD sync to 2775166 |
 | `2775166` | May 2026 | Work log HEAD sync to 2a7ef03 |
