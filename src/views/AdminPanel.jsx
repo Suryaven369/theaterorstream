@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import tmdbApi from "../lib/tmdbApi";
 import {
     getMoviesLibrary,
     getMovieFromLibrary,
@@ -624,7 +624,7 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                         }
                     }
 
-                    requests.push(axios.get(endpoint, { params }));
+                    requests.push(tmdbApi.get(endpoint, { params }));
                 }
             } else {
                 // Without filters, just fetch from regular endpoint
@@ -637,7 +637,7 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                         params.region = tmdbRegion || 'US';
                     }
 
-                    requests.push(axios.get(endpoint, { params }));
+                    requests.push(tmdbApi.get(endpoint, { params }));
                 }
             }
 
@@ -675,7 +675,7 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
         setLoadingDetails(true);
         try {
             const endpoint = `/${mediaType}/${movieId}`;
-            const response = await axios.get(endpoint, {
+            const response = await tmdbApi.get(endpoint, {
                 params: {
                     append_to_response: 'credits,videos,images,release_dates,keywords'
                 }
@@ -714,7 +714,7 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                 }
             }
 
-            const response = await axios.get(endpoint, { params });
+            const response = await tmdbApi.get(endpoint, { params });
             setTmdbMovies(response.data.results || []);
             setTmdbSource('search'); // Mark as search results
         } catch (error) {
@@ -743,7 +743,7 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
 
             console.log(`Fetching full data for: ${movie.title || movie.name} (ID: ${movieId})`);
 
-            const response = await axios.get(endpoint, {
+            const response = await tmdbApi.get(endpoint, {
                 params: { append_to_response: appendTo }
             });
 
@@ -806,7 +806,7 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                         const appendTo = 'credits,videos,images,release_dates,keywords,reviews,similar,recommendations';
                         const endpoint = mediaType === 'tv' ? `/tv/${movie.id}` : `/movie/${movie.id}`;
 
-                        const response = await axios.get(endpoint, {
+                        const response = await tmdbApi.get(endpoint, {
                             params: { append_to_response: appendTo }
                         });
 
@@ -876,7 +876,7 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
             for (const region of regions) {
                 for (let page = 1; page <= 5; page++) {
                     try {
-                        const res = await axios.get('/movie/upcoming', { params: { region, page } });
+                        const res = await tmdbApi.get('/movie/upcoming', { params: { region, page } });
                         const movies = res.data.results || [];
                         movies.forEach(m => { if (!allMovies.has(m.id)) allMovies.set(m.id, m); });
                     } catch (e) { break; }
@@ -888,7 +888,7 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
             const sixMonths = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
             for (let page = 1; page <= 5; page++) {
                 try {
-                    const res = await axios.get('/discover/movie', {
+                    const res = await tmdbApi.get('/discover/movie', {
                         params: {
                             'primary_release_date.gte': today,
                             'primary_release_date.lte': sixMonths,
@@ -907,14 +907,14 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
             setUpcomingLogs(prev => [...prev, "📺 Fetching upcoming TV series..."]);
             for (let page = 1; page <= 3; page++) {
                 try {
-                    const res = await axios.get('/tv/on_the_air', { params: { page } });
+                    const res = await tmdbApi.get('/tv/on_the_air', { params: { page } });
                     const shows = res.data.results || [];
                     shows.forEach(s => { if (!allTV.has(s.id)) allTV.set(s.id, s); });
                 } catch (e) { break; }
             }
             for (let page = 1; page <= 3; page++) {
                 try {
-                    const res = await axios.get('/discover/tv', {
+                    const res = await tmdbApi.get('/discover/tv', {
                         params: {
                             'first_air_date.gte': today,
                             sort_by: 'popularity.desc',
@@ -949,7 +949,7 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                     const title = item.title || item.name;
                     try {
                         const endpoint = mediaType === 'tv' ? `/tv/${item.id}` : `/movie/${item.id}`;
-                        const detailRes = await axios.get(endpoint, {
+                        const detailRes = await tmdbApi.get(endpoint, {
                             params: { append_to_response: 'credits,videos,images,release_dates,keywords' }
                         });
                         const fullData = detailRes.data;
@@ -1139,7 +1139,7 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
     const searchMoviesForSection = async () => {
         if (!sectionMovieSearch.trim()) return;
         try {
-            const response = await axios.get('/search/multi', {
+            const response = await tmdbApi.get('/search/multi', {
                 params: { query: sectionMovieSearch, page: 1 }
             });
             setSectionSearchResults(response.data.results?.filter(r => r.media_type === 'movie' || r.media_type === 'tv').slice(0, 10) || []);

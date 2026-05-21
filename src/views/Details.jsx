@@ -8,7 +8,6 @@ import moment from "moment";
 import VideoPlay from "../components/VideoPlay";
 import ReviewAnalysis from "../components/ReviewAnalysis";
 import TOSRating from "../components/TOSRating";
-import axios from "axios";
 import { FaStar, FaClock, FaCalendar, FaPlay } from "react-icons/fa";
 import { IoArrowBack } from "react-icons/io5";
 import UserRatingSystem, { RatingModal } from "../components/UserRatingSystem";
@@ -117,24 +116,11 @@ const Details = () => {
         if (success && dbData) {
           console.log("Loaded from DB:", dbData);
           fetchedData = dbData;
-          // In DB, cast is in 'credits' field
           if (dbData.credits) {
             fetchedCast = dbData.credits;
-          } else {
-            // If DB entry exists but no credits (legacy?), try fetch credits
-            try {
-              const castRes = await axios.get(`/${mediaType}/${movieId}/credits`);
-              fetchedCast = castRes.data;
-            } catch (e) { console.error("Credits fetch fail", e); }
           }
         } else {
-          // 2. Fallback to API if not in DB
-          console.log("Not found in DB, falling back to API");
-          const response = await axios.get(`/${mediaType}/${movieId}`);
-          fetchedData = response.data;
-
-          const castResponse = await axios.get(`/${mediaType}/${movieId}/credits`);
-          fetchedCast = castResponse.data;
+          console.warn(`Movie ${movieId} not found in library`);
         }
 
         setData(fetchedData);
@@ -317,27 +303,10 @@ const Details = () => {
   }, [communityRatings, AIRatings, data?.vote_average]);
 
   useEffect(() => {
-    if (!data) return;
-
-    const fetchID = async () => {
-      try {
-        let response;
-
-        if (mediaType === "movie") {
-          response = await axios.get(`/movie/${movieId}`);
-        } else if (mediaType === "tv") {
-          response = await axios.get(`/tv/${movieId}/external_ids`);
-        }
-
-        const imdbId = response?.data?.imdb_id;
-        setTmbdID(imdbId);
-      } catch (error) {
-        console.log(error);
-      }
-    };
-
-    fetchID();
-  }, [data, mediaType, movieId]);
+    if (data?.imdb_id) {
+      setTmbdID(data.imdb_id);
+    }
+  }, [data?.imdb_id]);
 
   return (
     <div className="min-h-screen bg-[#0a0a0a]">

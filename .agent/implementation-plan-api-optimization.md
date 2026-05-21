@@ -12,10 +12,10 @@
 | 2 | `slim-hydration` | ✅ | See work log Task 2 |
 | 3 | `edge-read-api` | ✅ | See work log Task 3 |
 | 4 | `db-migrations` | ✅ | Applied in Supabase (May 2026) |
-| 5 | `server-tmdb-proxy` | ⬜ | TMDB key off client — **next** |
-| 6 | `automated-sync` | ⬜ | Vercel Cron + delta sync |
+| 5 | `server-tmdb-proxy` | ✅ | Admin `/api/tmdb/*` proxy; key off client |
+| 6 | `automated-sync` | ⬜ | Vercel Cron + delta sync — **next** |
 | 7 | `admin-control-tower` | ⬜ | Sync history, events queue |
-| 8 | `unify-content-api` | 🔄 | Explore + Details TMDB remain |
+| 8 | `unify-content-api` | ✅ | Public pages DB/Edge only |
 | 9 | `onboarding-redesign` | ⬜ | Phase 3 |
 | 10 | `taste-profile-schema` | ⬜ | Phase 3 |
 | 11 | `recommendation-engine` | ⬜ | Phase 4 |
@@ -112,10 +112,10 @@ Full table: [tos-production-architecture-plan.md](./tos-production-architecture-
 ### Master plan tasks — pending (see full list in architecture plan)
 
 - [x] **#4** `db-migrations` — snapshots, sync tables, RLS ✅ (Supabase, May 2026)
-- [ ] **#5** `server-tmdb-proxy` — TMDB key off client
+- [x] **#5** `server-tmdb-proxy` — TMDB key off client ✅
 - [ ] **#6** `automated-sync` — Vercel Cron
 - [ ] **#7** `admin-control-tower` — admin dashboard upgrades
-- [ ] **#8** `unify-content-api` — finish Explore/Details (partial done)
+- [x] **#8** `unify-content-api` — public pages DB/Edge only ✅
 - [ ] **#9–14** — onboarding, taste profiles, reco engine, UX redesign, social, AI
 
 ### Phase 1 follow-up (completed ✅)

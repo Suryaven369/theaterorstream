@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import axios from "axios";
+import tmdbApi from "../../lib/tmdbApi";
 import {
     supabase,
     getHomepageSections,
@@ -162,7 +162,7 @@ const AdminSectionsPage = () => {
     const performSearch = async (query) => {
         setSearchLoading(true);
         try {
-            const response = await axios.get("/search/multi", {
+            const response = await tmdbApi.get("/search/multi", {
                 params: { query, page: 1 }
             });
             // Filter results based on content mode
@@ -278,7 +278,7 @@ const AdminSectionsPage = () => {
 
             console.log(`🔄 Fetching ${section.api_source} from: ${endpoint} (mediaType: ${defaultMediaType})`, params);
 
-            const response = await axios.get(endpoint, { params });
+            const response = await tmdbApi.get(endpoint, { params });
             let items = response.data.results?.slice(0, section.max_movies || 10) || [];
 
             // Filter for upcoming (movies only)
@@ -298,7 +298,7 @@ const AdminSectionsPage = () => {
                 const mediaType = item.media_type || defaultMediaType;
                 try {
                     const detailEndpoint = mediaType === "tv" ? `/tv/${item.id}` : `/movie/${item.id}`;
-                    const detailResponse = await axios.get(detailEndpoint, {
+                    const detailResponse = await tmdbApi.get(detailEndpoint, {
                         params: { append_to_response: 'credits,videos,images,release_dates,keywords,similar,recommendations,reviews' }
                     });
                     const fullData = detailResponse.data;
@@ -430,7 +430,7 @@ const AdminSectionsPage = () => {
 
             // Fetch full movie details
             const detailEndpoint = mediaType === "tv" ? `/tv/${movie.id}` : `/movie/${movie.id}`;
-            const detailResponse = await axios.get(detailEndpoint, {
+            const detailResponse = await tmdbApi.get(detailEndpoint, {
                 params: { append_to_response: 'credits,videos,images,release_dates,keywords,similar,recommendations,reviews' }
             });
             const fullData = detailResponse.data;

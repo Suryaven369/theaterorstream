@@ -9,10 +9,9 @@ import {
     updateUserCollection,
     saveFullMovieToLibrary
 } from '../lib/supabase';
-import { convertImageToBase64 } from '../utils/imageHelper';
 import { FaTrash, FaLock, FaGlobe, FaFolderOpen, FaArrowLeft, FaPlus, FaSearch, FaCheck, FaTimes, FaEdit, FaSave, FaShare, FaLink, FaTwitter } from 'react-icons/fa';
 import ConfirmationModal from '../components/ConfirmationModal';
-import axios from "axios";
+import { searchContentFromEdge, getMovieDetailFromEdge } from '../lib/contentEdgeApi';
 
 // Helper to create URL-friendly slug
 const createSlug = (text) => {
@@ -295,13 +294,8 @@ const CollectionDetails = () => {
 
             setSearching(true);
             try {
-                const response = await axios.get(`search/multi`, {
-                    params: { query: searchQuery }
-                });
-                const results = response.data.results.filter(
-                    item => (item.media_type === 'movie' || item.media_type === 'tv') && item.poster_path
-                );
-                setSearchResults(results.slice(0, 20));
+                const payload = await searchContentFromEdge(searchQuery, { limit: 20 });
+                setSearchResults((payload.data || []).filter((item) => item.poster_path).slice(0, 20));
             } catch (error) {
                 console.error("Search error", error);
             }
@@ -334,54 +328,19 @@ const CollectionDetails = () => {
 
             for (const movie of selectedMovies) {
                 try {
-                    console.log(`fetching full details for ${movie.title || movie.name}`);
-                    const mediaType = movie.media_type || 'movie';
-                    const endpoint = mediaType === 'tv' ? `/tv/${movie.id}` : `/movie/${movie.id}`;
+                    const movieId = movie.tmdb_id || movie.id;
+                    const { success, data: fullData } = await getMovieDetailFromEdge(movieId);
 
-                    const { data: fullData } = await axios.get(endpoint, {
-                        params: { append_to_response: 'credits,videos,images,release_dates,keywords,similar,recommendations,reviews' }
-                    });
-
-                    // Optimization: Convert images to Base64
-                    try {
-                        if (fullData.poster_path) {
-                            const posterUrl = `https://image.tmdb.org/t/p/w342${fullData.poster_path}`;
-                            const posterBase64 = await convertImageToBase64(posterUrl);
-                            if (posterBase64) {
-                                if (!fullData.images) fullData.images = {};
-                                fullData.images.poster_base64 = posterBase64;
-                            }
-                        }
-                        if (fullData.backdrop_path) {
-                            const backdropUrl = `https://image.tmdb.org/t/p/w780${fullData.backdrop_path}`;
-                            const backdropBase64 = await convertImageToBase64(backdropUrl);
-                            if (backdropBase64) {
-                                if (!fullData.images) fullData.images = {};
-                                fullData.images.backdrop_base64 = backdropBase64;
-                            }
-                        }
-                    } catch (e) { console.warn("Image conversion failed", e); }
-
-                    // Process Cast Images (Top 10)
-                    try {
-                        if (fullData.credits?.cast?.length > 0) {
-                            const topCast = fullData.credits.cast.slice(0, 10);
-                            await Promise.all(topCast.map(async (actor) => {
-                                if (actor.profile_path) {
-                                    try {
-                                        const profileUrl = `https://image.tmdb.org/t/p/w185${actor.profile_path}`;
-                                        const profileBase64 = await convertImageToBase64(profileUrl);
-                                        if (profileBase64) actor.profile_base64 = profileBase64;
-                                    } catch (e) { }
-                                }
-                            }));
-                        }
-                    } catch (e) { console.warn("Cast image conversion failed", e); }
-
-                    // Save to library
-                    await saveFullMovieToLibrary(fullData);
-                    processedMovies.push(fullData);
-
+                    if (success && fullData) {
+                        await saveFullMovieToLibrary(fullData);
+                        processedMovies.push(fullData);
+                    } else {
+                        processedMovies.push({
+                            ...movie,
+                            id: movieId,
+                            title: movie.title || movie.name,
+                        });
+                    }
                 } catch (error) {
                     console.error(`Failed to process movie ${movie.id}`, error);
                     // Fallback: use selected movie data (might be partial) but save loop

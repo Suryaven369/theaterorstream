@@ -1,9 +1,8 @@
-import axios from "axios";
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import Card from "../components/Card";
-import { FaDatabase, FaGlobe } from "react-icons/fa";
-import { getExploreContent, getMoviesFromDb, getTrendingContent, getUpcomingFromDb, MOVIE_GENRES, TV_GENRES } from "../lib/contentApi";
+import { FaDatabase } from "react-icons/fa";
+import { getExploreContent, getTrendingContent, getUpcomingFromDb, MOVIE_GENRES, TV_GENRES } from "../lib/contentApi";
 
 const ExplorePage = () => {
   const params = useParams();
@@ -12,16 +11,10 @@ const ExplorePage = () => {
   const [totalItems, setTotalItems] = useState(0);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-
-  // Source toggle: 'library' or 'tmdb'
-  const [dataSource, setDataSource] = useState('library');
-
-  // For genre filtering
   const [selectedGenre, setSelectedGenre] = useState(null);
 
   const PAGE_SIZE = 24;
 
-  // Fetch from database (primary source)
   const fetchFromDatabase = async (page = 1, reset = false) => {
     try {
       setLoading(true);
@@ -30,7 +23,6 @@ const ExplorePage = () => {
 
       let result;
 
-      // Map explore routes to database queries
       if (exploreType === "trending") {
         const trending = await getTrendingContent(null, PAGE_SIZE);
         result = { data: trending, total: trending.length };
@@ -80,7 +72,6 @@ const ExplorePage = () => {
           offset,
         });
       } else {
-        // Default: popular movies
         result = await getExploreContent({
           mediaType: 'movie',
           category: 'popular',
@@ -99,74 +90,10 @@ const ExplorePage = () => {
 
       setTotalItems(result.total || 0);
       setHasMore(newData.length >= PAGE_SIZE);
-
-      console.log(`📀 Loaded ${newData.length} items from database (total: ${result.total})`);
     } catch (error) {
       console.error("Database error:", error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  // Fetch from TMDB (fallback)
-  const fetchFromTmdb = async (page = 1, reset = false) => {
-    try {
-      setLoading(true);
-      let endpoint = "";
-      let apiParams = {
-        api_key: import.meta.env.VITE_MOVIE_API_KEY,
-        language: "en-US",
-        page: page,
-      };
-
-      const exploreType = params.explore;
-
-      if (exploreType === "upcoming" || exploreType === "coming-soon") {
-        endpoint = "https://api.themoviedb.org/3/movie/upcoming";
-      } else if (exploreType === "movie") {
-        endpoint = "https://api.themoviedb.org/3/discover/movie";
-        if (selectedGenre) apiParams.with_genres = selectedGenre;
-      } else if (exploreType === "tv") {
-        endpoint = "https://api.themoviedb.org/3/discover/tv";
-        if (selectedGenre) apiParams.with_genres = selectedGenre;
-      } else if (exploreType === "trending") {
-        endpoint = "https://api.themoviedb.org/3/trending/all/week";
-      } else if (exploreType === "top-rated") {
-        endpoint = "https://api.themoviedb.org/3/movie/top_rated";
-      } else if (exploreType === "popular") {
-        endpoint = "https://api.themoviedb.org/3/movie/popular";
-      } else if (exploreType === "now-playing" || exploreType === "new-releases") {
-        endpoint = "https://api.themoviedb.org/3/movie/now_playing";
-      } else {
-        endpoint = "https://api.themoviedb.org/3/discover/movie";
-      }
-
-      const response = await axios.get(endpoint, { params: apiParams });
-      const newData = response.data.results || [];
-
-      if (reset || page === 1) {
-        setData(newData);
-      } else {
-        setData(prev => [...prev, ...newData]);
-      }
-
-      setTotalItems(response.data.total_results || 0);
-      setHasMore(page < response.data.total_pages);
-
-      console.log(`🌐 Loaded ${newData.length} items from TMDB`);
-    } catch (error) {
-      console.error("TMDB API Error:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Main fetch function
-  const fetchData = async (page = 1, reset = false) => {
-    if (dataSource === 'library') {
-      await fetchFromDatabase(page, reset);
-    } else {
-      await fetchFromTmdb(page, reset);
     }
   };
 
@@ -178,27 +105,24 @@ const ExplorePage = () => {
     }
   };
 
-  // Load more on page change
   useEffect(() => {
     if (pageNo > 1) {
-      fetchData(pageNo, false);
+      fetchFromDatabase(pageNo, false);
     }
   }, [pageNo]);
 
-  // Reset on explore type change
   useEffect(() => {
     setPageNo(1);
     setData([]);
     setSelectedGenre(null);
-    fetchData(1, true);
+    fetchFromDatabase(1, true);
   }, [params.explore]);
 
-  // Refetch on source or genre change
   useEffect(() => {
     setPageNo(1);
     setData([]);
-    fetchData(1, true);
-  }, [dataSource, selectedGenre]);
+    fetchFromDatabase(1, true);
+  }, [selectedGenre]);
 
   useEffect(() => {
     window.addEventListener("scroll", handleScroll);
@@ -241,12 +165,10 @@ const ExplorePage = () => {
     return MOVIE_GENRES;
   };
 
-  // Show genre filter for movie/tv pages
   const showGenreFilter = ['movie', 'tv', 'popular', 'top-rated'].includes(params.explore);
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] pb-20 lg:pb-0">
-      {/* Hero Section */}
       <section className="relative pt-20 sm:pt-32 pb-8 sm:pb-16 px-3 sm:px-6">
         <div className="container mx-auto">
           <div className="max-w-2xl animate-fadeInUp">
@@ -261,46 +183,17 @@ const ExplorePage = () => {
             </p>
           </div>
         </div>
-
-        {/* Decorative gradient orb */}
         <div className="absolute top-20 right-0 w-48 sm:w-96 h-48 sm:h-96 bg-yellow-500/10 rounded-full blur-3xl pointer-events-none" />
       </section>
 
-      {/* Filters Section */}
       <section className="px-3 sm:px-6 pb-6">
         <div className="container mx-auto">
           <div className="flex flex-wrap items-center gap-4 mb-6">
-            {/* Source Toggle */}
-            <div className="flex gap-2 p-1 bg-white/5 rounded-xl">
-              <button
-                onClick={() => setDataSource('library')}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${dataSource === 'library'
-                  ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                  : 'text-white/40 hover:text-white hover:bg-white/5'
-                  }`}
-              >
-                <FaDatabase className="text-[10px]" />
-                Library
-              </button>
-              <button
-                onClick={() => setDataSource('tmdb')}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${dataSource === 'tmdb'
-                  ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                  : 'text-white/40 hover:text-white hover:bg-white/5'
-                  }`}
-              >
-                <FaGlobe className="text-[10px]" />
-                TMDB
-              </button>
-            </div>
-
-            {/* Results count */}
             <p className="text-sm text-white/40">
               {data?.length || 0} titles {totalItems > 0 && `of ${totalItems}`}
             </p>
           </div>
 
-          {/* Genre Filter Pills */}
           {showGenreFilter && (
             <div className="flex gap-2 overflow-x-auto pb-4 scrollbar-hide -mx-3 px-3">
               <button
@@ -327,27 +220,15 @@ const ExplorePage = () => {
             </div>
           )}
 
-          {/* Source info */}
           <p className="text-xs text-white/30 mt-2 flex items-center gap-2">
-            {dataSource === 'library' ? (
-              <>
-                <FaDatabase className="text-green-400" />
-                Showing curated library content • Switch to TMDB for all content
-              </>
-            ) : (
-              <>
-                <FaGlobe className="text-blue-400" />
-                Showing all TMDB content • Switch to Library for curated picks
-              </>
-            )}
+            <FaDatabase className="text-green-400" />
+            Showing curated library content
           </p>
         </div>
       </section>
 
-      {/* Content Grid */}
       <section className="px-3 sm:px-6 pb-24">
         <div className="container mx-auto">
-          {/* Grid */}
           {data.length > 0 ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-4 md:gap-6">
               {data.map((item, index) => (
@@ -370,43 +251,24 @@ const ExplorePage = () => {
             </div>
           ) : !loading ? (
             <div className="text-center py-20">
-              <span className="text-5xl sm:text-6xl mb-4 block">
-                {dataSource === 'library' ? '📀' : '🎬'}
-              </span>
-              <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">
-                {dataSource === 'library' ? 'No content in library' : 'No content found'}
-              </h3>
+              <span className="text-5xl sm:text-6xl mb-4 block">📀</span>
+              <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">No content in library</h3>
               <p className="text-white/50 mb-4">
-                {dataSource === 'library'
-                  ? 'Add content via Admin Panel or switch to TMDB'
-                  : 'Try a different category'}
+                Add content via Admin Panel to populate this section.
               </p>
-              {dataSource === 'library' && (
-                <button
-                  onClick={() => setDataSource('tmdb')}
-                  className="px-4 py-2 bg-blue-500/20 text-blue-400 rounded-lg text-sm font-medium hover:bg-blue-500/30 transition-colors"
-                >
-                  <FaGlobe className="inline mr-2" />
-                  Browse TMDB instead
-                </button>
-              )}
             </div>
           ) : null}
 
-          {/* Loading indicator */}
           {loading && (
             <div className="flex justify-center mt-8 sm:mt-12">
               <div className="w-8 h-8 border-2 border-yellow-500/20 border-t-yellow-500 rounded-full animate-spin" />
             </div>
           )}
 
-          {/* End of results */}
           {data.length > 0 && !hasMore && !loading && (
             <div className="text-center mt-12 py-4">
               <p className="text-white/30 text-sm">
-                {dataSource === 'library'
-                  ? `All ${data.length} library items shown`
-                  : 'No more results'}
+                All {data.length} library items shown
               </p>
             </div>
           )}

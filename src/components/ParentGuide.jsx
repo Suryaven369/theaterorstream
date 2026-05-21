@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import { FaSkull, FaExclamationTriangle, FaHeart, FaUserShield } from "react-icons/fa";
 import { MdFamilyRestroom } from "react-icons/md";
 import { BiVolumeMute } from "react-icons/bi";
-import axios from "axios";
 
 // Parent Guide Badge Component
 const ParentGuideBadge = ({ type, level = "none" }) => {
@@ -153,54 +152,9 @@ const ParentGuide = ({ movieId, mediaType = "movie", genres = [], customParentGu
     const [loading, setLoading] = useState(!customCertification);
 
     useEffect(() => {
-        // Skip TMDB fetch if we have a custom certification from DB
-        if (customCertification) {
-            setCertification(customCertification);
-            setLoading(false);
-            return;
-        }
-
-        const fetchCertification = async () => {
-            if (!movieId) {
-                setLoading(false);
-                return;
-            }
-
-            try {
-                let cert = null;
-
-                if (mediaType === "movie") {
-                    const response = await axios.get(`/movie/${movieId}/release_dates`);
-                    const results = response.data?.results || [];
-
-                    const usRelease = results.find(r => r.iso_3166_1 === "US");
-                    const inRelease = results.find(r => r.iso_3166_1 === "IN");
-                    const gbRelease = results.find(r => r.iso_3166_1 === "GB");
-
-                    const release = usRelease || inRelease || gbRelease || results[0];
-                    if (release?.release_dates?.length > 0) {
-                        cert = release.release_dates.find(rd => rd.certification)?.certification;
-                    }
-                } else {
-                    const response = await axios.get(`/tv/${movieId}/content_ratings`);
-                    const results = response.data?.results || [];
-
-                    const usRating = results.find(r => r.iso_3166_1 === "US");
-                    const inRating = results.find(r => r.iso_3166_1 === "IN");
-
-                    cert = usRating?.rating || inRating?.rating || results[0]?.rating;
-                }
-
-                setCertification(cert);
-            } catch (error) {
-                console.log("Error fetching certification:", error);
-            }
-
-            setLoading(false);
-        };
-
-        fetchCertification();
-    }, [movieId, mediaType, customCertification]);
+        setCertification(customCertification || null);
+        setLoading(false);
+    }, [customCertification]);
 
     // Use custom parent guide from DB if available, otherwise auto-generate
     const hasCustomGuide = customParentGuide && Object.values(customParentGuide).some(v => v && v !== "");

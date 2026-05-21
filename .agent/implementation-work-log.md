@@ -32,10 +32,10 @@ Session log for production architecture Phase 1 work (DB-first performance + Ver
 | 2 | `slim-hydration` | Slim card hydration; no base64 in admin sync | ✅ Done |
 | 3 | `edge-read-api` | Vercel Edge `/api/content/*` + `contentEdgeApi.js` | ✅ Done |
 | 4 | `db-migrations` | Snapshots, sync tables, RLS, production SQL | ✅ Done |
-| 5 | `server-tmdb-proxy` | TMDB key server-side; admin proxy | ⬜ Pending |
+| 5 | `server-tmdb-proxy` | TMDB key server-side; admin proxy | ✅ Done |
 | 6 | `automated-sync` | Cron + delta TMDB sync | ⬜ Pending |
 | 7 | `admin-control-tower` | Sync history, events queue, DB settings | ⬜ Pending |
-| 8 | `unify-content-api` | Full Edge adoption; remove Explore/Details TMDB | 🔄 Partial |
+| 8 | `unify-content-api` | Full Edge adoption; remove Explore/Details TMDB | ✅ Done |
 | 9 | `onboarding-redesign` | 5-step taste onboarding wizard | ⬜ Pending |
 | 10 | `taste-profile-schema` | User taste profiles + rebuild worker | ⬜ Pending |
 | 11 | `recommendation-engine` | Hybrid reco API | ⬜ Pending |
@@ -43,7 +43,7 @@ Session log for production architecture Phase 1 work (DB-first performance + Ver
 | 13 | `phase3-social-schema` | Diary, badges, following feed | ⬜ Pending |
 | 14 | `ai-agents-stack` | Background AI agents (Gateway) | ⬜ Pending |
 
-**Progress:** 4 complete · 1 partial · 9 pending
+**Progress:** 6 complete · 0 partial · 8 pending
 
 Full roadmap: [tos-production-architecture-plan.md](./tos-production-architecture-plan.md)
 
@@ -53,6 +53,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| *(this push)* | May 2026 | Task #5 server-tmdb-proxy + unify-content-api |
 | `348a9a9` | May 2026 | Agent docs HEAD sync after detail poster fix |
 | `def1998` | May 2026 | Fix mobile detail page poster/backdrop/cast image loading |
 | `9f73fe0` | May 2026 | Agent docs HEAD sync to 75b67e2 |
@@ -223,8 +224,6 @@ TMDB still used: **admin panel** (import/sync), **Explore** (optional toggle), *
 - `.cursor/rules/task-list-sync.mdc` — sync all 4 task lists after pull / phone work
 - `.agent/implementation-work-log.md` — session sync protocol + this session log
 
-**Next recommended task:** `server-tmdb-proxy` (Task #5)
-
 ---
 
 ### Work log on every push (agent rule) ✅
@@ -259,8 +258,6 @@ TMDB still used: **admin panel** (import/sync), **Explore** (optional toggle), *
 - Removed `line-clamp` / `truncate` (html2canvas clipping bug)
 - `onclone` overflow cleanup; card captured in-layout not off-screen
 - Modal preview **380px** tall; dialog **860×620px** max
-
-**Next recommended task:** `server-tmdb-proxy` (Task #5)
 
 ---
 
@@ -299,8 +296,6 @@ TMDB still used: **admin panel** (import/sync), **Explore** (optional toggle), *
 1. ~~`supabase/migrations/20260521_ratings_update_policy.sql`~~ ✅ Applied via `supabase db push` (May 2026, desktop)
 2. ~~`supabase_phase1_content_pipeline.sql`~~ ✅ Applied as `20260520000000_phase1_content_pipeline.sql` via `supabase db push`
 
-**Next recommended task:** `server-tmdb-proxy` (Task #5)
-
 ---
 
 ## Session: May 2026 — Pull merge + Supabase CLI db push ✅
@@ -314,8 +309,6 @@ TMDB still used: **admin panel** (import/sync), **Explore** (optional toggle), *
 - `npx supabase init` + `link --project-ref kfdeyggjsmltnmszhtfk` (project **tos**)
 - Committed `supabase/config.toml`, `.gitignore`, `migrations/20260520000000_phase1_content_pipeline.sql`
 - **`npx supabase db push`** — both migrations applied to production DB
-
-**Next recommended task:** `server-tmdb-proxy` (Task #5)
 
 ---
 
@@ -332,6 +325,25 @@ On mobile, movie detail page showed no poster/backdrop/cast images after tapping
 - `src/views/Details.jsx` — poster, backdrop, cast use shared helper
 - `api/_lib/content-server.js` — removed `is_active` filter on detail fetch so homepage movies resolve
 
-**Next recommended task:** `server-tmdb-proxy` (Task #5)
+---
+
+## Session: May 2026 — Task #5 server-tmdb-proxy ✅
+
+### Server
+- `api/_lib/tmdb-server.js` — TMDB fetch helper (`TMDB_API_KEY` env)
+- `api/_lib/admin-auth.js` — Supabase JWT + `user_profiles.is_admin` gate
+- `api/tmdb/[...path].js` — admin-only GET proxy for TMDB v3 paths
+
+### Client
+- `src/lib/tmdbApi.js` — admin client via `/api/tmdb/*` (dev fallback if proxy unavailable)
+- Removed TMDB axios setup from `src/main.jsx`
+- `App.jsx` — static TMDB image base URL (no `/configuration` call)
+- **Admin:** `AdminPanel.jsx`, `AdminSectionsPage.jsx` → `tmdbApi`
+- **Public:** removed client TMDB from `Details`, `Explore`, `ParentGuide`, `VideoPlay`, `CollectionDetails`, `Search`
+
+### Deploy note
+Add **`TMDB_API_KEY`** (no `VITE_` prefix) to Vercel project env. Optional `VITE_MOVIE_API_KEY` only for local vite admin dev.
+
+**Next recommended task:** `automated-sync` (Task #6)
 
 ---

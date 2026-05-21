@@ -1,9 +1,9 @@
 import { Outlet, useLocation } from "react-router-dom";
-import axios from "axios";
 import { useEffect } from "react";
-import { useDispatch, useSelector } from "react-redux";
+import { useDispatch } from "react-redux";
 import { setImageURL, invalidateHomepageSections, invalidateMovieDetails } from "./store/movieSlice";
 import { supabase } from "./lib/supabase";
+import { TMDB_IMAGE_BASE } from "./utils/imageHelper";
 
 // components
 import Header from "./components/Header";
@@ -13,22 +13,10 @@ import MobileNavigation from "./components/MobileNavigation";
 function App() {
   const dispatch = useDispatch();
   const location = useLocation();
-  const imageURL = useSelector((state) => state.movieData.imageURL);
-
-  const fetchConfiguration = async () => {
-    try {
-      const response = await axios.get("/configuration");
-      dispatch(setImageURL(response.data.images.secure_base_url + "original"));
-    } catch (error) {
-      console.log("Configuration fetch error:", error);
-    }
-  };
 
   useEffect(() => {
-    if (!imageURL) {
-      fetchConfiguration();
-    }
-  }, []);
+    dispatch(setImageURL(`${TMDB_IMAGE_BASE}original`));
+  }, [dispatch]);
 
   // Supabase Realtime: auto-invalidate cache when DB content changes
   useEffect(() => {
