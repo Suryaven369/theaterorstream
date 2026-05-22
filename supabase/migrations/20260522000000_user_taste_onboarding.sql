@@ -98,17 +98,6 @@ CREATE INDEX IF NOT EXISTS idx_user_taste_profiles_family
 CREATE INDEX IF NOT EXISTS idx_user_taste_profiles_onboarding
   ON public.user_taste_profiles (onboarding_completed_at DESC NULLS LAST);
 
--- Future ANN queries when embeddings are populated (Task #10)
-CREATE INDEX IF NOT EXISTS idx_user_taste_profiles_embedding_hnsw
-  ON public.user_taste_profiles
-  USING hnsw (embedding vector_cosine_ops)
-  WHERE embedding IS NOT NULL;
-
-CREATE INDEX IF NOT EXISTS idx_movies_library_embedding_hnsw
-  ON public.movies_library
-  USING hnsw (embedding vector_cosine_ops)
-  WHERE embedding IS NOT NULL;
-
 ALTER TABLE public.user_taste_profiles ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Users manage own taste profile" ON public.user_taste_profiles;
@@ -154,3 +143,12 @@ ALTER TABLE public.movies_library
 
 CREATE INDEX IF NOT EXISTS idx_movies_library_mood_tags
   ON public.movies_library USING gin (mood_tags);
+
+-- Future ANN queries when embeddings are populated (Task #10)
+CREATE INDEX IF NOT EXISTS idx_user_taste_profiles_embedding_hnsw
+  ON public.user_taste_profiles
+  USING hnsw (embedding vector_cosine_ops);
+
+CREATE INDEX IF NOT EXISTS idx_movies_library_embedding_hnsw
+  ON public.movies_library
+  USING hnsw (embedding vector_cosine_ops);
