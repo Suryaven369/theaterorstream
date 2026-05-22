@@ -27,10 +27,10 @@ todos:
     content: "Full Edge adoption — explore/trending routes; all public reads via contentEdgeApi.js"
     status: completed
   - id: onboarding-redesign
-    content: "Multi-step onboarding: OTT platforms, genres, mood, family mode, rate 10 seed movies; write to user_taste_profiles"
-    status: pending
+    content: "5-step onboarding: OTT platforms, genres, mood, family mode, rate seed movies; writes user_taste_profiles"
+    status: completed
   - id: taste-profile-schema
-    content: Add user_taste_profiles, user_streaming_services, movie_logs, recommendation_cache tables + profile rebuild worker
+    content: Profile rebuild worker + movie_logs/reco_cache tables; backfill embeddings (core taste tables shipped in #9)
     status: pending
   - id: recommendation-engine
     content: Build hybrid reco engine (content-based + collaborative + OTT filter + family-safe); GET /api/recommendations/for-you
@@ -49,7 +49,9 @@ isProject: false
 
 # TheaterOrStream — Production Architecture & Product Redesign Plan
 
-**Branch:** `main` · **HEAD:** `b210481` · **Progress:** 8 / 14 tasks complete
+**Branch:** `main` · **Progress:** 9 / 14 tasks complete
+
+**Next recommended:** `taste-profile-schema` (Task #10 — rebuild worker + embeddings)
 
 ---
 
@@ -65,8 +67,8 @@ isProject: false
 | 6 | `automated-sync` | Vercel Cron + delta sync → `movies_library` | 2 | ✅ **Done** |
 | 7 | `admin-control-tower` | Admin dashboard: sync history, content_events, settings in DB | 2 | ✅ **Done** |
 | 8 | `unify-content-api` | Remove TMDB fallbacks; full Edge adoption | 1 | ✅ **Done** |
-| 9 | `onboarding-redesign` | 5-step onboarding: OTT, genres, moods, seed ratings, family mode | 3 | ⬜ Pending |
-| 10 | `taste-profile-schema` | `user_taste_profiles`, streaming services, profile rebuild worker | 3 | ⬜ Pending |
+| 9 | `onboarding-redesign` | 5-step onboarding: OTT, genres, moods, seed ratings, family mode | 3 | ✅ **Done** |
+| 10 | `taste-profile-schema` | Profile rebuild worker + embedding backfill (core tables shipped in #9) | 3 | ⬜ Pending |
 | 11 | `recommendation-engine` | Hybrid reco + `/api/recommendations/for-you` | 4 | ⬜ Pending |
 | 12 | `ux-redesign` | Personalized home, Watch Tonight, Family hub, Decision Mode | 5 | ⬜ Pending |
 | 13 | `phase3-social-schema` | Diary logs, badges, activity feed, following feed | 6 | ⬜ Pending |
@@ -74,7 +76,7 @@ isProject: false
 
 **Legend:** ✅ Done · 🔄 Partial · ⬜ Pending
 
-**Next recommended:** `onboarding-redesign` (Task #9)
+**Next recommended:** `taste-profile-schema` (Task #10)
 
 **Task sync:** After every completed task or `git pull`, update this file + [implementation-work-log.md](./implementation-work-log.md) + [Cursor plan](~/.cursor/plans/tos_production_architecture_e5360011.plan.md). See [task-list-sync rule](../.cursor/rules/task-list-sync.mdc).
 

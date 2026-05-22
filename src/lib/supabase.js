@@ -105,6 +105,7 @@ export const updateUserProfile = async (userId, updates) => {
 
 // Complete onboarding
 export const completeOnboarding = async (userId, profileData) => {
+    const now = new Date().toISOString();
     const payload = {
         id: userId,
         username: profileData.username?.toLowerCase(),
@@ -112,8 +113,25 @@ export const completeOnboarding = async (userId, profileData) => {
         avatar_id: profileData.avatarId,
         date_of_birth: profileData.dateOfBirth,
         is_onboarded: true,
-        updated_at: new Date().toISOString(),
+        updated_at: now,
     };
+
+    if (profileData.preferredRegion) {
+        payload.preferred_region = profileData.preferredRegion;
+    }
+    if (profileData.favoriteGenres?.length) {
+        payload.favorite_genres = profileData.favoriteGenres.map(String);
+    }
+    if (profileData.moodPreferences) {
+        payload.mood_preferences = profileData.moodPreferences;
+    }
+    if (profileData.familyModeEnabled != null) {
+        payload.family_mode_enabled = profileData.familyModeEnabled;
+    }
+    if (profileData.familyMaxCertification != null) {
+        payload.family_max_certification = profileData.familyMaxCertification;
+    }
+    payload.onboarding_completed_at = now;
 
     const { data: updated, error: updateError } = await supabase
         .from('user_profiles')
@@ -122,6 +140,12 @@ export const completeOnboarding = async (userId, profileData) => {
             display_name: payload.display_name,
             avatar_id: payload.avatar_id,
             date_of_birth: payload.date_of_birth,
+            preferred_region: payload.preferred_region,
+            favorite_genres: payload.favorite_genres,
+            mood_preferences: payload.mood_preferences,
+            family_mode_enabled: payload.family_mode_enabled,
+            family_max_certification: payload.family_max_certification,
+            onboarding_completed_at: payload.onboarding_completed_at,
             is_onboarded: true,
             updated_at: payload.updated_at,
         })
@@ -145,6 +169,164 @@ export const completeOnboarding = async (userId, profileData) => {
     }
 
     return { success: true, data };
+};
+
+/** Replace user's active streaming service rows */
+export const saveUserStreamingServices = async (userId, serviceIds, region = 'IN') => {
+    if (!userId) return { success: false, error: new Error('Missing user id') };
+
+    const { error: deleteError } = await supabase
+        .from('user_streaming_services')
+        .delete()
+        .eq('user_id', userId);
+
+    if (deleteError) {
+        console.error('Error clearing streaming services:', deleteError);
+        return { success: false, error: deleteError };
+    }
+
+    if (!serviceIds?.length) {
+        return { success: true, data: [] };
+    }
+
+    const rows = serviceIds.map((serviceId) => ({
+        user_id: userId,
+        service_id: serviceId,
+        region,
+        is_active: true,
+        source: 'onboarding',
+    }));
+
+    const { data, error } = await supabase
+        .from('user_streaming_services')
+        .insert(rows)
+        .select();
+
+    if (error) {
+        console.error('Error saving streaming services:', error);
+        return { success: false, error };
+    }
+
+    return { success: true, data: data || [] };
+};
+
+/** Upsert AI-ready taste profile from onboarding selections */
+export const saveUserTasteProfile = async (userId, tasteData) => {
+    if (!userId) return { success: false, error: new Error('Missing user id') };
+
+    const now = new Date().toISOString();
+    const payload = {
+        user_id: userId,
+        genre_weights: tasteData.genreWeights || {},
+        mood_preferences: tasteData.moodPreferences || {},
+        preferred_languages: tasteData.preferredLanguages || [],
+        preferred_region: tasteData.preferredRegion || 'IN',
+        family_mode_enabled: !!tasteData.familyModeEnabled,
+        family_max_certification: tasteData.familyMaxCertification || null,
+        family_content_limits: tasteData.familyContentLimits || {},
+        onboarding_seed_movie_ids: tasteData.seedMovieIds || [],
+        onboarding_step_data: tasteData.stepData || {},
+        onboarding_completed_at: now,
+        rating_count: tasteData.ratingCount ?? 0,
+        updated_at: now,
+    };
+
+    const { data, error } = await supabase
+        .from('user_taste_profiles')
+        .upsert(payload, { onConflict: 'user_id' })
+        .select('*')
+        .single();
+
+    if (error) {
+        console.error('Error saving taste profile:', error);
+        return { success: false, error };
+    }
+
+    return { success: true, data };
+};
+
+export const getUserTasteProfile = async (userId) => {
+    if (!userId) return null;
+
+    const { data, error } = await supabase
+        .from('user_taste_profiles')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    if (error) {
+        console.error('Error fetching taste profile:', error);
+        return null;
+    }
+
+    return data;
+};
+
+/** Full onboarding completion: profile + streaming + taste + optional seed ratings */
+export const completeTasteOnboarding = async (userId, onboardingData) => {
+    const {
+        profile,
+        streamingServiceIds,
+        tasteProfile,
+        seedRatings = [],
+    } = onboardingData;
+
+    const profileResult = await completeOnboarding(userId, profile);
+    if (!profileResult.success) {
+        return profileResult;
+    }
+
+    const streamingResult = await saveUserStreamingServices(
+        userId,
+        streamingServiceIds,
+        profile.preferredRegion || 'IN',
+    );
+    if (!streamingResult.success) {
+        return streamingResult;
+    }
+
+    let ratingCount = 0;
+    const ratedMovieIds = [];
+
+    for (const seed of seedRatings) {
+        if (!seed.reaction || seed.reaction === 'skip') continue;
+        const ratings = seed.ratings;
+        if (!ratings) continue;
+
+        const ratingResult = await submitRating(
+            seed.tmdbId,
+            seed.title,
+            ratings,
+            userId,
+        );
+        if (ratingResult.success) {
+            ratingCount += 1;
+            ratedMovieIds.push(String(seed.tmdbId));
+        }
+    }
+
+    const tasteResult = await saveUserTasteProfile(userId, {
+        ...tasteProfile,
+        seedMovieIds: ratedMovieIds.length ? ratedMovieIds : tasteProfile.seedMovieIds,
+        ratingCount,
+        stepData: {
+            ...(tasteProfile.stepData || {}),
+            seed_ratings_submitted: ratingCount,
+        },
+    });
+    if (!tasteResult.success) {
+        return tasteResult;
+    }
+
+    return {
+        success: true,
+        data: {
+            profile: profileResult.data,
+            tasteProfile: tasteResult.data,
+            streaming: streamingResult.data,
+            ratingsSubmitted: ratingCount,
+        },
+    };
 };
 
 // Create profile if not exists (fallback)

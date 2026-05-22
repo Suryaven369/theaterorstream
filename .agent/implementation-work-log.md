@@ -36,14 +36,14 @@ Session log for production architecture Phase 1 work (DB-first performance + Ver
 | 6 | `automated-sync` | Cron + delta TMDB sync | ✅ Done |
 | 7 | `admin-control-tower` | Sync history, events queue, DB settings | ✅ Done |
 | 8 | `unify-content-api` | Full Edge adoption; remove Explore/Details TMDB | ✅ Done |
-| 9 | `onboarding-redesign` | 5-step taste onboarding wizard | ⬜ Pending |
-| 10 | `taste-profile-schema` | User taste profiles + rebuild worker | ⬜ Pending |
+| 9 | `onboarding-redesign` | 5-step taste onboarding wizard | ✅ Done |
+| 10 | `taste-profile-schema` | Profile rebuild worker + embedding backfill | ⬜ Pending |
 | 11 | `recommendation-engine` | Hybrid reco API | ⬜ Pending |
 | 12 | `ux-redesign` | Watch Tonight, Family hub, personalized home | ⬜ Pending |
 | 13 | `phase3-social-schema` | Diary, badges, following feed | ⬜ Pending |
 | 14 | `ai-agents-stack` | Background AI agents (Gateway) | ⬜ Pending |
 
-**Progress:** 8 complete · 0 partial · 6 pending
+**Progress:** 9 complete · 0 partial · 5 pending
 
 Full roadmap: [tos-production-architecture-plan.md](./tos-production-architecture-plan.md)
 
@@ -398,7 +398,29 @@ supabase db push
 
 **Verify:** `/api/content/explore?mediaType=movie&category=popular&limit=24` and `/api/content/trending?limit=24`
 
-**Next recommended task:** `onboarding-redesign` (Task #9)
+**Next recommended task:** `taste-profile-schema` (Task #10)
+
+---
+
+## Session: May 2026 — Task #9 onboarding-redesign ✅
+
+### 5-step taste wizard
+- `src/views/OnboardingPage.jsx` — identity → streaming → genres/moods → seed ratings → family mode
+- `src/constants/onboarding.js` — OTT platforms (IN/US/GB), moods, certifications
+- `src/components/onboarding/OnboardingUI.jsx` — progress bar + step shell
+- `src/lib/onboardingUtils.js` — draft persistence, quick-rating → 7-axis mapping
+
+### Database (AI-ready)
+- `supabase/migrations/20260522000000_user_taste_onboarding.sql`
+  - `user_streaming_services`, `user_taste_profiles` (pgvector + HNSW)
+  - Profile extensions + `movies_library` mood/embedding columns
+
+### Save path
+- `completeTasteOnboarding()` → `user_profiles` + streaming + taste profile + seed `ratings`
+
+**Apply migration:** `supabase db push`
+
+**Next recommended task:** `taste-profile-schema` (Task #10)
 
 ---
 
