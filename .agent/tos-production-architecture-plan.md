@@ -49,7 +49,7 @@ isProject: false
 
 # TheaterOrStream — Production Architecture & Product Redesign Plan
 
-**Branch:** `main` · **Progress:** 9 / 14 tasks complete
+**Branch:** `main` · **HEAD:** `4488dab` · **Progress:** 9 / 14 tasks complete
 
 **Next recommended:** `taste-profile-schema` (Task #10 — rebuild worker + embeddings)
 
