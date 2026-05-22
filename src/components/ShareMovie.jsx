@@ -12,13 +12,11 @@ import {
     FaTelegramPlane,
 } from "react-icons/fa";
 import {
-    TOS_SHARE_CATEGORIES,
     calculateShareOverallScore,
     copyImageToClipboard,
     dataUrlToBlob,
     downloadBlob,
     isMobileDevice,
-    normalizeShareRatings,
     shareImageFile,
     shareToFacebook,
     shareToInstagramStories,
@@ -27,6 +25,14 @@ import {
     shareToTwitter,
     shareToWhatsApp,
 } from "../lib/shareUtils";
+
+import {
+    CARD_W,
+    CARD_H,
+    CARD_EXPORT_SCALE,
+    CARD_FONT,
+} from "./share/CinematicShareCardLayers";
+import LuxuryShareCard from "./share/LuxuryShareCard";
 
 const TOS_LOGO_URL =
     "https://res.cloudinary.com/ddhhlkyut/image/upload/v1768226006/a78a29523128c4555fdd178b6c612ac6_dbtyqp.jpg";
@@ -56,126 +62,11 @@ const waitForImages = (container) => {
                     }
                     img.onload = () => resolve();
                     img.onerror = () => resolve();
-                    window.setTimeout(resolve, 1500);
+                    window.setTimeout(resolve, 2000);
                 }),
         ),
     );
 };
-
-const ShareableCard = React.forwardRef(({
-    movieTitle,
-    movieYear,
-    posterSrc,
-    logoSrc,
-    ratings,
-    overallScore,
-}, ref) => {
-    const normalizedRatings = normalizeShareRatings(ratings);
-
-    return (
-        <div
-            ref={ref}
-            data-share-card
-            className="relative w-[360px] bg-[#0a0a0a]"
-            style={{
-                fontFamily: "Inter, Arial, sans-serif",
-                minHeight: "640px",
-                overflow: "visible",
-            }}
-        >
-            <div
-                className="absolute inset-0 bg-gradient-to-b from-[#111111] via-[#0a0a0a] to-[#050505]"
-                style={{ minHeight: "640px" }}
-            />
-
-            <p
-                className="pointer-events-none absolute bottom-5 left-0 right-0 z-0 text-center text-[11px] font-medium tracking-[0.35em] text-white/[0.08]"
-                style={{ lineHeight: 1.4 }}
-            >
-                theaterorstream.com
-            </p>
-
-            <div className="relative z-10 flex flex-col px-5 pb-6 pt-6" style={{ overflow: "visible" }}>
-                <div className="mb-4 flex items-center gap-2.5" style={{ overflow: "visible" }}>
-                    {logoSrc ? (
-                        <img
-                            src={logoSrc}
-                            alt="TheaterOrStream"
-                            className="h-9 w-9 shrink-0 rounded-lg object-cover ring-1 ring-yellow-500/30"
-                        />
-                    ) : (
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-yellow-500/15 text-xs font-bold text-yellow-400">
-                            TOS
-                        </div>
-                    )}
-                    <div style={{ overflow: "visible", minWidth: 0 }}>
-                        <p
-                            className="text-sm font-semibold text-white"
-                            style={{ lineHeight: 1.35, overflow: "visible", whiteSpace: "normal" }}
-                        >
-                            TheaterOrStream
-                        </p>
-                        <p
-                            className="text-[10px] uppercase tracking-[0.18em] text-white/45"
-                            style={{ lineHeight: 1.4, marginTop: 2 }}
-                        >
-                            My Rating Card
-                        </p>
-                    </div>
-                </div>
-
-                <div className="flex flex-col items-center text-center" style={{ overflow: "visible" }}>
-                    <div className="h-[200px] w-[134px] overflow-hidden rounded-lg border border-yellow-500/45 bg-black/30 shadow-md">
-                        {posterSrc ? (
-                            <img src={posterSrc} alt="" className="h-full w-full object-cover" />
-                        ) : (
-                            <div className="flex h-full w-full items-center justify-center text-4xl text-white/15">🎬</div>
-                        )}
-                    </div>
-
-                    <p
-                        className="mt-4 px-3 text-xl font-bold text-white"
-                        style={{
-                            lineHeight: 1.35,
-                            overflow: "visible",
-                            wordBreak: "break-word",
-                            maxWidth: "100%",
-                        }}
-                    >
-                        {movieTitle}
-                    </p>
-                    <p className="mt-1.5 text-xs text-white/45" style={{ lineHeight: 1.4 }}>
-                        {movieYear || "2024"}
-                    </p>
-
-                    <div className="mt-3 flex items-baseline justify-center gap-1" style={{ lineHeight: 1 }}>
-                        <span className="text-5xl font-black text-yellow-400" style={{ lineHeight: 1 }}>
-                            {overallScore.toFixed(1)}
-                        </span>
-                        <span className="pb-1 text-base text-white/30">/10</span>
-                    </div>
-                </div>
-
-                <div className="mt-4 rounded-xl border border-white/10 bg-black/40 p-2.5">
-                    <div className="grid grid-cols-4 gap-1.5">
-                        {TOS_SHARE_CATEGORIES.map((cat) => (
-                            <div key={cat.key} className="rounded-md bg-white/[0.04] px-1 py-1.5 text-center">
-                                <p className="text-[7px] uppercase tracking-wide text-white/45" style={{ lineHeight: 1.3 }}>
-                                    {cat.label}
-                                </p>
-                                <p className="text-xs font-bold" style={{ color: cat.color, lineHeight: 1.3 }}>
-                                    {normalizedRatings[cat.key]?.toFixed(1) || "—"}
-                                </p>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-});
-
-ShareableCard.displayName = "ShareableCard";
 
 const SharePlatformButton = ({ icon: Icon, label, onClick, disabled, className }) => (
     <button
@@ -198,6 +89,8 @@ const ShareMovieModal = ({
     ratings,
     imageURL,
     posterBase64: initialPosterBase64,
+    genres,
+    mediaType,
 }) => {
     const cardRef = useRef(null);
     const [generating, setGenerating] = useState(false);
@@ -290,8 +183,10 @@ const ShareMovieModal = ({
 
             try {
                 const canvas = await html2canvas(cardRef.current, {
-                    backgroundColor: "#0a0a0a",
-                    scale: 2,
+                    backgroundColor: null,
+                    scale: CARD_EXPORT_SCALE,
+                    width: CARD_W,
+                    height: CARD_H,
                     useCORS: true,
                     allowTaint: false,
                     logging: false,
@@ -299,12 +194,10 @@ const ShareMovieModal = ({
                     onclone: (clonedDoc) => {
                         const card = clonedDoc.querySelector("[data-share-card]");
                         if (!card) return;
-                        card.style.overflow = "visible";
-                        card.querySelectorAll("p, span, div").forEach((node) => {
-                            node.style.overflow = "visible";
-                            node.style.textOverflow = "clip";
-                            node.style.webkitLineClamp = "unset";
-                        });
+                        card.style.overflow = "hidden";
+                        card.style.fontFamily = CARD_FONT;
+                        card.style.width = `${CARD_W}px`;
+                        card.style.height = `${CARD_H}px`;
                     },
                 });
 
@@ -404,12 +297,12 @@ const ShareMovieModal = ({
             <div className="flex h-auto max-h-[min(620px,94dvh)] w-full max-w-[860px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#101010] shadow-2xl sm:max-h-[620px]">
                 <div className="flex shrink-0 items-center justify-between border-b border-white/5 px-4 py-3">
                     <div className="flex items-center gap-2.5">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-green-500/15">
-                            <FaShare className="text-sm text-green-400" />
+                        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-500/10">
+                            <FaShare className="text-sm text-amber-400/90" />
                         </div>
                         <div>
                             <h3 className="text-sm font-bold text-white">Share Your Rating</h3>
-                            <p className="text-[11px] text-white/40">Instagram, WhatsApp, and more</p>
+                            <p className="text-[11px] text-white/40">Premium story card · 1080×1920</p>
                         </div>
                     </div>
                     <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full text-white/40 hover:bg-white/5 hover:text-white">
@@ -418,10 +311,10 @@ const ShareMovieModal = ({
                 </div>
 
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden sm:flex-row">
-                    <div className="flex shrink-0 items-center justify-center bg-[#0a0a0a] px-5 py-4 sm:w-[260px] sm:border-r sm:border-white/5">
+                    <div className="flex shrink-0 items-center justify-center bg-[#030303] px-5 py-4 sm:w-[260px] sm:border-r sm:border-white/5">
                         <div className="absolute left-0 top-0 -z-10 opacity-0 pointer-events-none" aria-hidden="true">
                             {cardImages && (
-                                <ShareableCard
+                                <LuxuryShareCard
                                     ref={cardRef}
                                     movieTitle={movieTitle}
                                     movieYear={movieYear}
@@ -429,20 +322,26 @@ const ShareMovieModal = ({
                                     logoSrc={cardImages.logo}
                                     ratings={ratings}
                                     overallScore={overallScore}
+                                    genres={genres}
+                                    mediaType={mediaType}
                                 />
                             )}
                         </div>
 
                         {generating || !shareImage ? (
-                            <div className="flex h-[380px] w-[214px] flex-col items-center justify-center rounded-xl border border-dashed border-white/15 bg-white/[0.03]">
-                                <div className="mb-3 h-9 w-9 animate-spin rounded-full border-[3px] border-yellow-500/20 border-t-yellow-500" />
-                                <p className="text-xs text-white/45">Building...</p>
+                            <div
+                                className="flex flex-col items-center justify-center rounded-lg border border-dashed border-white/10 bg-white/[0.02]"
+                                style={{ width: 214, height: 380 }}
+                            >
+                                <div className="mb-3 h-9 w-9 animate-spin rounded-full border-[3px] border-amber-500/15 border-t-amber-500/70" />
+                                <p className="text-xs text-white/40">Rendering collectible…</p>
                             </div>
                         ) : (
                             <img
                                 src={shareImage}
                                 alt="Share preview"
-                                className="h-[380px] w-auto max-w-[214px] rounded-xl border border-white/10 object-contain shadow-lg"
+                                className="rounded-lg border border-white/10 object-cover shadow-2xl shadow-black/70"
+                                style={{ width: 214, height: 380 }}
                             />
                         )}
                     </div>
@@ -454,7 +353,7 @@ const ShareMovieModal = ({
                                     type="button"
                                     onClick={handleNativeShare}
                                     disabled={shareDisabled}
-                                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 py-2.5 text-sm font-bold text-white disabled:opacity-45"
+                                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-600/90 to-orange-700/90 py-2.5 text-sm font-bold text-white disabled:opacity-45"
                                 >
                                     <FaShare /> Quick Share
                                 </button>
@@ -497,7 +396,7 @@ const ShareMovieModal = ({
     );
 };
 
-export const ShareButton = ({ movieTitle, movieYear, posterUrl, backdropUrl, ratings, imageURL, posterBase64, backdropBase64 }) => {
+export const ShareButton = ({ movieTitle, movieYear, posterUrl, backdropUrl, ratings, imageURL, posterBase64, backdropBase64, genres, mediaType }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
 
     return (
@@ -505,9 +404,9 @@ export const ShareButton = ({ movieTitle, movieYear, posterUrl, backdropUrl, rat
             <button
                 type="button"
                 onClick={() => setIsModalOpen(true)}
-                className="group flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-6 py-3 font-bold text-white transition hover:border-green-500/50 hover:bg-green-500/10"
+                className="group flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-6 py-3 font-bold text-white transition hover:border-amber-500/40 hover:bg-amber-500/10"
             >
-                <FaShare className="text-green-500" />
+                <FaShare className="text-amber-500/90" />
                 <span className="text-sm">Share Review Card</span>
             </button>
 
@@ -520,6 +419,8 @@ export const ShareButton = ({ movieTitle, movieYear, posterUrl, backdropUrl, rat
                 ratings={ratings}
                 imageURL={imageURL}
                 posterBase64={posterBase64}
+                genres={genres}
+                mediaType={mediaType}
             />
         </>
     );

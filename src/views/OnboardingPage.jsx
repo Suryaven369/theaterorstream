@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
     checkUsernameAvailable,
     completeTasteOnboarding,
+    loadTasteOnboardingPrefill,
 } from '../lib/supabase';
 import { getTrendingContentFromEdge } from '../lib/contentEdgeApi';
 import { MOVIE_GENRES } from '../lib/contentApi';
@@ -36,21 +37,34 @@ const GENRE_EMOJI = {
 
 const OnboardingPage = () => {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const tasteMode = searchParams.get('mode') === 'taste';
     const { user, profile, refreshProfile, loading: authLoading } = useAuth();
 
-    const [state, setState] = useState(() => loadOnboardingDraft() || DEFAULT_ONBOARDING_STATE);
+    const [state, setState] = useState(() => {
+        const draft = loadOnboardingDraft();
+        if (draft && !tasteMode) return draft;
+        if (draft && tasteMode && draft.step >= 2) return draft;
+        return { ...DEFAULT_ONBOARDING_STATE, step: tasteMode ? 2 : 1 };
+    });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [usernameAvailable, setUsernameAvailable] = useState(null);
     const [checkingUsername, setCheckingUsername] = useState(false);
     const [seedMovies, setSeedMovies] = useState([]);
     const [loadingSeeds, setLoadingSeeds] = useState(false);
+    const [prefillLoaded, setPrefillLoaded] = useState(!tasteMode);
 
     const {
         step, username, dateOfBirth, selectedAvatar, region,
         streamingServices, genreIds, moodIds, seedRatings,
         familyModeEnabled, familyMaxCertification,
     } = state;
+
+    const exitToProfile = useCallback(() => {
+        const uname = profile?.username || username;
+        navigate(uname ? `/${uname}/profile` : '/', { replace: true });
+    }, [navigate, profile?.username, username]);
 
     const setField = useCallback((patch) => {
         setState((prev) => {
@@ -61,7 +75,37 @@ const OnboardingPage = () => {
     }, []);
 
     useEffect(() => {
-        if (!profile || authLoading) return;
+        if (!tasteMode || !user?.id || prefillLoaded) return;
+
+        let cancelled = false;
+        (async () => {
+            const prefill = await loadTasteOnboardingPrefill(user.id, profile);
+            if (cancelled || !prefill) {
+                if (!cancelled) setPrefillLoaded(true);
+                return;
+            }
+            setState((prev) => {
+                const next = {
+                    ...prev,
+                    step: 2,
+                    region: prefill.region,
+                    streamingServices: prefill.streamingServices,
+                    genreIds: prefill.genreIds,
+                    moodIds: prefill.moodIds,
+                    familyModeEnabled: prefill.familyModeEnabled,
+                    familyMaxCertification: prefill.familyMaxCertification,
+                };
+                saveOnboardingDraft(next);
+                return next;
+            });
+            setPrefillLoaded(true);
+        })();
+
+        return () => { cancelled = true; };
+    }, [tasteMode, user?.id, profile, prefillLoaded]);
+
+    useEffect(() => {
+        if (!profile || authLoading || tasteMode) return;
         const patch = {};
         if (profile.username && !username) patch.username = profile.username;
         if (profile.date_of_birth && !dateOfBirth) patch.dateOfBirth = profile.date_of_birth;
@@ -163,10 +207,10 @@ const OnboardingPage = () => {
 
         const result = await completeTasteOnboarding(user.id, {
             profile: {
-                username,
-                displayName: username,
-                dateOfBirth,
-                avatarId: selectedAvatar,
+                username: tasteMode ? (profile?.username || username) : username,
+                displayName: tasteMode ? (profile?.display_name || profile?.username || username) : username,
+                dateOfBirth: tasteMode ? (profile?.date_of_birth || dateOfBirth) : dateOfBirth,
+                avatarId: tasteMode ? (profile?.avatar_id || selectedAvatar) : selectedAvatar,
                 preferredRegion: region,
                 favoriteGenres,
                 moodPreferences,
@@ -203,15 +247,32 @@ const OnboardingPage = () => {
 
         clearOnboardingDraft();
         await refreshProfile();
-        navigate('/', { replace: true });
+        if (tasteMode) {
+            exitToProfile();
+        } else {
+            navigate('/', { replace: true });
+        }
     };
+
+    if (authLoading || (tasteMode && !prefillLoaded)) {
+        return (
+            <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center px-4 pt-20">
+                <p className="text-white/50 text-sm">Loading your preferences…</p>
+            </div>
+        );
+    }
 
     const selectedAvatarData = AVATARS.find((a) => a.id === selectedAvatar);
 
     return (
         <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center px-4 pt-20 pb-10">
             <div className="w-full max-w-lg">
-                <OnboardingProgress step={step} />
+                {tasteMode && (
+                    <p className="text-center text-xs text-orange-400/80 mb-3 font-medium">
+                        Taste & streaming preferences
+                    </p>
+                )}
+                <OnboardingProgress step={step} tasteMode={tasteMode} />
 
                 {error && (
                     <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm text-center">
@@ -219,8 +280,8 @@ const OnboardingPage = () => {
                     </div>
                 )}
 
-                {/* Step 1: Identity */}
-                {step === 1 && (
+                {/* Step 1: Identity (new users only) */}
+                {!tasteMode && step === 1 && (
                     <StepShell
                         title="Set up your profile"
                         subtitle="Username, birthday, region & avatar"
@@ -321,7 +382,7 @@ const OnboardingPage = () => {
                     <StepShell
                         title="Where do you watch?"
                         subtitle="Pick your streaming apps — we’ll filter what you can actually watch"
-                        onBack={() => setField({ step: 1 })}
+                        onBack={tasteMode ? exitToProfile : () => setField({ step: 1 })}
                         onContinue={() => { setError(''); setField({ step: 3 }); }}
                         onSkip={() => setField({ step: 3, streamingServices: [] })}
                         showSkip

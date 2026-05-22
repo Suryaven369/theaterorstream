@@ -178,6 +178,14 @@ const Header = () => {
                             My Profile
                           </Link>
                           <Link
+                            to="/onboarding?mode=taste"
+                            onClick={() => setShowDropdown(false)}
+                            className="flex items-center gap-3 px-4 py-2.5 text-sm text-white/80 hover:bg-white/5 hover:text-white transition-colors"
+                          >
+                            <span className="text-base">🎯</span>
+                            Taste preferences
+                          </Link>
+                          <Link
                             to={`/${profile?.username}/watchlist`}
                             onClick={() => setShowDropdown(false)}
                             className="flex items-center gap-3 px-4 py-2.5 text-sm text-white/80 hover:bg-white/5 hover:text-white transition-colors"

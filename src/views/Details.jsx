@@ -403,6 +403,8 @@ const Details = () => {
                   backdropBase64={data?.images?.backdrop_base64}
                   ratings={displayRatings.ratings}
                   imageURL={imageURL}
+                  genres={data?.genres}
+                  mediaType={data?.media_type || (data?.first_air_date ? 'tv' : 'movie')}
                 />
               </div>
             )}

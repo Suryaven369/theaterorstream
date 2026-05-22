@@ -191,8 +191,52 @@ export function calculateShareOverallScore(ratings) {
 }
 
 export function getScoreAccentColor(score) {
-    if (score >= 7) return '#22c55e';
-    if (score >= 5) return '#eab308';
-    if (score >= 3) return '#f97316';
-    return '#ef4444';
+    if (score >= 7) return '#f59e0b';
+    if (score >= 5) return '#d97706';
+    if (score >= 3) return '#94a3b8';
+    return '#64748b';
 }
+
+/** Curated one-liner for share card editorial feel */
+export function getShareEmotionalLine(score) {
+    const lines = {
+        high: [
+            'Best experienced in IMAX.',
+            'A cinematic spectacle.',
+            'Electrifying storytelling.',
+            'Pure big-screen energy.',
+        ],
+        good: [
+            'Worth your time.',
+            'A confident watch.',
+            'Strongly recommended.',
+        ],
+        mid: [
+            'Solid company for a night in.',
+            'Has its moments.',
+        ],
+        low: [
+            'Not for everyone.',
+            'A divisive experience.',
+        ],
+    };
+
+    let pool;
+    if (score >= 8.5) pool = lines.high;
+    else if (score >= 7) pool = lines.good;
+    else if (score >= 5.5) pool = lines.mid;
+    else pool = lines.low;
+
+    const idx = Math.floor(score * 10) % pool.length;
+    return pool[idx];
+}
+
+export const SHARE_CARD_EDITORIAL_LABELS = {
+    acting: 'ACTING',
+    screenplay: 'STORY',
+    sound: 'SOUND',
+    direction: 'DIRECTION',
+    entertainment: 'FUN',
+    pacing: 'PACING',
+    cinematography: 'VISUALS',
+};

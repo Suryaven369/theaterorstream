@@ -12,9 +12,12 @@ import {
     getUserRatingsCount,
     getProfileByUsername,
     getUserCollections,
-    getUserWatchedMovies
+    getUserWatchedMovies,
+    getUserTasteProfile,
+    getUserStreamingServices,
+    hasCompletedTasteOnboarding,
 } from '../lib/supabase';
-import { FaUserPlus, FaUserCheck, FaBookmark, FaStar, FaHeart, FaFolder, FaEye } from 'react-icons/fa';
+import { FaUserPlus, FaUserCheck, FaBookmark, FaStar, FaHeart, FaFolder, FaEye, FaFilm } from 'react-icons/fa';
 
 // Avatar options
 const AVATARS = {
@@ -65,6 +68,10 @@ const ProfilePage = () => {
     // Edit form state
     const [displayName, setDisplayName] = useState('');
     const [selectedAvatar, setSelectedAvatar] = useState('avatar_1');
+
+    // Taste profile (own profile only)
+    const [tasteProfile, setTasteProfile] = useState(null);
+    const [streamingCount, setStreamingCount] = useState(0);
 
     // Load profile data
     useEffect(() => {
@@ -135,6 +142,23 @@ const ProfilePage = () => {
             loadProfile();
         }
     }, [username, currentUserProfile, user, authLoading, isOwnProfile]);
+
+    useEffect(() => {
+        if (!isOwnProfile || !user?.id) return;
+
+        let cancelled = false;
+        (async () => {
+            const [taste, streaming] = await Promise.all([
+                getUserTasteProfile(user.id),
+                getUserStreamingServices(user.id),
+            ]);
+            if (cancelled) return;
+            setTasteProfile(taste);
+            setStreamingCount(streaming.length);
+        })();
+
+        return () => { cancelled = true; };
+    }, [isOwnProfile, user?.id, isEditing]);
 
     // Initialize edit form
     useEffect(() => {
@@ -413,6 +437,60 @@ const ProfilePage = () => {
                                         <p className="text-sm font-medium text-white group-hover:text-orange-400 transition-colors">View Activity</p>
                                     </Link>
                                 </div>
+
+                                {isOwnProfile && (
+                                    <div className="col-span-3 bg-white/5 rounded-xl p-4 mt-2">
+                                        <div className="flex items-start justify-between gap-3 mb-3">
+                                            <div>
+                                                <h3 className="text-sm font-medium text-white flex items-center gap-2">
+                                                    <FaFilm className="text-orange-400" />
+                                                    Taste & streaming
+                                                </h3>
+                                                <p className="text-xs text-white/40 mt-1">
+                                                    {hasCompletedTasteOnboarding(tasteProfile)
+                                                        ? 'Used for personalized recommendations'
+                                                        : 'Not set up yet — add platforms, genres & moods'}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {hasCompletedTasteOnboarding(tasteProfile) ? (
+                                            <div className="space-y-2 mb-4 text-sm">
+                                                <div className="flex justify-between">
+                                                    <span className="text-white/40">Region</span>
+                                                    <span className="text-white">{tasteProfile?.preferred_region || displayProfile?.preferred_region || 'IN'}</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span className="text-white/40">Streaming apps</span>
+                                                    <span className="text-white">{streamingCount || '—'}</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span className="text-white/40">Genres</span>
+                                                    <span className="text-white">{(displayProfile?.favorite_genres?.length || Object.keys(tasteProfile?.genre_weights || {}).length) || '—'}</span>
+                                                </div>
+                                                {tasteProfile?.family_mode_enabled && (
+                                                    <div className="flex justify-between">
+                                                        <span className="text-white/40">Family mode</span>
+                                                        <span className="text-white">{tasteProfile.family_max_certification || 'On'}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <p className="text-xs text-white/50 mb-4">
+                                                Complete the taste wizard to unlock better movie picks and future AI recommendations.
+                                            </p>
+                                        )}
+
+                                        <Link
+                                            to="/onboarding?mode=taste"
+                                            className="block w-full py-2.5 rounded-xl text-center text-sm font-medium bg-orange-500/15 text-orange-300 border border-orange-500/30 hover:bg-orange-500/25 transition-colors"
+                                        >
+                                            {hasCompletedTasteOnboarding(tasteProfile)
+                                                ? 'Edit taste & streaming preferences'
+                                                : 'Set up taste profile'}
+                                        </Link>
+                                    </div>
+                                )}
 
                                 {/* Account Info (Moved here) */}
                                 {isOwnProfile && (

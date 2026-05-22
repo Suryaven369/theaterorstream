@@ -1,24 +1,27 @@
 import React from 'react';
 import { ONBOARDING_TOTAL_STEPS } from '../../constants/onboarding';
 
-export function OnboardingProgress({ step }) {
+export function OnboardingProgress({ step, tasteMode = false }) {
+    const totalSteps = tasteMode ? 4 : ONBOARDING_TOTAL_STEPS;
+    const displayStep = tasteMode ? Math.max(1, step - 1) : step;
+
     return (
         <div className="flex items-center justify-center gap-1 sm:gap-2 mb-8 px-2">
-            {Array.from({ length: ONBOARDING_TOTAL_STEPS }, (_, i) => i + 1).map((s) => (
+            {Array.from({ length: totalSteps }, (_, i) => i + 1).map((s) => (
                 <div key={s} className="flex items-center">
                     <div
                         className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-medium transition-colors ${
-                            step >= s
+                            displayStep >= s
                                 ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white'
                                 : 'bg-white/10 text-white/40'
                         }`}
                     >
-                        {step > s ? '✓' : s}
+                        {displayStep > s ? '✓' : s}
                     </div>
-                    {s < ONBOARDING_TOTAL_STEPS && (
+                    {s < totalSteps && (
                         <div
                             className={`w-6 sm:w-10 h-0.5 mx-0.5 sm:mx-1 transition-colors ${
-                                step > s ? 'bg-orange-500' : 'bg-white/10'
+                                displayStep > s ? 'bg-orange-500' : 'bg-white/10'
                             }`}
                         />
                     )}

@@ -262,6 +262,56 @@ export const getUserTasteProfile = async (userId) => {
     return data;
 };
 
+export function hasCompletedTasteOnboarding(tasteProfile) {
+    return !!(tasteProfile?.onboarding_completed_at);
+}
+
+export const getUserStreamingServices = async (userId) => {
+    if (!userId) return [];
+
+    const { data, error } = await supabase
+        .from('user_streaming_services')
+        .select('service_id, region')
+        .eq('user_id', userId)
+        .eq('is_active', true);
+
+    if (error) {
+        console.error('Error fetching streaming services:', error);
+        return [];
+    }
+
+    return data || [];
+};
+
+/** Prefill taste onboarding form from DB (existing accounts) */
+export const loadTasteOnboardingPrefill = async (userId, profile) => {
+    if (!userId) return null;
+
+    const [tasteProfile, streamingRows] = await Promise.all([
+        getUserTasteProfile(userId),
+        getUserStreamingServices(userId),
+    ]);
+
+    const genreIds = tasteProfile?.genre_weights
+        ? Object.keys(tasteProfile.genre_weights).map((id) => Number(id))
+        : (profile?.favorite_genres || []).map((id) => Number(id));
+
+    const moodIds = tasteProfile?.mood_preferences
+        ? Object.keys(tasteProfile.mood_preferences)
+        : Object.keys(profile?.mood_preferences || {});
+
+    return {
+        region: tasteProfile?.preferred_region || profile?.preferred_region || 'IN',
+        streamingServices: streamingRows.map((r) => r.service_id),
+        genreIds: genreIds.filter(Boolean),
+        moodIds,
+        familyModeEnabled: tasteProfile?.family_mode_enabled ?? profile?.family_mode_enabled ?? false,
+        familyMaxCertification: tasteProfile?.family_max_certification
+            ?? profile?.family_max_certification
+            ?? null,
+    };
+};
+
 /** Full onboarding completion: profile + streaming + taste + optional seed ratings */
 export const completeTasteOnboarding = async (userId, onboardingData) => {
     const {

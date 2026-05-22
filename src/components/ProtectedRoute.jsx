@@ -37,7 +37,10 @@ export function ProtectedRoute({ requireOnboarding = true }) {
     }
 
     if (isOnboarded && location.pathname === '/onboarding') {
-        return <Navigate to="/" replace />;
+        const tasteMode = new URLSearchParams(location.search).get('mode') === 'taste';
+        if (!tasteMode) {
+            return <Navigate to="/" replace />;
+        }
     }
 
     if (requireOnboarding && !isOnboarded && location.pathname !== '/onboarding') {
