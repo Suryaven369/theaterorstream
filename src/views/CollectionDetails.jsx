@@ -12,6 +12,7 @@ import {
 import { FaTrash, FaLock, FaGlobe, FaFolderOpen, FaArrowLeft, FaPlus, FaSearch, FaCheck, FaTimes, FaEdit, FaSave, FaShare, FaLink, FaTwitter } from 'react-icons/fa';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { searchContentFromEdge, getMovieDetailFromEdge } from '../lib/contentEdgeApi';
+import { isTheaterSystemCollection } from '../lib/theaterWatch';
 
 // Helper to create URL-friendly slug
 const createSlug = (text) => {
@@ -266,6 +267,7 @@ const CollectionDetails = () => {
 
     // Check if viewing own collection
     const isOwnCollection = user?.id && collection?.user_id === user.id;
+    const isTheaterCollection = isTheaterSystemCollection(collection);
 
     const confirmRemove = async () => {
         if (!itemToDelete || !isOwnCollection) return;
@@ -375,19 +377,21 @@ const CollectionDetails = () => {
     };
 
     const handleSaveEdit = async () => {
-        if (!editName.trim()) return;
+        if (!isTheaterCollection && !editName.trim()) return;
 
         setSaving(true);
         const result = await updateUserCollection(collection.id, {
-            name: editName.trim(),
+            name: isTheaterCollection ? collection.name : editName.trim(),
             description: editDescription.trim(),
-            is_public: editIsPublic
+            is_public: editIsPublic,
         });
 
         if (result.success) {
-            const newSlug = createSlug(editName.trim());
-            if (newSlug !== slug) {
-                navigate(`/collection/${newSlug}`, { replace: true });
+            if (!isTheaterCollection) {
+                const newSlug = createSlug(editName.trim());
+                if (newSlug !== slug) {
+                    navigate(`/collection/${newSlug}`, { replace: true });
+                }
             }
             await loadCollection();
             setIsEditing(false);
@@ -475,13 +479,22 @@ const CollectionDetails = () => {
                                 <div className="space-y-4">
                                     <div>
                                         <label className="text-xs text-white/50 mb-2 block">Collection Name</label>
-                                        <input
-                                            type="text"
-                                            value={editName}
-                                            onChange={(e) => setEditName(e.target.value)}
-                                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-purple-500/50"
-                                            placeholder="Collection name..."
-                                        />
+                                        {isTheaterCollection ? (
+                                            <p className="w-full bg-white/[0.03] border border-white/10 rounded-xl px-4 py-3 text-white/70">
+                                                {collection.name}
+                                                <span className="block text-[11px] text-white/35 mt-1">
+                                                    System collection name cannot be changed
+                                                </span>
+                                            </p>
+                                        ) : (
+                                            <input
+                                                type="text"
+                                                value={editName}
+                                                onChange={(e) => setEditName(e.target.value)}
+                                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-purple-500/50"
+                                                placeholder="Collection name..."
+                                            />
+                                        )}
                                     </div>
                                     <div>
                                         <label className="text-xs text-white/50 mb-2 block">Description</label>
@@ -510,7 +523,7 @@ const CollectionDetails = () => {
                                             </button>
                                             <button
                                                 onClick={handleSaveEdit}
-                                                disabled={saving || !editName.trim()}
+                                                disabled={saving || (!isTheaterCollection && !editName.trim())}
                                                 className="flex items-center gap-2 px-5 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50"
                                             >
                                                 <FaSave /> {saving ? 'Saving...' : 'Save Changes'}
@@ -539,6 +552,11 @@ const CollectionDetails = () => {
                                                 )}
                                             </div>
                                             <p className="text-white/60 text-sm sm:text-base line-clamp-2 sm:line-clamp-none mb-2 sm:mb-3">{collection.description || 'No description'}</p>
+                                            {isTheaterCollection && (
+                                                <p className="text-xs text-amber-400/90 mb-2">
+                                                    🍿 Titles appear here when you log a movie with &quot;In theater&quot; on your diary.
+                                                </p>
+                                            )}
                                             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:text-sm text-white/40">
                                                 <span>By @{collection.user_profiles?.username || 'user'}</span>
                                                 <span className="hidden sm:inline">•</span>
@@ -567,12 +585,14 @@ const CollectionDetails = () => {
                                                 >
                                                     <FaEdit /> <span className="hidden sm:inline">Edit</span>
                                                 </button>
-                                                <button
-                                                    onClick={() => setShowAddModal(true)}
-                                                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:from-purple-600 hover:to-pink-600 transition-all font-medium shadow-lg shadow-purple-500/25 text-sm sm:text-base"
-                                                >
-                                                    <FaPlus /> <span>Add</span>
-                                                </button>
+                                                {!isTheaterCollection && (
+                                                    <button
+                                                        onClick={() => setShowAddModal(true)}
+                                                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:from-purple-600 hover:to-pink-600 transition-all font-medium shadow-lg shadow-purple-500/25 text-sm sm:text-base"
+                                                    >
+                                                        <FaPlus /> <span>Add</span>
+                                                    </button>
+                                                )}
                                             </>
                                         )}
                                     </div>

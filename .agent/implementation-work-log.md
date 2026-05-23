@@ -2,7 +2,7 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** May 2026 · HEAD `4488dab` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** May 2026 · HEAD `5a8ffca` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
 
 ---
 
@@ -37,13 +37,13 @@ Session log for production architecture Phase 1 work (DB-first performance + Ver
 | 7 | `admin-control-tower` | Sync history, events queue, DB settings | ✅ Done |
 | 8 | `unify-content-api` | Full Edge adoption; remove Explore/Details TMDB | ✅ Done |
 | 9 | `onboarding-redesign` | 5-step taste onboarding wizard | ✅ Done |
-| 10 | `taste-profile-schema` | Profile rebuild worker + embedding backfill | ⬜ Pending |
-| 11 | `recommendation-engine` | Hybrid reco API | ⬜ Pending |
-| 12 | `ux-redesign` | Watch Tonight, Family hub, personalized home | ⬜ Pending |
-| 13 | `phase3-social-schema` | Diary, badges, following feed | ⬜ Pending |
+| 10 | `taste-profile-schema` | Profile rebuild worker + embedding backfill | ✅ Done |
+| 11 | `recommendation-engine` | Hybrid reco API | ✅ Done |
+| 12 | `ux-redesign` | Watch Tonight, Family hub, personalized home | ✅ Done |
+| 13 | `phase3-social-schema` | Diary, badges, following feed | ✅ Done |
 | 14 | `ai-agents-stack` | Background AI agents (Gateway) | ⬜ Pending |
 
-**Progress:** 9 complete · 0 partial · 5 pending
+**Progress:** 13 complete · 0 partial · 1 pending
 
 Full roadmap: [tos-production-architecture-plan.md](./tos-production-architecture-plan.md)
 
@@ -53,6 +53,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `e0c02ee` | May 2026 | Tasks #10–13 APIs; admin library upsert; search/diary/theater UX; dedupe migrations |
 | `4488dab` | May 2026 | Task #9 onboarding wizard + user_taste_profiles SQL migration |
 | `b210481` | May 2026 | Agent docs HEAD sync — Tasks 7–8 checkmarks |
 | `b42916d` | May 2026 | Task #7 control tower + Task #8 Explore Edge + auth overhaul |
@@ -83,6 +84,34 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 | `027f1d9` | May 2026 | Vercel Edge `/api/content/*` routes + `contentEdgeApi.js` |
 | `99c54f3` | May 2026 | Added TOS production architecture plan (`.agent/`) |
 | `1e2f319` | May 2026 | Upcoming DB-first, slim hydration, remove base64 admin sync |
+
+---
+
+## Session: May 2026 — Social, admin library, search & diary UX ✅
+
+### Post-rating diary log
+- `QuickLogModal` — no rating slider; “In theater” tag; opens right after Submit Rating
+- `Details.jsx` + `UserRatingSystem.jsx` — immediate log modal on rating success
+
+### Admin `movies_library` save (bulk + TMDB browse)
+- `api/admin/library.js` — service-role upsert (bypasses RLS); chunked batches
+- `src/lib/adminLibraryApi.js`, `persistLibraryRecords` — API first, direct fallback
+- `src/lib/libraryDedupe.js` — batch dedupe + upsert with `ON CONFLICT` fallback (`tmdb_id,media_type` → `tmdb_id`)
+- `supabase/migrations/20260526300000_movies_library_dedupe_unique.sql`, `20260526310000_fix_library_upsert_constraint.sql`
+
+### Search
+- `src/lib/searchUtils.js` — “antman” matches “Ant-Man”; `search_movies_library` SQL migration
+- `Search.jsx` — `URLSearchParams` for `?q=`
+
+### Theater watch
+- `supabase/migrations/20260526200000_theater_watch_feed_and_collection.sql` — `watched_in_theater` on logs/feed; system collection per user
+- `src/lib/theaterWatch.js` — auto “Watched in Theaters” collection; editable description/public
+
+**Apply migrations:** `supabase db push` (or run `20260526310000_fix_library_upsert_constraint.sql` if upsert ON CONFLICT errors)
+
+**Env:** `SUPABASE_SERVICE_ROLE_KEY` in `.env.local` for local admin saves
+
+**Next recommended task:** `ai-agents-stack` (Task #14)
 
 ---
 
@@ -399,7 +428,7 @@ supabase db push
 
 **Verify:** `/api/content/explore?mediaType=movie&category=popular&limit=24` and `/api/content/trending?limit=24`
 
-**Next recommended task:** `taste-profile-schema` (Task #10)
+**Next recommended task:** `recommendation-engine` (Task #11)
 
 ---
 
@@ -421,7 +450,94 @@ supabase db push
 
 **Apply migration:** `supabase db push`
 
-**Next recommended task:** `taste-profile-schema` (Task #10)
+**Next recommended task:** `ux-redesign` (Task #12)
+
+---
+
+## Session: May 2026 — Task #11 recommendation-engine ✅
+
+### Hybrid scoring API + cache
+
+**Problem:** No server-side personalized rankings; onboarding used local heuristics only.
+
+**Files changed:**
+- `supabase/migrations/20260524100000_recommendation_vector_rpc.sql` — `match_movies_by_embedding`, `match_similar_to_movie`
+- `api/_lib/recommendation-server.js` — hybrid scorer (content/genre/axis/collab/popularity), hard OTT/family filters, 6h cache
+- `api/_lib/recommendation-handler.js` — auth + query parsing
+- `api/recommendations/for-you.js`, `tonight.js`, `family.js`, `trending-personalized.js`, `similar/[tmdbId].js`
+- `src/lib/recommendationApi.js` — client wrapper with session Bearer token
+- `scripts/vite-local-api-plugin.js` — `/api/recommendations/` dev routing
+
+**Scoring (hot path, no LLM):**
+- With embeddings: 40% content · 25% genre · 15% axis · 10% collab · 10% popularity
+- Without embeddings: genre/axis/popularity weighted fallback
+- Hard filters: `is_active`, OTT platforms, family mode + cert + parent guide limits
+
+**Endpoints (GET, auth required):**
+| Route | Use case |
+|-------|----------|
+| `/api/recommendations/for-you` | Personalized library rank |
+| `/api/recommendations/tonight` | ≤120min, unwatched, on your OTT |
+| `/api/recommendations/family` | Family-safe picks |
+| `/api/recommendations/similar/:tmdbId` | Because you liked X |
+| `/api/recommendations/trending-personalized` | Trending re-ranked by taste |
+
+**Apply migration:** `supabase db push` (RPC functions required for embedding similarity pool)
+
+**Next recommended task:** `ux-redesign` (Task #12 — wire reco into Home / Watch Tonight UI)
+
+---
+
+## Session: May 2026 — Task #13 phase3-social-schema ✅
+
+### Diary, badges, following feed
+
+**Problem:** `movie_logs` table existed but no diary UI; activity merged legacy watched+ratings only.
+
+**Files changed:**
+- `supabase/migrations/20260525100000_phase3_social_schema.sql` — `activity_feed`, badges, public RLS
+- `api/_lib/social-server.js`, `api/social/check-badges.js`, `api/social/decision-pick.js`
+- `src/lib/movieDiary.js`, `src/lib/socialApi.js`
+- `src/components/social/*` — QuickLogModal, ActivityFeedList, BadgeList
+- `src/views/DiaryPage.jsx`, `FeedPage.jsx`; routes `/diary`, `/feed`
+- `MovieActionButtons`, `UserRatingSystem`, `ProfilePage`, `ActivityFeedPage`
+
+**Apply migration:** `supabase db push` (includes `20260525100000`)
+
+**Next recommended task:** `ai-agents-stack` (Task #14)
+
+---
+
+## Session: May 2026 — Task #10 taste-profile-schema ✅
+
+### Profile rebuild worker + embeddings
+
+**Problem:** Onboarding wrote cold-start taste data, but ratings/logs never recomputed `genre_weights`, axis prefs, or vectors for similarity search.
+
+**Files changed:**
+- `supabase/migrations/20260524000000_taste_profile_worker.sql` — `movie_logs`, `recommendation_cache`, worker indexes
+- `api/_lib/taste-profile-server.js` — rebuild from ratings + library metadata; stale batch; movie embed backfill
+- `api/_lib/embedding-server.js` — Voyage `voyage-3-lite` (512-d) with OpenAI fallback
+- `api/_lib/user-auth.js` — signed-in user auth for taste routes
+- `api/taste/rebuild.js` — `POST` rebuild for current user
+- `api/cron/taste-profile-weekly.js`, `api/cron/embedding-backfill.js` — weekly batch jobs
+- `api/admin/taste.js` — admin jobs: `rebuild-user`, `rebuild-stale`, `embed-movies`
+- `src/lib/tasteProfileApi.js` — client fire-and-forget rebuild
+- `src/components/UserRatingSystem.jsx`, `src/lib/supabase.js` — trigger rebuild after rating / onboarding
+- `vercel.json` — Sunday crons; `.env.example` — `VOYAGE_API_KEY`; `scripts/vite-local-api-plugin.js` — `/api/taste/`
+
+**Behavior:**
+- Rebuild merges onboarding genre weights (30%) with rating-derived weights (70%)
+- Computes axis averages, runtime/decade/language patterns, `rating_count`, `log_count`
+- Invalidates `recommendation_cache` on each rebuild
+- Optional user/movie embeddings when `VOYAGE_API_KEY` or `OPENAI_API_KEY` is set
+
+**Deploy checklist:**
+1. `supabase db push` (or run migration SQL in Supabase Editor)
+2. Vercel env: `VOYAGE_API_KEY` (or `OPENAI_API_KEY`), existing `SUPABASE_SERVICE_ROLE_KEY` + `CRON_SECRET`
+3. Commit + deploy; test `POST /api/taste/rebuild` while signed in
+
+**Next recommended task:** `recommendation-engine` (Task #11)
 
 ---
 

@@ -11,6 +11,14 @@
         {
             "path": "/api/cron/upcoming-weekly",
             "schedule": "0 7 * * 5"
+        },
+        {
+            "path": "/api/cron/taste-profile-weekly",
+            "schedule": "0 4 * * 0"
+        },
+        {
+            "path": "/api/cron/embedding-backfill",
+            "schedule": "0 5 * * 0"
         }
     ],
     "rewrites": [

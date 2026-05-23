@@ -8,6 +8,7 @@
  */
 
 import { supabase } from './supabase';
+import { MOVIES_LIBRARY_SELECT } from './moviesLibrarySelect.js';
 
 // =============================================
 // CACHING LAYER
@@ -118,7 +119,7 @@ export const getMoviesFromDb = async (options = {}) => {
 
     let query = supabase
         .from('movies_library')
-        .select('*', { count: 'exact' });
+        .select(MOVIES_LIBRARY_SELECT, { count: 'exact' });
 
     // Apply filters
     if (activeOnly) query = query.eq('is_active', true);
@@ -126,7 +127,11 @@ export const getMoviesFromDb = async (options = {}) => {
     if (featured !== null) query = query.eq('featured', featured);
     if (minRating) query = query.gte('vote_average', minRating);
     if (maxRating) query = query.lte('vote_average', maxRating);
-    if (searchTerm) query = query.ilike('title', `%${searchTerm}%`);
+    if (searchTerm) {
+        const { buildLibrarySearchOrClause } = await import('./searchUtils.js');
+        const orClause = buildLibrarySearchOrClause(searchTerm);
+        if (orClause) query = query.or(orClause);
+    }
 
     // Year filtering
     if (yearFrom) {
@@ -189,7 +194,7 @@ export const getContentByTmdbId = async (tmdbId) => {
 
     const { data, error } = await supabase
         .from('movies_library')
-        .select('*')
+        .select(MOVIES_LIBRARY_SELECT)
         .eq('tmdb_id', tmdbId.toString())
         .eq('is_active', true)
         .single();
@@ -226,7 +231,7 @@ export const getTrendingTVFromDb = async (limit = 10) => {
 
     const { data, error } = await supabase
         .from('movies_library')
-        .select('*')
+        .select(MOVIES_LIBRARY_SELECT)
         .eq('media_type', 'tv')
         .eq('is_active', true)
         .order('popularity', { ascending: false, nullsFirst: false })
@@ -251,7 +256,7 @@ export const getTVByGenreFromDb = async (genreId, limit = 20) => {
 
     const { data, error } = await supabase
         .from('movies_library')
-        .select('*')
+        .select(MOVIES_LIBRARY_SELECT)
         .eq('media_type', 'tv')
         .eq('is_active', true)
         .contains('genres', [{ id: genreId }])
@@ -281,7 +286,7 @@ export const getTVSections = async (activeOnly = true) => {
 
     let query = supabase
         .from('tv_sections')
-        .select('*')
+        .select(MOVIES_LIBRARY_SELECT)
         .order('display_order', { ascending: true });
 
     if (activeOnly) {
@@ -306,7 +311,7 @@ export const getTVSections = async (activeOnly = true) => {
 const getTVFromHomepageSections = async (activeOnly = true) => {
     let query = supabase
         .from('homepage_sections')
-        .select('*')
+        .select(MOVIES_LIBRARY_SELECT)
         .order('display_order', { ascending: true });
 
     if (activeOnly) {
@@ -353,7 +358,7 @@ export const getHomepageSectionsOptimized = async (activeOnly = true) => {
 
     let query = supabase
         .from('homepage_sections')
-        .select('*')
+        .select(MOVIES_LIBRARY_SELECT)
         .order('display_order', { ascending: true });
 
     if (activeOnly) {
@@ -398,19 +403,27 @@ export const searchContentFromDb = async (query, options = {}) => {
         offset = 0,
     } = options;
 
-    if (!query || query.trim().length < 2) {
+    const term = (query || '').trim();
+    if (term.length < 2) {
         return { data: [], total: 0 };
     }
 
-    const cacheKey = `search:${query}:${mediaType}:${limit}:${offset}`;
+    const cacheKey = `search:v2:${term}:${mediaType}:${limit}:${offset}`;
     const cached = getCached(cacheKey, CACHE_TTL.library);
     if (cached) return cached;
 
+    const { buildLibrarySearchOrClause } = await import('./searchUtils.js');
+    const orClause = buildLibrarySearchOrClause(term);
+
+    if (!orClause) {
+        return { data: [], total: 0 };
+    }
+
     let dbQuery = supabase
         .from('movies_library')
-        .select('*', { count: 'exact' })
+        .select(MOVIES_LIBRARY_SELECT, { count: 'exact' })
         .eq('is_active', true)
-        .ilike('title', `%${query}%`)
+        .or(orClause)
         .order('popularity', { ascending: false, nullsFirst: false })
         .range(offset, offset + limit - 1);
 
@@ -434,17 +447,22 @@ export const searchContentFromDb = async (query, options = {}) => {
  * Quick search for autocomplete (lighter query)
  */
 export const quickSearchFromDb = async (query, limit = 8) => {
-    if (!query || query.trim().length < 2) return [];
+    const term = (query || '').trim();
+    if (term.length < 2) return [];
 
-    const cacheKey = `quicksearch:${query}:${limit}`;
+    const cacheKey = `quicksearch:v2:${term}:${limit}`;
     const cached = getCached(cacheKey, CACHE_TTL.library);
     if (cached) return cached;
+
+    const { buildLibrarySearchOrClause } = await import('./searchUtils.js');
+    const orClause = buildLibrarySearchOrClause(term);
+    if (!orClause) return [];
 
     const { data, error } = await supabase
         .from('movies_library')
         .select('tmdb_id, title, poster_path, media_type, release_date, vote_average')
         .eq('is_active', true)
-        .ilike('title', `%${query}%`)
+        .or(orClause)
         .order('popularity', { ascending: false, nullsFirst: false })
         .limit(limit);
 
@@ -479,7 +497,7 @@ export const getExploreContent = async (options = {}) => {
 
     let query = supabase
         .from('movies_library')
-        .select('*', { count: 'exact' })
+        .select(MOVIES_LIBRARY_SELECT, { count: 'exact' })
         .eq('is_active', true)
         .eq('media_type', mediaType);
 
@@ -662,7 +680,7 @@ export const getFeaturedContent = async (mediaType = null, limit = 10) => {
 
     let query = supabase
         .from('movies_library')
-        .select('*')
+        .select(MOVIES_LIBRARY_SELECT)
         .eq('is_active', true)
         .eq('featured', true)
         .order('priority', { ascending: false, nullsFirst: false })
@@ -694,7 +712,7 @@ export const getTrendingContent = async (mediaType = null, limit = 20) => {
 
     let query = supabase
         .from('movies_library')
-        .select('*')
+        .select(MOVIES_LIBRARY_SELECT)
         .eq('is_active', true)
         .order('popularity', { ascending: false, nullsFirst: false })
         .limit(limit);

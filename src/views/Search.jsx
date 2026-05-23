@@ -67,12 +67,18 @@ const Search = () => {
   const [profileData, setProfileData] = useState([]);
   const [profilesLoading, setProfilesLoading] = useState(false);
 
-  const query = location?.search?.slice(3);
-  const displayQuery = query?.split("%20")?.join(" ");
+  const searchParams = new URLSearchParams(location.search);
+  const displayQuery = (searchParams.get('q') || searchParams.get('query') || '').trim();
 
   // Fetch movies from Database (primary source)
   const fetchMoviesFromDb = async (page = 1) => {
-    if (!displayQuery || displayQuery.length < 2) return;
+    if (!displayQuery || displayQuery.length < 2) {
+      if (page === 1) {
+        setMovieData([]);
+        setTotalDbResults(0);
+      }
+      return;
+    }
 
     try {
       setMoviesLoading(true);
@@ -123,14 +129,18 @@ const Search = () => {
 
   // Fetch data when query changes
   useEffect(() => {
-    if (query) {
+    if (displayQuery.length >= 2) {
       setMoviePage(1);
       setMovieData([]);
       setProfileData([]);
       fetchMovies(1);
       fetchProfiles();
+    } else {
+      setMovieData([]);
+      setProfileData([]);
+      setTotalDbResults(0);
     }
-  }, [location?.search]);
+  }, [displayQuery]);
 
   // Infinite scroll for movies
   const handleScroll = () => {
@@ -142,10 +152,10 @@ const Search = () => {
   };
 
   useEffect(() => {
-    if (query && moviePage > 1) {
+    if (displayQuery.length >= 2 && moviePage > 1) {
       fetchMovies(moviePage);
     }
-  }, [moviePage]);
+  }, [moviePage, displayQuery]);
 
   useEffect(() => {
     window.addEventListener("scroll", handleScroll);
@@ -266,7 +276,7 @@ const Search = () => {
                   />
                 ))}
               </div>
-            ) : !moviesLoading && query ? (
+            ) : !moviesLoading && displayQuery.length >= 2 ? (
               <div className="text-center py-20">
                 <span className="text-6xl mb-6 block opacity-50">📭</span>
                 <p className="text-white/60 text-xl font-medium">
@@ -285,7 +295,7 @@ const Search = () => {
                   <ProfileCard key={profile.id} profile={profile} />
                 ))}
               </div>
-            ) : !profilesLoading && query ? (
+            ) : !profilesLoading && displayQuery.length >= 2 ? (
               <div className="text-center py-20">
                 <span className="text-5xl mb-4 block">👤</span>
                 <p className="text-white/40 text-lg">No users found</p>

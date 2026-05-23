@@ -7,6 +7,10 @@ import {
     getUserCollections,
     createUserCollection
 } from '../lib/supabase';
+import {
+    ensureWatchedInTheaterCollection,
+    isTheaterSystemCollection,
+} from '../lib/theaterWatch';
 import { FaFolder, FaPlus, FaLock, FaGlobe, FaChevronRight, FaArrowLeft, FaFolderOpen } from 'react-icons/fa';
 
 // Helper to create URL-friendly slug
@@ -90,11 +94,19 @@ const CollectionsPage = () => {
         setViewedProfile(targetProfile);
 
         if (targetProfile?.id) {
+            if (isOwnProfile && user?.id) {
+                await ensureWatchedInTheaterCollection(user.id);
+            }
             const userCollections = await getUserCollections(targetProfile.id);
+            const sorted = [...(userCollections || [])].sort((a, b) => {
+                if (isTheaterSystemCollection(a)) return -1;
+                if (isTheaterSystemCollection(b)) return 1;
+                return 0;
+            });
             if (isOwnProfile) {
-                setCollections(userCollections);
+                setCollections(sorted);
             } else {
-                setCollections(userCollections.filter(c => c.is_public));
+                setCollections(sorted.filter((c) => c.is_public));
             }
         }
         setLoading(false);
@@ -238,9 +250,17 @@ const CollectionsPage = () => {
                                     <div className="flex items-center gap-4">
                                         <MiniPosterCollage movies={collection.collection_movies} imageURL={imageURL} />
                                         <div>
-                                            <h3 className="text-lg font-bold text-white group-hover:text-purple-400 transition-colors mb-1">
+                                            <h3 className="text-lg font-bold text-white group-hover:text-purple-400 transition-colors mb-1 flex items-center gap-2">
+                                                {isTheaterSystemCollection(collection) && (
+                                                    <span aria-hidden>🍿</span>
+                                                )}
                                                 {collection.name}
                                             </h3>
+                                            {isTheaterSystemCollection(collection) && (
+                                                <p className="text-[11px] text-amber-400/80 mb-1">
+                                                    Auto-updated when you log &quot;In theater&quot;
+                                                </p>
+                                            )}
                                             <div className="flex items-center gap-3 text-xs text-white/40">
                                                 <span className="bg-white/5 px-2 py-0.5 rounded">
                                                     {collection.collection_movies?.length || 0} movies

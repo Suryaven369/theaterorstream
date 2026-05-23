@@ -11,6 +11,7 @@ import {
     createUserCollection,
     addToCollection
 } from "../lib/supabase";
+import QuickLogModal from "./social/QuickLogModal";
 
 // Animated Action Button
 const ActionButton = ({ icon: Icon, activeIcon: ActiveIcon, label, isActive, onClick, activeColor = "text-red-500", inactiveColor = "text-white/50" }) => {
@@ -201,6 +202,7 @@ const MovieActionButtons = ({ movieId, movieTitle, posterPath, mediaType = 'movi
     const { user, isAuthenticated } = useAuth();
     const [status, setStatus] = useState({ inWatchlist: false, isLiked: false, isWatched: false });
     const [showCollections, setShowCollections] = useState(false);
+    const [showLogModal, setShowLogModal] = useState(false);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -240,10 +242,14 @@ const MovieActionButtons = ({ movieId, movieTitle, posterPath, mediaType = 'movi
 
     const handleWatched = async () => {
         if (!isAuthenticated) return handleAuthRequired();
-        const result = await toggleWatchedMovie(user.id, movieId, movieTitle, posterPath, mediaType);
-        if (result.success) {
-            setStatus(prev => ({ ...prev, isWatched: result.added }));
+        if (status.isWatched) {
+            const result = await toggleWatchedMovie(user.id, movieId, movieTitle, posterPath, mediaType);
+            if (result.success) {
+                setStatus((prev) => ({ ...prev, isWatched: false }));
+            }
+            return;
         }
+        setShowLogModal(true);
     };
 
     const handleSave = () => {
@@ -302,6 +308,21 @@ const MovieActionButtons = ({ movieId, movieTitle, posterPath, mediaType = 'movi
                 posterPath={posterPath}
                 mediaType={mediaType}
                 userId={user?.id}
+            />
+
+            <QuickLogModal
+                isOpen={showLogModal}
+                onClose={() => setShowLogModal(false)}
+                userId={user?.id}
+                movie={{
+                    tmdb_id: movieId,
+                    title: movieTitle,
+                    poster_path: posterPath,
+                    media_type: mediaType,
+                }}
+                onLogged={() => {
+                    setStatus((prev) => ({ ...prev, isWatched: true }));
+                }}
             />
         </>
     );

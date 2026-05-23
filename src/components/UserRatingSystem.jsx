@@ -11,6 +11,8 @@ import {
     downvoteReview,
     removeUpvoteReview
 } from "../lib/supabase";
+import { requestTasteProfileRebuild } from "../lib/tasteProfileApi";
+import { publishRatingActivity } from "../lib/movieDiary";
 import { computeOverallFromCategories, computeTosScoreFromAggregates } from "../lib/ratingUtils";
 import { markUserRatedMovie, patchHomepageMovieTosRating } from "../store/movieSlice";
 import { useAuth } from "../context/AuthContext";
@@ -295,40 +297,49 @@ export const RatingModal = ({ isOpen, onClose, movieId, movieTitle, onSubmitSucc
         const ratingResult = await submitRating(movieId, movieTitle, userRatings, userId || 'anonymous');
 
         if (ratingResult.success) {
-            const userScore = computeOverallFromCategories(userRatings);
-            if (userId && userId !== 'anonymous' && userScore != null) {
-                dispatch(markUserRatedMovie({ movieId: String(movieId), score: userScore }));
-
-                try {
-                    const community = await getMovieRatings(movieId);
-                    const communityScore = computeTosScoreFromAggregates(community);
-                    const tosRating = communityScore != null
-                        ? { score: communityScore, count: community.totalRatings }
-                        : { score: userScore, count: 1 };
-
-                    dispatch(patchHomepageMovieTosRating({
-                        movieId: String(movieId),
-                        tos_rating: tosRating,
-                    }));
-                } catch (error) {
-                    console.error('Error syncing TOS rating to home cache:', error);
-                    dispatch(patchHomepageMovieTosRating({
-                        movieId: String(movieId),
-                        tos_rating: { score: userScore, count: 1 },
-                    }));
-                }
-            }
-
             const savedRating = ratingResult.data
                 ? { ...userRatings, ...ratingResult.data }
                 : userRatings;
 
-            setShowSuccess(true);
-            setTimeout(() => {
-                setShowSuccess(false);
-                onClose();
-                onSubmitSuccess?.(savedRating);
-            }, 1500);
+            // Open diary log immediately — do not wait on community fetch or a delay timer
+            onSubmitSuccess?.(savedRating);
+            onClose();
+
+            const userScore = computeOverallFromCategories(userRatings);
+            if (userId && userId !== 'anonymous' && userScore != null) {
+                dispatch(markUserRatedMovie({ movieId: String(movieId), score: userScore }));
+
+                void (async () => {
+                    try {
+                        const community = await getMovieRatings(movieId);
+                        const communityScore = computeTosScoreFromAggregates(community);
+                        const tosRating = communityScore != null
+                            ? { score: communityScore, count: community.totalRatings }
+                            : { score: userScore, count: 1 };
+
+                        dispatch(patchHomepageMovieTosRating({
+                            movieId: String(movieId),
+                            tos_rating: tosRating,
+                        }));
+                    } catch (error) {
+                        console.error('Error syncing TOS rating to home cache:', error);
+                        dispatch(patchHomepageMovieTosRating({
+                            movieId: String(movieId),
+                            tos_rating: { score: userScore, count: 1 },
+                        }));
+                    }
+
+                    requestTasteProfileRebuild().catch(() => {});
+                    publishRatingActivity(userId, ratingResult.data || {
+                        movie_id: movieId,
+                        movie_title: movieTitle,
+                        ...userRatings,
+                    }, {
+                        title: movieTitle,
+                        mediaType: 'movie',
+                    }).catch(() => {});
+                })();
+            }
         }
 
         setSubmitting(false);
@@ -823,9 +834,21 @@ export const ReviewsList = ({ movieId, movieTitle, onRateClick, hasUserRated }) 
 };
 
 // Main UserRatingSystem Component
-const UserRatingSystem = ({ movieId, movieTitle, hasUserRated, existingRating, userId }) => {
+const UserRatingSystem = ({
+    movieId,
+    movieTitle,
+    hasUserRated,
+    existingRating,
+    userId,
+    onRatingSubmitted,
+}) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
+
+    const handleRatingSuccess = (savedRating) => {
+        setRefreshKey((prev) => prev + 1);
+        onRatingSubmitted?.(savedRating);
+    };
 
     return (
         <>
@@ -841,7 +864,7 @@ const UserRatingSystem = ({ movieId, movieTitle, hasUserRated, existingRating, u
                 onClose={() => setIsModalOpen(false)}
                 movieId={movieId}
                 movieTitle={movieTitle}
-                onSubmitSuccess={() => setRefreshKey(prev => prev + 1)}
+                onSubmitSuccess={handleRatingSuccess}
                 existingRating={existingRating}
                 userId={userId}
             />

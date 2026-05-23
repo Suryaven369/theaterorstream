@@ -75,13 +75,12 @@ export function shouldRefreshFull(existing, listItem) {
     return popDelta > 5 || voteDelta > 0.5;
 }
 
+import { upsertMoviesLibrary } from '../../src/lib/libraryDedupe.js';
+
 export async function upsertLibraryRecord(supabase, record) {
-    const { data, error } = await supabase
-        .from('movies_library')
-        .upsert(record, { onConflict: 'tmdb_id' })
-        .select('tmdb_id')
-        .single();
+    const { data, error } = await upsertMoviesLibrary(supabase, record, 'tmdb_id');
 
     if (error) throw error;
-    return data;
+    const row = Array.isArray(data) ? data[0] : data;
+    return row;
 }

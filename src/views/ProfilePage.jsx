@@ -17,7 +17,9 @@ import {
     getUserStreamingServices,
     hasCompletedTasteOnboarding,
 } from '../lib/supabase';
-import { FaUserPlus, FaUserCheck, FaBookmark, FaStar, FaHeart, FaFolder, FaEye, FaFilm } from 'react-icons/fa';
+import { getUserBadges } from '../lib/movieDiary';
+import BadgeList from '../components/social/BadgeList';
+import { FaUserPlus, FaUserCheck, FaBookmark, FaStar, FaHeart, FaFolder, FaEye, FaFilm, FaBook } from 'react-icons/fa';
 
 // Avatar options
 const AVATARS = {
@@ -72,6 +74,7 @@ const ProfilePage = () => {
     // Taste profile (own profile only)
     const [tasteProfile, setTasteProfile] = useState(null);
     const [streamingCount, setStreamingCount] = useState(0);
+  const [badges, setBadges] = useState([]);
 
     // Load profile data
     useEffect(() => {
@@ -108,7 +111,8 @@ const ProfilePage = () => {
                     userCollections,
                     watchedMovies,
                     followersData,
-                    followingData
+                    followingData,
+                    userBadges,
                 ] = await Promise.all([
                     getUserWatchlist(targetUserId),
                     getUserRatingsCount(targetUserId),
@@ -116,7 +120,8 @@ const ProfilePage = () => {
                     getUserCollections(targetUserId),
                     getUserWatchedMovies(targetUserId),
                     getUserFollowers(targetUserId),
-                    getUserFollowing(targetUserId)
+                    getUserFollowing(targetUserId),
+                    getUserBadges(targetUserId),
                 ]);
 
                 setWatchlistCount(watchlist.length);
@@ -133,6 +138,7 @@ const ProfilePage = () => {
                 setFollowing(followingData);
 
                 setWatchedCount(watchedMovies.length);
+                setBadges(userBadges);
             }
 
             setLoadingProfile(false);
@@ -392,12 +398,12 @@ const ProfilePage = () => {
                                 {/* Stats Grid */}
                                 <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8 animate-fadeIn">
                                     <Link
-                                        to={`/${displayProfile?.username}/watched`}
+                                        to={isOwnProfile ? '/diary' : `/${displayProfile?.username}/diary`}
                                         className="bg-white/5 rounded-xl p-4 text-center hover:bg-white/10 transition-colors group"
                                     >
-                                        <FaEye className="text-green-400 mx-auto mb-2 text-xl group-hover:scale-110 transition-transform" />
+                                        <FaBook className="text-green-400 mx-auto mb-2 text-xl group-hover:scale-110 transition-transform" />
                                         <p className="text-2xl font-bold text-white max-sm:text-lg">{watchedCount}</p>
-                                        <p className="text-xs text-white/40">Watched</p>
+                                        <p className="text-xs text-white/40">Diary</p>
                                     </Link>
                                     <Link
                                         to={`/${displayProfile?.username}/watchlist`}
@@ -436,6 +442,11 @@ const ProfilePage = () => {
                                         </div>
                                         <p className="text-sm font-medium text-white group-hover:text-orange-400 transition-colors">View Activity</p>
                                     </Link>
+                                </div>
+
+                                <div className="col-span-2 lg:col-span-3 bg-white/5 rounded-xl p-4 mt-2">
+                                    <h3 className="text-sm font-medium text-white mb-3">Badges</h3>
+                                    <BadgeList badges={badges} compact />
                                 </div>
 
                                 {isOwnProfile && (

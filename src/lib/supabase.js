@@ -1,4 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
+import { MOVIES_LIBRARY_SELECT, LIBRARY_UPSERT_SELECT, LIBRARY_CARD_SELECT as SHARED_LIBRARY_CARD_SELECT } from './moviesLibrarySelect.js';
+import { upsertMoviesViaAdminApi } from './adminLibraryApi.js';
+import { dedupeLibraryRecords, upsertMoviesLibrary } from './libraryDedupe.js';
+
+export { dedupeLibraryRecords, upsertMoviesLibrary };
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -221,6 +226,7 @@ export const saveUserTasteProfile = async (userId, tasteData) => {
         mood_preferences: tasteData.moodPreferences || {},
         preferred_languages: tasteData.preferredLanguages || [],
         preferred_region: tasteData.preferredRegion || 'IN',
+        axis_preferences: tasteData.axisPreferences || {},
         family_mode_enabled: !!tasteData.familyModeEnabled,
         family_max_certification: tasteData.familyMaxCertification || null,
         family_content_limits: tasteData.familyContentLimits || {},
@@ -228,8 +234,13 @@ export const saveUserTasteProfile = async (userId, tasteData) => {
         onboarding_step_data: tasteData.stepData || {},
         onboarding_completed_at: now,
         rating_count: tasteData.ratingCount ?? 0,
+        taste_summary: tasteData.tasteSummary || null,
         updated_at: now,
     };
+
+    if (tasteData.preferredRuntimeRange) {
+        payload.preferred_runtime_range = tasteData.preferredRuntimeRange;
+    }
 
     const { data, error } = await supabase
         .from('user_taste_profiles')
@@ -300,15 +311,37 @@ export const loadTasteOnboardingPrefill = async (userId, profile) => {
         ? Object.keys(tasteProfile.mood_preferences)
         : Object.keys(profile?.mood_preferences || {});
 
+    const stepData = tasteProfile?.onboarding_step_data || {};
+
     return {
         region: tasteProfile?.preferred_region || profile?.preferred_region || 'IN',
         streamingServices: streamingRows.map((r) => r.service_id),
         genreIds: genreIds.filter(Boolean),
-        moodIds,
+        moodIds: moodIds.filter((id) => !id.startsWith('vibe_')),
+        vibeIds: moodIds.filter((id) => id.startsWith('vibe_')).map((id) => id.replace('vibe_', '')),
+        favoriteMovieIds: stepData.favorite_movies || [],
+        swipeRatings: stepData.swipe_reactions || {},
+        emotionalTastes: stepData.emotional_tastes || [],
+        storytellingPrefs: stepData.storytelling || [],
+        characterPrefs: stepData.characters || [],
+        worldPrefs: stepData.worlds || [],
+        pacingPref: stepData.pacing || null,
+        endingPrefs: stepData.endings || [],
+        complexityPref: stepData.complexity || null,
+        watchingHabit: stepData.watching_habit || null,
+        viewingContext: stepData.viewing_context || [],
+        runtimePref: stepData.runtime || null,
+        watchFrequency: stepData.watch_frequency || null,
+        emotionalGoals: stepData.emotional_goals || [],
+        deepCalibrationEnabled: !!stepData.deep_calibration,
+        directorPrefs: stepData.directors || [],
+        cinematographyPrefs: stepData.cinematography || [],
+        soundtrackImportance: stepData.soundtrack || null,
         familyModeEnabled: tasteProfile?.family_mode_enabled ?? profile?.family_mode_enabled ?? false,
         familyMaxCertification: tasteProfile?.family_max_certification
             ?? profile?.family_max_certification
             ?? null,
+        tasteIdentity: stepData.taste_identity || null,
     };
 };
 
@@ -367,6 +400,10 @@ export const completeTasteOnboarding = async (userId, onboardingData) => {
     if (!tasteResult.success) {
         return tasteResult;
     }
+
+    import('./tasteProfileApi.js').then(({ requestTasteProfileRebuild }) => {
+        requestTasteProfileRebuild().catch(() => {});
+    });
 
     return {
         success: true,
@@ -722,7 +759,7 @@ export const getMoviesLibrary = async (options = {}) => {
 
     let query = supabase
         .from('movies_library')
-        .select('*')
+        .select(MOVIES_LIBRARY_SELECT)
         .order('priority', { ascending: false })
         .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1);
@@ -745,7 +782,7 @@ export const getMoviesLibrary = async (options = {}) => {
 export const getMoviesByCollection = async (collectionTag, limit = 20) => {
     const { data, error } = await supabase
         .from('movies_library')
-        .select('*')
+        .select(MOVIES_LIBRARY_SELECT)
         .eq('is_active', true)
         .contains('collection_tags', [collectionTag])
         .order('priority', { ascending: false })
@@ -759,7 +796,7 @@ export const getMoviesByCollection = async (collectionTag, limit = 20) => {
 export const getMoviesByDisplaySection = async (section, limit = 20) => {
     const { data, error } = await supabase
         .from('movies_library')
-        .select('*')
+        .select(MOVIES_LIBRARY_SELECT)
         .eq('is_active', true)
         .contains('display_sections', [section])
         .order('priority', { ascending: false })
@@ -773,13 +810,95 @@ export const getMoviesByDisplaySection = async (section, limit = 20) => {
 export const getMovieFromLibrary = async (tmdbId) => {
     const { data, error } = await supabase
         .from('movies_library')
-        .select('*')
+        .select(MOVIES_LIBRARY_SELECT)
         .eq('tmdb_id', tmdbId.toString())
         .single();
 
     if (error) return null;
     return data;
 };
+
+function sanitizeLibraryRecord(record) {
+    const clean = { ...record };
+    if (clean.tmdb_id != null) clean.tmdb_id = String(clean.tmdb_id);
+    if (clean.release_date === '') delete clean.release_date;
+    if (clean.first_air_date === '') delete clean.first_air_date;
+    if (clean.last_air_date === '') delete clean.last_air_date;
+    Object.keys(clean).forEach((key) => {
+        if (clean[key] === undefined) delete clean[key];
+    });
+    return clean;
+}
+
+const LIBRARY_UPSERT_CHUNK_SIZE = 40;
+
+async function upsertLibraryChunk(records) {
+    const { data, error } = await upsertMoviesLibrary(
+        supabase,
+        records,
+        LIBRARY_UPSERT_SELECT,
+    );
+
+    if (error) {
+        return { success: false, error, data: [] };
+    }
+
+    return { success: true, data: data || [], error: null };
+}
+
+/**
+ * Upsert one or many library rows. Never deletes other titles — each row is keyed by tmdb_id.
+ */
+async function persistLibraryRecords(records) {
+    const rawList = (Array.isArray(records) ? records : [records]).map(sanitizeLibraryRecord);
+    const normalized = dedupeLibraryRecords(rawList);
+    const duplicatesSkipped = rawList.length - normalized.length;
+
+    if (!normalized.length) {
+        return { success: false, error: new Error('No records to save') };
+    }
+
+    let apiResult = null;
+    try {
+        apiResult = await upsertMoviesViaAdminApi(normalized);
+    } catch (error) {
+        console.warn('Admin library API save failed:', error.message);
+        if (error.message?.includes('Admin sign-in')) {
+            return { success: false, error };
+        }
+    }
+
+    if (apiResult?.success) {
+        return {
+            ...apiResult,
+            savedCount: apiResult.savedCount ?? apiResult.data?.length ?? normalized.length,
+            duplicatesSkipped,
+        };
+    }
+
+    const savedRows = [];
+    for (let i = 0; i < normalized.length; i += LIBRARY_UPSERT_CHUNK_SIZE) {
+        const chunk = normalized.slice(i, i + LIBRARY_UPSERT_CHUNK_SIZE);
+        const result = await upsertLibraryChunk(chunk);
+        if (!result.success) {
+            console.error('Error saving to movies_library:', result.error);
+            return {
+                success: false,
+                error: result.error,
+                savedCount: savedRows.length,
+                partial: savedRows.length > 0,
+            };
+        }
+        savedRows.push(...result.data);
+    }
+
+    return {
+        success: true,
+        data: savedRows,
+        savedCount: savedRows.length,
+        duplicatesSkipped,
+    };
+}
 
 // Save movie to library (from TMDB data)
 export const saveMovieToLibrary = async (movieData, mediaType = 'movie', additionalData = {}) => {
@@ -811,16 +930,7 @@ export const saveMovieToLibrary = async (movieData, mediaType = 'movie', additio
         ...additionalData
     };
 
-    const { data, error } = await supabase
-        .from('movies_library')
-        .upsert(movieRecord, { onConflict: 'tmdb_id' })
-        .select();
-
-    if (error) {
-        console.error('Error saving movie to library:', error);
-        return { success: false, error };
-    }
-    return { success: true, data };
+    return persistLibraryRecords(movieRecord);
 };
 
 // Bulk save movies to library
@@ -843,16 +953,7 @@ export const bulkSaveMoviesToLibrary = async (moviesArray, mediaType = 'movie', 
         ...additionalData
     }));
 
-    const { data, error } = await supabase
-        .from('movies_library')
-        .upsert(movieRecords, { onConflict: 'tmdb_id' })
-        .select();
-
-    if (error) {
-        console.error('Error bulk saving movies:', error);
-        return { success: false, error, savedCount: 0 };
-    }
-    return { success: true, data, savedCount: data?.length || 0 };
+    return persistLibraryRecords(movieRecords);
 };
 
 // Update movie in library
@@ -936,10 +1037,14 @@ export const updateMovieEditorReview = async (tmdbId, review, rating = null) => 
 
 // Search movies in library
 export const searchMoviesLibrary = async (searchTerm, activeOnly = false) => {
+    const { buildLibrarySearchOrClause } = await import('./searchUtils.js');
+    const orClause = buildLibrarySearchOrClause(searchTerm);
+    if (!orClause) return [];
+
     let query = supabase
         .from('movies_library')
-        .select('*')
-        .ilike('title', `%${searchTerm}%`)
+        .select(MOVIES_LIBRARY_SELECT)
+        .or(orClause)
         .order('popularity', { ascending: false })
         .limit(50);
 
@@ -1058,8 +1163,7 @@ export const updateCollection = async (slug, updates) => {
 // =============================================
 
 /** Slim projection for list/card hydration — excludes heavy JSONB blobs */
-const LIBRARY_CARD_SELECT =
-    'tmdb_id, title, poster_path, backdrop_path, media_type, release_date, first_air_date, vote_average, overview, genres, runtime, number_of_seasons, number_of_episodes';
+const LIBRARY_CARD_SELECT = SHARED_LIBRARY_CARD_SELECT;
 
 const stripImagesBase64 = (images) => {
     if (!images || typeof images !== 'object' || Array.isArray(images)) return images;
@@ -1449,7 +1553,7 @@ export const getMoviesFromLibraryByIds = async (tmdbIds) => {
 
     const { data, error } = await supabase
         .from('movies_library')
-        .select('*')
+        .select(MOVIES_LIBRARY_SELECT)
         .in('tmdb_id', stringIds);
 
     if (error) {
@@ -1720,13 +1824,26 @@ export const getCollectionBySlug = async (slug) => {
 
 // Update user collection (by ID)
 export const updateUserCollection = async (collectionId, updates) => {
-    const { data, error } = await supabase
+    const { data: existing } = await supabase
         .from('user_collections')
-        .update({
+        .select('is_system, collection_kind')
+        .eq('id', collectionId)
+        .maybeSingle();
+
+    const patch = existing?.is_system
+        ? {
+            description: updates.description,
+            is_public: updates.is_public,
+        }
+        : {
             name: updates.name,
             description: updates.description,
-            is_public: updates.is_public
-        })
+            is_public: updates.is_public,
+        };
+
+    const { data, error } = await supabase
+        .from('user_collections')
+        .update(patch)
         .eq('id', collectionId)
         .select()
         .single();
@@ -1742,24 +1859,27 @@ export const updateUserCollection = async (collectionId, updates) => {
 export const addToCollection = async (collectionId, movieId, movieTitle, posterPath, mediaType = 'movie') => {
     console.log("Adding to collection:", { collectionId, movieId, movieTitle, posterPath, mediaType });
 
+    const movieKey = String(movieId);
     const { data, error } = await supabase
         .from('collection_movies')
-        .insert({
-            collection_id: collectionId,
-            movie_id: String(movieId),
-            movie_title: movieTitle,
-            poster_path: posterPath,
-            media_type: mediaType
-        })
+        .upsert(
+            {
+                collection_id: collectionId,
+                movie_id: movieKey,
+                movie_title: movieTitle,
+                poster_path: posterPath,
+                media_type: mediaType,
+            },
+            { onConflict: 'collection_id,movie_id' },
+        )
         .select();
 
     if (error) {
-        console.error("Error adding to collection:", error);
-    } else {
-        console.log("Added to collection successfully:", data);
+        console.error('Error adding to collection:', error);
+        return { success: false, error, data };
     }
 
-    return { success: !error, error, data };
+    return { success: true, error: null, data };
 };
 
 // Remove movie from collection
@@ -1832,19 +1952,27 @@ export const getCollectionByName = async (userId, collectionName) => {
 
 // Add multiple movies to collection
 export const addMoviesToCollection = async (collectionId, movies) => {
-    const records = movies.map(m => ({
-        collection_id: collectionId,
-        movie_id: String(m.id),
-        movie_title: m.title || m.name,
-        poster_path: m.poster_path,
-        media_type: m.media_type || 'movie'
-    }));
+    const byMovieId = new Map();
+    for (const m of movies || []) {
+        const movieId = String(m.id ?? m.tmdb_id ?? m.movie_id);
+        if (!movieId) continue;
+        byMovieId.set(movieId, {
+            collection_id: collectionId,
+            movie_id: movieId,
+            movie_title: m.title || m.name || m.movie_title,
+            poster_path: m.poster_path,
+            media_type: m.media_type || 'movie',
+        });
+    }
 
-    console.log("Adding movies to collection:", records);
+    const records = Array.from(byMovieId.values());
+    if (!records.length) {
+        return { success: false, error: new Error('No movies to add') };
+    }
 
     const { data, error } = await supabase
         .from('collection_movies')
-        .insert(records)
+        .upsert(records, { onConflict: 'collection_id,movie_id' })
         .select();
 
     if (error) {
@@ -2031,18 +2159,11 @@ export const saveFullMovieToLibrary = async (movieData, additionalData = {}) => 
         ...additionalData
     };
 
-    // Upsert into the single movies_library table
-    const { data, error } = await supabase
-        .from('movies_library')
-        .upsert(movieRecord, { onConflict: 'tmdb_id' })
-        .select();
+    const result = await persistLibraryRecords(movieRecord);
+    if (!result.success) return result;
 
-    if (error) {
-        console.error('Error saving full movie to library:', error);
-        return { success: false, error };
-    }
-
-    return { success: true, data: data[0] };
+    const row = Array.isArray(result.data) ? result.data[0] : result.data;
+    return { success: true, data: row };
 };
 
 // Get Single Advanced Movie (just wraps standard get)
@@ -2050,7 +2171,7 @@ export const getAdvancedMovieFromLibrary = async (movieId) => {
     // Query the single table
     const { data, error } = await supabase
         .from('movies_library')
-        .select('*')
+        .select(MOVIES_LIBRARY_SELECT)
         .eq('tmdb_id', movieId.toString())
         .single();
 
@@ -2066,14 +2187,14 @@ export const getAdvancedMovieFromLibrary = async (movieId) => {
 export const getAdvancedLibraryStats = async () => {
     const { count, error } = await supabase
         .from('movies_library')
-        .select('*', { count: 'exact', head: true });
+        .select('id', { count: 'exact', head: true });
 
     if (error) return { totalMovies: 0 };
     return { totalMovies: count };
 };
 
 export const getAdvancedMoviesLibrary = async (options = {}) => {
-    let query = supabase.from('movies_library').select('*');
+    let query = supabase.from('movies_library').select(MOVIES_LIBRARY_SELECT);
 
     if (options.limit) query = query.limit(options.limit);
     if (options.page && options.limit) {
@@ -2097,10 +2218,14 @@ export const getAdvancedMoviesLibrary = async (options = {}) => {
 };
 
 export const searchAdvancedMoviesLibrary = async (searchTerm, limit = 20) => {
+    const { buildLibrarySearchOrClause } = await import('./searchUtils.js');
+    const orClause = buildLibrarySearchOrClause(searchTerm);
+    if (!orClause) return [];
+
     const { data, error } = await supabase
         .from('movies_library')
-        .select('*')
-        .ilike('title', `%${searchTerm}%`)
+        .select(MOVIES_LIBRARY_SELECT)
+        .or(orClause)
         .limit(limit);
 
     if (error) {
@@ -2126,26 +2251,27 @@ export const checkMovieInAdvancedLibrary = async (movieId) => {
     return data;
 };
 
-// Bulk check which movies are in the advanced library
+// Bulk check which movies are in the library (by TMDB id)
 export const checkMoviesInAdvancedLibrary = async (movieIds) => {
+    const ids = movieIds.map((id) => String(id));
     const { data, error } = await supabase
-        .from('movies')
-        .select('id')
-        .in('id', movieIds);
+        .from('movies_library')
+        .select('tmdb_id')
+        .in('tmdb_id', ids);
 
     if (error) {
-        console.error('Error bulk checking movies:', error);
+        console.error('Error bulk checking movies_library:', error);
         return new Set();
     }
 
-    return new Set(data?.map(m => m.id) || []);
+    return new Set(data?.map((m) => Number(m.tmdb_id)) || []);
 };
 
 // Get global user stats (total users)
 export const getGlobalUserStats = async () => {
     const { count, error } = await supabase
         .from('user_profiles')
-        .select('*', { count: 'exact', head: true });
+        .select('id', { count: 'exact', head: true });
 
     if (error) {
         console.error('Error fetching user count:', error);

@@ -11,7 +11,9 @@ import TOSRating from "../components/TOSRating";
 import { FaStar, FaClock, FaCalendar, FaPlay } from "react-icons/fa";
 import { IoArrowBack } from "react-icons/io5";
 import UserRatingSystem, { RatingModal } from "../components/UserRatingSystem";
-import { getMovieRatings, getUserRatingForMovie, toggleWatchedMovie } from "../lib/supabase";
+import { getMovieRatings, getUserRatingForMovie } from "../lib/supabase";
+import { computeOverallFromCategories } from "../lib/ratingUtils";
+import QuickLogModal from "../components/social/QuickLogModal";
 import { getMovieDetailFromEdge } from "../lib/contentEdgeApi";
 import { ShareButton } from "../components/ShareMovie";
 import ParentGuide from "../components/ParentGuide";
@@ -143,6 +145,8 @@ const Details = () => {
   const [playVideo, setPlayVideo] = useState(false);
   const [playVideoId, setPlayVideoId] = useState("");
   const [ratingModalOpen, setRatingModalOpen] = useState(false);
+  const [logModalOpen, setLogModalOpen] = useState(false);
+  const [logPrefillRating, setLogPrefillRating] = useState(null);
   const [ratingsKey, setRatingsKey] = useState(0);
 
   const { analysis, loading: analysisLoading } = useReviewAnalysis(movieId);
@@ -224,10 +228,10 @@ const Details = () => {
     setRatingModalOpen(true);
   };
 
-  // Handle rating submission success
-  const handleRatingSubmitSuccess = async (submittedRatings) => {
-    // 1. Keep UI in sync immediately, then refetch aggregates
-    setRatingsKey(prev => prev + 1);
+  // Handle rating submission success — rating is saved in RatingModal; then open diary log
+  const handleRatingSubmitSuccess = (submittedRatings) => {
+    setRatingModalOpen(false);
+    setRatingsKey((prev) => prev + 1);
 
     if (submittedRatings && user?.id && movieId) {
       setUserRating((prev) => ({
@@ -240,20 +244,12 @@ const Details = () => {
       }));
     }
 
-    // 2. Automatically mark as watched if authenticated
-    if (isAuthenticated && user?.id && data) {
-      try {
-        console.log("Automatically marking as watched on rating...");
-        await toggleWatchedMovie(
-          user.id,
-          movieId,
-          data.title || data.name,
-          data.poster_path,
-          mediaType
-        );
-      } catch (e) {
-        console.error("Error auto-marking watched:", e);
-      }
+    if (user?.id && movieId) {
+      const score = submittedRatings
+        ? computeOverallFromCategories(submittedRatings)
+        : null;
+      setLogPrefillRating(score);
+      setLogModalOpen(true);
     }
   };
 
@@ -624,6 +620,25 @@ const Details = () => {
         onSubmitSuccess={handleRatingSubmitSuccess}
         existingRating={userRating}
         userId={user?.id}
+      />
+
+      <QuickLogModal
+        isOpen={logModalOpen}
+        onClose={() => {
+          setLogModalOpen(false);
+          setLogPrefillRating(null);
+        }}
+        userId={user?.id}
+        movie={{
+          id: movieId,
+          tmdb_id: movieId,
+          title: data?.title || data?.name,
+          poster_path: data?.poster_path,
+          media_type: mediaType,
+        }}
+        prefillRating={logPrefillRating}
+        subtitle="Rating saved — add how you watched (optional)"
+        onLogged={() => setLogPrefillRating(null)}
       />
     </div>
   );

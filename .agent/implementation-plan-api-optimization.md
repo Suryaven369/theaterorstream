@@ -1,6 +1,6 @@
 # API & Admin Panel Optimization - Implementation Plan
 
-**Last updated:** May 2026 · synced with `main` @ `4488dab`
+**Last updated:** May 2026 · synced with `main` @ `5a8ffca`
 
 ---
 
@@ -17,11 +17,11 @@
 | 7 | `admin-control-tower` | ✅ | Control tower UI, app_settings, manual sync API |
 | 8 | `unify-content-api` | ✅ | Explore + trending on Edge; all public reads unified |
 | 9 | `onboarding-redesign` | ✅ | 5-step wizard + taste DB tables |
-| 10 | `taste-profile-schema` | ⬜ | Rebuild worker + embedding backfill — **next** |
-| 11 | `recommendation-engine` | ⬜ | Phase 4 |
-| 12 | `ux-redesign` | ⬜ | Phase 5 |
-| 13 | `phase3-social-schema` | ⬜ | Phase 6 |
-| 14 | `ai-agents-stack` | ⬜ | Phase 7 |
+| 10 | `taste-profile-schema` | ✅ | Rebuild worker, crons, movie_logs + reco_cache migration |
+| 11 | `recommendation-engine` | ✅ | Hybrid reco API + 5 endpoints + cache |
+| 12 | `ux-redesign` | ✅ | Personalized Home (when deployed) |
+| 13 | `phase3-social-schema` | ✅ | Diary, activity feed, badges |
+| 14 | `ai-agents-stack` | ⬜ | AI agents — **next** |
 
 Full table: [tos-production-architecture-plan.md](./tos-production-architecture-plan.md#master-task-list)
 
@@ -117,7 +117,9 @@ Full table: [tos-production-architecture-plan.md](./tos-production-architecture-
 - [x] **#7** `admin-control-tower` — sync history, events queue, DB settings
 - [x] **#8** `unify-content-api` — Explore/trending Edge routes; public pages on `contentEdgeApi.js`
 - [x] **#9** `onboarding-redesign` — 5-step wizard; saves to user_taste_profiles + streaming + ratings
-- [ ] **#10–14** — taste rebuild worker, reco engine, UX redesign, social, AI
+- [x] **#10** `taste-profile-schema` — profile rebuild API, embedding backfill crons, `movie_logs` + `recommendation_cache`
+- [x] **#11** `recommendation-engine` — for-you, tonight, family, similar, trending-personalized
+- [ ] **#12–14** — UX redesign, social, AI
 
 ### Phase 1 follow-up (completed ✅)
 - [x] Upcoming page → DB-first (`getUpcomingFromDb`)

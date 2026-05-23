@@ -31,16 +31,16 @@ todos:
     status: completed
   - id: taste-profile-schema
     content: Profile rebuild worker + movie_logs/reco_cache tables; backfill embeddings (core taste tables shipped in #9)
-    status: pending
+    status: completed
   - id: recommendation-engine
     content: Build hybrid reco engine (content-based + collaborative + OTT filter + family-safe); GET /api/recommendations/for-you
-    status: pending
+    status: completed
   - id: ux-redesign
     content: Redesign Home as personalized feed; add Watch Tonight, Family Picks, OTT availability pages; retire CMS-only homepage
     status: pending
   - id: phase3-social-schema
     content: movie_logs diary, badges, activity_feed, following feed, public collections, share cards
-    status: pending
+    status: completed
   - id: ai-agents-stack
     content: "Deploy AI agents: Taste Summarizer, Parent Guide Enricher, Editorial, Moderation — server-side only via Vercel AI Gateway"
     status: pending
@@ -49,9 +49,9 @@ isProject: false
 
 # TheaterOrStream — Production Architecture & Product Redesign Plan
 
-**Branch:** `main` · **HEAD:** `4488dab` · **Progress:** 9 / 14 tasks complete
+**Branch:** `main` · **HEAD:** `5a8ffca` · **Progress:** 13 / 14 tasks complete
 
-**Next recommended:** `taste-profile-schema` (Task #10 — rebuild worker + embeddings)
+**Next recommended:** `ai-agents-stack` (Task #14)
 
 ---
 
@@ -68,15 +68,15 @@ isProject: false
 | 7 | `admin-control-tower` | Admin dashboard: sync history, content_events, settings in DB | 2 | ✅ **Done** |
 | 8 | `unify-content-api` | Remove TMDB fallbacks; full Edge adoption | 1 | ✅ **Done** |
 | 9 | `onboarding-redesign` | 5-step onboarding: OTT, genres, moods, seed ratings, family mode | 3 | ✅ **Done** |
-| 10 | `taste-profile-schema` | Profile rebuild worker + embedding backfill (core tables shipped in #9) | 3 | ⬜ Pending |
-| 11 | `recommendation-engine` | Hybrid reco + `/api/recommendations/for-you` | 4 | ⬜ Pending |
-| 12 | `ux-redesign` | Personalized home, Watch Tonight, Family hub, Decision Mode | 5 | ⬜ Pending |
-| 13 | `phase3-social-schema` | Diary logs, badges, activity feed, following feed | 6 | ⬜ Pending |
+| 10 | `taste-profile-schema` | Profile rebuild worker + embedding backfill (core tables shipped in #9) | 3 | ✅ **Done** |
+| 11 | `recommendation-engine` | Hybrid reco + `/api/recommendations/for-you` | 4 | ✅ **Done** |
+| 12 | `ux-redesign` | Personalized home, Watch Tonight, Family hub, Decision Mode | 5 | ✅ **Done** |
+| 13 | `phase3-social-schema` | Diary logs, badges, activity feed, following feed | 6 | ✅ **Done** |
 | 14 | `ai-agents-stack` | Taste Summarizer, Parent Guide, Editorial, Moderation agents | 7 | ⬜ Pending |
 
 **Legend:** ✅ Done · 🔄 Partial · ⬜ Pending
 
-**Next recommended:** `taste-profile-schema` (Task #10)
+**Next recommended:** `ai-agents-stack` (Task #14)
 
 **Task sync:** After every completed task or `git pull`, update this file + [implementation-work-log.md](./implementation-work-log.md) + [Cursor plan](~/.cursor/plans/tos_production_architecture_e5360011.plan.md). See [task-list-sync rule](../.cursor/rules/task-list-sync.mdc).
 

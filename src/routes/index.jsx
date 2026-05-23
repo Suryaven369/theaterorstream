@@ -21,6 +21,8 @@ import CollectionDetails from "../views/CollectionDetails";
 import CollectionsPage from "../views/CollectionsPage";
 import WatchedMoviesPage from "../views/WatchedMoviesPage";
 import ActivityFeedPage from "../views/ActivityFeedPage";
+import DiaryPage from "../views/DiaryPage";
+import FeedPage from "../views/FeedPage";
 
 import AdminSectionsPage from "../views/admin/AdminSectionsPage";
 import AdminCollectionsPage from "../views/admin/AdminCollectionsPage";
@@ -95,6 +97,18 @@ const router = createBrowserRouter([
           {
             path: ":username/activity",
             element: <ActivityFeedPage />,
+          },
+          {
+            path: ":username/diary",
+            element: <DiaryPage />,
+          },
+          {
+            path: "feed",
+            element: <FeedPage />,
+          },
+          {
+            path: "diary",
+            element: <DiaryPage />,
           },
           {
             path: "search",

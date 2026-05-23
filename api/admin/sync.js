@@ -7,7 +7,7 @@ export const config = {
 };
 
 async function readBody(req) {
-    if (req.body && typeof req.body === 'object') {
+    if (req.body && typeof req.body === 'object' && !(req.body instanceof Buffer)) {
         return req.body;
     }
     return new Promise((resolve, reject) => {

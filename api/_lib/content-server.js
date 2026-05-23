@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { buildLibrarySearchOrClause } from './search-utils.js';
 
 export const LIBRARY_CARD_SELECT =
     'tmdb_id, title, poster_path, backdrop_path, media_type, release_date, first_air_date, vote_average, overview, genres, runtime, number_of_seasons, number_of_episodes';
@@ -279,7 +280,13 @@ export async function searchContent(query, options = {}) {
     const supabase = getSupabase();
     const { mediaType = null, limit = 20, offset = 0 } = options;
 
-    if (!query || query.trim().length < 2) {
+    const term = (query || '').trim();
+    if (term.length < 2) {
+        return { data: [], total: 0 };
+    }
+
+    const orClause = buildLibrarySearchOrClause(term);
+    if (!orClause) {
         return { data: [], total: 0 };
     }
 
@@ -287,7 +294,7 @@ export async function searchContent(query, options = {}) {
         .from('movies_library')
         .select(LIBRARY_CARD_SELECT, { count: 'exact' })
         .eq('is_active', true)
-        .ilike('title', `%${query.trim()}%`)
+        .or(orClause)
         .order('popularity', { ascending: false, nullsFirst: false })
         .range(offset, offset + limit - 1);
 

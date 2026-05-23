@@ -1,7 +1,8 @@
 /** Onboarding constants — OTT platforms, moods, regions, certifications */
 
 export const ONBOARDING_DRAFT_KEY = 'tos-onboarding-draft';
-export const ONBOARDING_TOTAL_STEPS = 5;
+/** @deprecated Use getVisibleSteps() from onboardingSteps.js */
+export const ONBOARDING_TOTAL_STEPS = 31;
 
 export const REGIONS = [
     { id: 'IN', label: 'India', flag: '🇮🇳' },
@@ -87,6 +88,7 @@ export const AVATARS = [
 ];
 
 export const SEED_MOVIE_COUNT = 8;
+export const SWIPE_RATING_TARGET = 10;
 export const MAX_GENRE_PICKS = 5;
 export const MAX_MOOD_PICKS = 3;
 

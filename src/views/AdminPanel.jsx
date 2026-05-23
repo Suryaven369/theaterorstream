@@ -735,7 +735,19 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
     // Quick save (old behavior for movies_library table)
     const handleSave = async (movie, mediaType) => {
         const result = await saveMovieToLibrary(movie, mediaType);
-        if (result.success) await loadData();
+        if (result.success) {
+            const statsAfter = await getLibraryStats();
+            setBulkResult({
+                success: true,
+                savedCount: 1,
+                message: `✓ Saved ${movie.title || movie.name}. Library total: ${statsAfter?.total ?? '?'}.`,
+            });
+            await loadData();
+        } else {
+            const msg = result.error?.message || 'Could not save to library';
+            setBulkResult({ success: false, message: `✗ ${msg}` });
+            console.error('Quick save failed:', result.error);
+        }
     };
 
     // Full save with all TMDB data to new normalized tables
@@ -757,25 +769,27 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
             });
 
             const fullMovieData = response.data;
-            console.log('Full movie data received:', Object.keys(fullMovieData));
 
-            // Save to the new normalized database
-            const result = await saveFullMovieToLibrary(fullMovieData);
+            const result = await saveFullMovieToLibrary(fullMovieData, { media_type: mediaType });
 
             if (result.success) {
-                // Update the advanced saved IDs
                 setAdvancedSavedIds(prev => new Set([...prev, movieId]));
-                console.log(`✓ Successfully saved: ${fullMovieData.title}`);
+                const statsAfter = await getLibraryStats();
+                setBulkResult({
+                    success: true,
+                    savedCount: 1,
+                    message: `✓ Saved ${fullMovieData.title || fullMovieData.name}. Library total: ${statsAfter?.total ?? '?'}.`,
+                });
+                await loadData();
             } else {
-                console.error(`✗ Failed to save: ${fullMovieData.title}`, result.error);
+                const msg = result.error?.message || 'Could not save full movie data';
+                setBulkResult({ success: false, message: `✗ ${msg}` });
+                console.error(`Failed to save: ${fullMovieData.title}`, result.error);
             }
-
-            // Also save to old movies_library for backward compatibility
-            await saveMovieToLibrary(fullMovieData, mediaType);
-            // Note: loadData() removed from here - will be called once at the end of bulk save
 
         } catch (error) {
             console.error('Error fetching/saving full movie data:', error);
+            setBulkResult({ success: false, message: `✗ ${error.message || 'Save failed'}` });
         } finally {
             // Remove from saving set
             setSavingIds(prev => {
@@ -820,13 +834,14 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                         });
 
                         const fullMovieData = response.data;
-                        await saveFullMovieToLibrary(fullMovieData);
-                        await saveMovieToLibrary(fullMovieData, mediaType);
+                        const result = await saveFullMovieToLibrary(fullMovieData, { media_type: mediaType });
 
-                        // Update saved IDs immediately
-                        setAdvancedSavedIds(prev => new Set([...prev, movie.id]));
+                        if (result.success) {
+                            setAdvancedSavedIds(prev => new Set([...prev, movie.id]));
+                            return { success: true, movie };
+                        }
 
-                        return { success: true, movie };
+                        return { success: false, movie, error: result.error };
                     } catch (error) {
                         console.error(`Failed to save ${movie.title || movie.name}:`, error);
                         return { success: false, movie, error };
@@ -852,11 +867,14 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
             }
         }
 
+        const statsAfter = successCount > 0 ? await getLibraryStats() : null;
         setBulkResult({
-            success: true,
+            success: successCount > 0,
             savedCount: successCount,
             failedCount: failCount,
-            message: `✓ Saved ${successCount} movies with full data. ${failCount > 0 ? `${failCount} failed.` : ''}`
+            message: successCount > 0
+                ? `✓ Saved ${successCount} with full data. Library total: ${statsAfter?.total ?? '?'}.${failCount > 0 ? ` ${failCount} failed.` : ''}`
+                : `✗ All saves failed (${failCount}). Check console and SUPABASE_SERVICE_ROLE_KEY in .env.local.`,
         });
 
         await loadData(); // Only load data once at the end
@@ -1096,9 +1114,26 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
         setBulkSaving(true);
         setBulkResult(null);
         const sourceConfig = tmdbSources.find(s => s.id === tmdbSource);
-        const result = await bulkSaveMoviesToLibrary(tmdbMovies, sourceConfig.type);
-        setBulkResult(result);
-        if (result.success) await loadData();
+        const result = await bulkSaveMoviesToLibrary(tmdbMovies, sourceConfig?.type || tmdbMediaType);
+        const statsAfter = result.success ? await getLibraryStats() : null;
+        if (result.success) {
+            const dupNote = result.duplicatesSkipped > 0
+                ? ` (${result.duplicatesSkipped} duplicate IDs skipped)`
+                : '';
+            setBulkResult({
+                success: true,
+                savedCount: result.savedCount,
+                message: `✓ Saved ${result.savedCount} title(s). Library now has ${statsAfter?.total ?? '?'} total.${dupNote}`,
+            });
+            await loadData();
+        } else {
+            const partial = result.partial ? ` (${result.savedCount} saved before error)` : '';
+            setBulkResult({
+                success: false,
+                message: `✗ ${result.error?.message || 'Bulk save failed'}${partial}`,
+            });
+            if (result.partial) await loadData();
+        }
         setBulkSaving(false);
     };
 
@@ -1894,6 +1929,11 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                         </div>
 
                         {/* Results info */}
+                        {bulkResult && (activeTab === 'browse' || activeTab === 'bulk') && (
+                            <div className={`mb-3 p-2 rounded text-xs ${bulkResult.success ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                                {bulkResult.message || (bulkResult.success ? `✓ Saved ${bulkResult.savedCount} items` : '✗ Save failed')}
+                            </div>
+                        )}
                         {tmdbSource === 'search' && tmdbSearch && (
                             <div className="text-xs text-white/50 mb-2">
                                 Search results for "{tmdbSearch}" ({tmdbSearchType === 'movie' ? 'Movies' : 'TV Shows'}) - {tmdbMovies.length} found
