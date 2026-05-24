@@ -2,7 +2,7 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** May 2026 · HEAD `0517a64` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** May 2026 · HEAD `deb315b` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
 
 ---
 
@@ -53,6 +53,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `deb315b` | May 2026 | Agent docs HEAD sync |
 | `0517a64` | May 2026 | Fix Vercel Hobby maxDuration (60s cap on taste admin + crons) |
 | `14461a7` | May 2026 | Work log HEAD sync |
 | `f1328ae` | May 2026 | Work log HEAD sync |
