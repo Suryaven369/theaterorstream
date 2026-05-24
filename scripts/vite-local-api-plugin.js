@@ -11,7 +11,7 @@ import { loadServerEnv, getServerEnvStatus, formatServerEnvHelp } from './load-s
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const API_ROOT = path.resolve(__dirname, '../api');
 
-const NODE_API_PREFIXES = ['/api/admin/', '/api/cron/', '/api/taste/', '/api/recommendations/', '/api/social/'];
+const NODE_API_PREFIXES = ['/api/admin/', '/api/cron/', '/api/taste/', '/api/recommendations/', '/api/social/', '/api/content/movie/'];
 
 function isNodeHandler(urlPath) {
     return NODE_API_PREFIXES.some((prefix) => urlPath.startsWith(prefix));

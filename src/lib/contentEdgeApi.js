@@ -88,8 +88,9 @@ export async function getMovieDetailFromEdge(tmdbId) {
     return fetchFromEdge(
         `${API_BASE}/movie/${encodeURIComponent(tmdbId)}`,
         async () => {
-            const { getAdvancedMovieFromLibrary } = await import('./supabase.js');
-            return getAdvancedMovieFromLibrary(tmdbId);
+            const { getContentByTmdbId } = await import('./contentApi.js');
+            const data = await getContentByTmdbId(tmdbId);
+            return data ? { success: true, data } : { success: false, error: 'Not found' };
         }
     );
 }

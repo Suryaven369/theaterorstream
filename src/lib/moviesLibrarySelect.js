@@ -62,10 +62,13 @@ export const MOVIES_LIBRARY_SELECT = [
     'release_dates_data',
     'belongs_to_collection',
     'adult',
-    'custom_tags',
+].join(',');
+
+/** Optional columns — only after taste onboarding migration (20260522000000) */
+export const MOVIES_LIBRARY_OPTIONAL_COLUMNS = [
     'mood_tags',
     'family_score',
-].join(',');
+];
 
 export const LIBRARY_CARD_SELECT =
     'tmdb_id, title, poster_path, backdrop_path, media_type, release_date, first_air_date, vote_average, overview, genres, runtime, number_of_seasons, number_of_episodes';
@@ -75,4 +78,4 @@ export const LIBRARY_UPSERT_SELECT =
     'tmdb_id, title, media_type, poster_path, is_active, vote_average, release_date, first_air_date';
 
 export const MOVIE_DETAIL_SELECT =
-    'tmdb_id, title, original_title, overview, tagline, poster_path, backdrop_path, media_type, release_date, first_air_date, status, runtime, vote_average, vote_count, popularity, genres, certification, custom_parent_guide, custom_vibes, streaming_platforms, editor_review, editor_rating, credits, videos, number_of_seasons, number_of_episodes, networks, imdb_id, homepage, production_companies, spoken_languages, belongs_to_collection, adult, budget, revenue, mood_tags, family_score';
+    'tmdb_id, title, original_title, overview, tagline, poster_path, backdrop_path, media_type, release_date, first_air_date, status, runtime, vote_average, vote_count, popularity, genres, certification, custom_parent_guide, custom_vibes, streaming_platforms, editor_review, editor_rating, credits, videos, number_of_seasons, number_of_episodes, networks, imdb_id, homepage, production_companies, spoken_languages, belongs_to_collection, adult, budget, revenue';

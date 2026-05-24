@@ -8,7 +8,7 @@
  */
 
 import { supabase } from './supabase';
-import { MOVIES_LIBRARY_SELECT } from './moviesLibrarySelect.js';
+import { MOVIES_LIBRARY_SELECT, MOVIE_DETAIL_SELECT } from './moviesLibrarySelect.js';
 
 // =============================================
 // CACHING LAYER
@@ -194,7 +194,7 @@ export const getContentByTmdbId = async (tmdbId) => {
 
     const { data, error } = await supabase
         .from('movies_library')
-        .select(MOVIES_LIBRARY_SELECT)
+        .select(MOVIE_DETAIL_SELECT)
         .eq('tmdb_id', tmdbId.toString())
         .eq('is_active', true)
         .single();
