@@ -25,13 +25,23 @@ function resolveHandlerPath(urlPath) {
     if (fs.existsSync(direct)) return direct;
 
     const parts = relative.split('/');
-    if (parts.length >= 2) {
+    if (parts.length >= 1) {
         const dir = path.join(API_ROOT, ...parts.slice(0, -1));
         if (fs.existsSync(dir)) {
             const dynamicFile = fs.readdirSync(dir).find(
                 (name) => name.startsWith('[') && name.endsWith('].js'),
             );
             if (dynamicFile) return path.join(dir, dynamicFile);
+        }
+    }
+
+    if (parts.length >= 2) {
+        const parentDir = path.join(API_ROOT, parts[0]);
+        if (fs.existsSync(parentDir)) {
+            const catchAll = fs.readdirSync(parentDir).find(
+                (name) => name.startsWith('[...') && name.endsWith('].js'),
+            );
+            if (catchAll) return path.join(parentDir, catchAll);
         }
     }
 

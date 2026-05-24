@@ -2,7 +2,7 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** May 2026 · HEAD `5894c1d` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** May 2026 · HEAD `f8a951a` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
 
 ---
 
@@ -53,6 +53,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `f8a951a` | May 2026 | Consolidate 25 API routes → 8 functions (Vercel Hobby 12-fn limit) |
 | `5894c1d` | May 2026 | Agent docs HEAD sync |
 | `0517a64` | May 2026 | Fix Vercel Hobby maxDuration (60s cap on taste admin + crons) |
 | `14461a7` | May 2026 | Work log HEAD sync |
@@ -88,6 +89,23 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 | `027f1d9` | May 2026 | Vercel Edge `/api/content/*` routes + `contentEdgeApi.js` |
 | `99c54f3` | May 2026 | Added TOS production architecture plan (`.agent/`) |
 | `1e2f319` | May 2026 | Upcoming DB-first, slim hydration, remove base64 admin sync |
+
+---
+
+## Session: May 2026 — Vercel Hobby 12-function limit ✅
+
+**Problem:** Deploy failed — Hobby allows max 12 Serverless Functions; project had ~25 (`api/content/*`, `api/cron/*`, `api/recommendations/*`, etc.).
+
+**Fix:** Consolidated into catch-all routers (URLs unchanged):
+- `api/content/[...route].js` — trending, explore, search, homepage, tv-sections, upcoming, movie/:id
+- `api/admin/[action].js` — library, sync, taste
+- `api/cron/[job].js` — all 5 cron jobs
+- `api/recommendations/[...route].js` — for-you, tonight, family, trending-personalized, similar/:id
+- `api/social/[action].js` — check-badges, decision-pick
+
+**Total functions:** 8 (content, admin, cron, recommendations, social, taste/rebuild, tmdb, sitemap)
+
+**Next recommended task:** `ai-agents-stack` (Task #14)
 
 ---
 
