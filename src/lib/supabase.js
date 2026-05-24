@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { MOVIES_LIBRARY_SELECT, MOVIE_DETAIL_SELECT } from './moviesLibrarySelect.js';
+import { MOVIES_LIBRARY_SELECT, MOVIE_DETAIL_SELECT, LIBRARY_CARD_SELECT } from './moviesLibrarySelect.js';
 import { upsertMoviesViaAdminApi } from './adminLibraryApi.js';
 import { dedupeLibraryRecords, upsertMoviesLibrary } from './libraryDedupe.js';
 
@@ -1161,9 +1161,6 @@ export const updateCollection = async (slug, updates) => {
 // =============================================
 // HOMEPAGE SECTIONS CMS
 // =============================================
-
-/** Slim projection for list/card hydration — excludes heavy JSONB blobs */
-const LIBRARY_CARD_SELECT = SHARED_LIBRARY_CARD_SELECT;
 
 const stripImagesBase64 = (images) => {
     if (!images || typeof images !== 'object' || Array.isArray(images)) return images;
