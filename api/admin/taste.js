@@ -8,7 +8,7 @@ import { isEmbeddingConfigured } from '../_lib/embedding-server.js';
 
 export const config = {
     runtime: 'nodejs',
-    maxDuration: 300,
+    maxDuration: 60,
 };
 
 async function readBody(req) {
@@ -59,7 +59,7 @@ export default async function handler(req, res) {
 
         if (job === 'rebuild-stale') {
             const result = await rebuildStaleTasteProfiles({
-                limit: body.limit || 25,
+                limit: body.limit || 10,
                 includeEmbedding: !!body.includeEmbedding && isEmbeddingConfigured(),
             });
             return res.status(200).json({ ok: true, ...result });
@@ -71,7 +71,7 @@ export default async function handler(req, res) {
                     error: 'Set VOYAGE_API_KEY or OPENAI_API_KEY',
                 });
             }
-            const result = await backfillMovieEmbeddings({ limit: body.limit || 25 });
+            const result = await backfillMovieEmbeddings({ limit: body.limit || 10 });
             return res.status(200).json({ ok: true, ...result });
         }
 

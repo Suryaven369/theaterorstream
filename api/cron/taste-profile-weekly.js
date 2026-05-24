@@ -7,7 +7,7 @@ import { isEmbeddingConfigured } from '../_lib/embedding-server.js';
 
 export const config = {
     runtime: 'nodejs',
-    maxDuration: 300,
+    maxDuration: 60,
 };
 
 export default async function handler(req, res) {
@@ -17,8 +17,8 @@ export default async function handler(req, res) {
     }
 
     try {
-        const profileLimit = Number(req.query?.profileLimit) || 30;
-        const embedLimit = Number(req.query?.embedLimit) || 15;
+        const profileLimit = Number(req.query?.profileLimit) || 10;
+        const embedLimit = Number(req.query?.embedLimit) || 5;
 
         const rebuildResult = await rebuildStaleTasteProfiles({
             limit: profileLimit,

@@ -2,7 +2,7 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** May 2026 · HEAD `14461a7` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** May 2026 · HEAD `f20fb7d` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
 
 ---
 
@@ -53,6 +53,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `f20fb7d` | May 2026 | Fix Vercel Hobby maxDuration (60s cap on taste admin + crons) |
 | `14461a7` | May 2026 | Work log HEAD sync |
 | `f1328ae` | May 2026 | Work log HEAD sync |
 | `46cf628` | May 2026 | Tasks #10–13 APIs; admin library upsert; search/diary/theater UX; dedupe migrations |
@@ -86,6 +87,16 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 | `027f1d9` | May 2026 | Vercel Edge `/api/content/*` routes + `contentEdgeApi.js` |
 | `99c54f3` | May 2026 | Added TOS production architecture plan (`.agent/`) |
 | `1e2f319` | May 2026 | Upcoming DB-first, slim hydration, remove base64 admin sync |
+
+---
+
+## Session: May 2026 — Vercel Hobby maxDuration fix ✅
+
+**Problem:** Deploy failed — `api/admin/taste` had `maxDuration: 300`; Hobby plan allows max 60s.
+
+**Files changed:** `api/admin/taste.js`, `api/cron/taste-profile-weekly.js`, `api/cron/embedding-backfill.js` — capped at 60s; reduced default batch sizes (10 profiles / 5 embeds / 10 backfill).
+
+**Next recommended task:** `ai-agents-stack` (Task #14)
 
 ---
 

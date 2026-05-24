@@ -4,7 +4,7 @@ import { isEmbeddingConfigured } from '../_lib/embedding-server.js';
 
 export const config = {
     runtime: 'nodejs',
-    maxDuration: 300,
+    maxDuration: 60,
 };
 
 export default async function handler(req, res) {
@@ -20,7 +20,7 @@ export default async function handler(req, res) {
     }
 
     try {
-        const limit = Number(req.query?.limit) || 25;
+        const limit = Number(req.query?.limit) || 10;
         const result = await backfillMovieEmbeddings({ limit });
         return res.status(200).json({ ok: true, ...result });
     } catch (error) {
