@@ -92,6 +92,16 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 ---
 
+## Session: May 2026 — Movie detail 404 on Vercel ✅
+
+**Problem:** `/api/content/movie/:id` returned 404 in production. Vercel non-Next catch-all routes only match single path segments (`/api/content/trending` works; `/api/content/movie/1726` does not).
+
+**Fix:**
+- Restored `api/content/movie/[tmdbId].js` and `api/recommendations/similar/[tmdbId].js` (10 functions total, still under Hobby 12 cap)
+- `getAdvancedMovieFromLibrary` uses `MOVIE_DETAIL_SELECT` instead of full library select (fixes Supabase 400 fallback when optional columns missing)
+
+---
+
 ## Session: May 2026 — Vercel Hobby 12-function limit ✅
 
 **Problem:** Deploy failed — Hobby allows max 12 Serverless Functions; project had ~25 (`api/content/*`, `api/cron/*`, `api/recommendations/*`, etc.).
@@ -103,7 +113,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 - `api/recommendations/[...route].js` — for-you, tonight, family, trending-personalized, similar/:id
 - `api/social/[action].js` — check-badges, decision-pick
 
-**Total functions:** 8 (content, admin, cron, recommendations, social, taste/rebuild, tmdb, sitemap)
+**Total functions:** 10 (content catch-all + movie/:id, admin, cron, reco catch-all + similar/:id, social, taste/rebuild, tmdb, sitemap)
 
 **Next recommended task:** `ai-agents-stack` (Task #14)
 

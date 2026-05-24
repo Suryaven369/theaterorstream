@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { MOVIES_LIBRARY_SELECT, LIBRARY_UPSERT_SELECT, LIBRARY_CARD_SELECT as SHARED_LIBRARY_CARD_SELECT } from './moviesLibrarySelect.js';
+import { MOVIES_LIBRARY_SELECT, MOVIE_DETAIL_SELECT } from './moviesLibrarySelect.js';
 import { upsertMoviesViaAdminApi } from './adminLibraryApi.js';
 import { dedupeLibraryRecords, upsertMoviesLibrary } from './libraryDedupe.js';
 
@@ -2168,10 +2168,9 @@ export const saveFullMovieToLibrary = async (movieData, additionalData = {}) => 
 
 // Get Single Advanced Movie (just wraps standard get)
 export const getAdvancedMovieFromLibrary = async (movieId) => {
-    // Query the single table
     const { data, error } = await supabase
         .from('movies_library')
-        .select(MOVIES_LIBRARY_SELECT)
+        .select(MOVIE_DETAIL_SELECT)
         .eq('tmdb_id', movieId.toString())
         .single();
 

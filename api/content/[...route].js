@@ -5,7 +5,6 @@ import {
     fetchTVSections,
     fetchUpcoming,
     searchContent,
-    fetchMovieDetail,
     jsonResponse,
     errorResponse,
 } from '../_lib/content-server.js';
@@ -92,17 +91,6 @@ export default async function handler(request) {
                 fetchAll: url.searchParams.get('fetchAll') === 'true',
             });
             return jsonResponse(result, 'public, s-maxage=600, stale-while-revalidate=1200');
-        }
-
-        if (segment === 'movie' && route[1]) {
-            const data = await fetchMovieDetail(route[1]);
-            if (!data) {
-                return errorResponse('Movie not found', 404);
-            }
-            return jsonResponse(
-                { success: true, data },
-                'public, s-maxage=3600, stale-while-revalidate=7200',
-            );
         }
 
         return errorResponse('Unknown content route', 404);
