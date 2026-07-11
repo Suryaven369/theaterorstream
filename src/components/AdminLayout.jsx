@@ -1,21 +1,25 @@
 import { Outlet, Link, useLocation } from "react-router-dom";
-import { FiHome, FiFilm, FiGrid, FiTag, FiSettings, FiLogOut, FiLayout, FiActivity } from "react-icons/fi";
+import { FiHome, FiFilm, FiGrid, FiTag, FiSettings, FiLogOut, FiLayout, FiActivity, FiSearch, FiList, FiVideo, FiRss } from "react-icons/fi";
 
 const AdminLayout = () => {
     const location = useLocation();
 
     const navItems = [
-        { path: "/admin", label: "Dashboard", icon: FiHome },
+        { path: "/admin", label: "Dashboard", icon: FiHome, exact: true },
         { path: "/admin/pipeline", label: "Pipeline", icon: FiActivity },
         { path: "/admin/library", label: "Library", icon: FiFilm },
+        { path: "/admin/browse", label: "Browse TMDB", icon: FiSearch },
         { path: "/admin/sections", label: "Sections", icon: FiLayout },
+        { path: "/admin/trailers", label: "Trailers", icon: FiVideo },
+        { path: "/admin/articles", label: "Articles", icon: FiRss },
         { path: "/admin/collections", label: "Collections", icon: FiTag },
         { path: "/admin/settings", label: "Settings", icon: FiSettings },
+        { path: "/admin/legacy", label: "Legacy Panel", icon: FiList },
     ];
 
-    const isActive = (path) => {
-        if (path === "/admin") return location.pathname === "/admin";
-        return location.pathname.startsWith(path);
+    const isActive = (item) => {
+        if (item.exact) return location.pathname === item.path;
+        return location.pathname.startsWith(item.path);
     };
 
     return (
@@ -36,10 +40,10 @@ const AdminLayout = () => {
                 </div>
 
                 {/* Navigation */}
-                <nav className="flex-1 p-3 space-y-1">
+                <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
                     {navItems.map((item) => {
                         const Icon = item.icon;
-                        const active = isActive(item.path);
+                        const active = isActive(item);
                         return (
                             <Link
                                 key={item.path}

@@ -4,16 +4,9 @@ import { useSelector } from "react-redux";
 import { FaCalendarAlt, FaChevronDown, FaFilm, FaStar } from "react-icons/fa";
 import { getUpcomingFromEdge } from "../lib/contentEdgeApi";
 import { generateSlugWithId } from "../lib/slugUtils";
+import { REGIONS, getSavedRegion, persistRegion } from "../constants/regions";
 
-const REGIONS = [
-  { code: "IN", name: "India", flag: "🇮🇳" },
-  { code: "US", name: "United States", flag: "🇺🇸" },
-  { code: "GB", name: "United Kingdom", flag: "🇬🇧" },
-  { code: "CA", name: "Canada", flag: "🇨🇦" },
-  { code: "AU", name: "Australia", flag: "🇦🇺" },
-];
-
-const MONTHS = [
+const ALL_MONTHS = [
   { id: 0, name: "January", short: "Jan" },
   { id: 1, name: "February", short: "Feb" },
   { id: 2, name: "March", short: "Mar" },
@@ -28,10 +21,34 @@ const MONTHS = [
   { id: 11, name: "December", short: "Dec" },
 ];
 
-const YEARS = [2026, 2027, 2028, 2029, 2030];
+const currentDate = new Date();
+const CURRENT_YEAR = currentDate.getFullYear();
+const CURRENT_MONTH = currentDate.getMonth();
+
+const YEARS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR + i);
 const CALENDAR_START_YEAR = YEARS[0];
 const CALENDAR_END_YEAR = YEARS[YEARS.length - 1];
-const MAX_PER_MONTH = 15;
+
+const getVisibleMonths = (selectedYear) => {
+  if (selectedYear > CURRENT_YEAR) {
+    return ALL_MONTHS;
+  }
+  if (selectedYear === CURRENT_YEAR) {
+    return ALL_MONTHS.filter(month => month.id >= CURRENT_MONTH);
+  }
+  return [];
+};
+const MAX_PER_MONTH = 50;
+
+// Select which titles make the cut by anticipation (so notable late-in-month
+// releases aren't dropped), then DISPLAY them chronologically by date.
+const byAnticipation = (a, b) => {
+  const pop = (Number(b.popularity) || 0) - (Number(a.popularity) || 0);
+  if (pop !== 0) return pop;
+  return new Date(a.release_date) - new Date(b.release_date);
+};
+
+const byReleaseDate = (a, b) => new Date(a.release_date) - new Date(b.release_date);
 
 const CompactCard = ({ movie }) => {
   const imageURL = useSelector((state) => state.movieData.imageURL);
@@ -98,10 +115,7 @@ const CompactCard = ({ movie }) => {
 };
 
 const UpcomingPage = () => {
-  const [selectedRegion, setSelectedRegion] = useState(() => {
-    const saved = localStorage.getItem("selectedRegion");
-    return REGIONS.find((r) => r.code === saved) || REGIONS[0];
-  });
+  const [selectedRegion, setSelectedRegion] = useState(getSavedRegion);
   const [isRegionOpen, setIsRegionOpen] = useState(false);
   const [selectedYear, setSelectedYear] = useState(CALENDAR_START_YEAR);
   const [isYearOpen, setIsYearOpen] = useState(false);
@@ -109,6 +123,8 @@ const UpcomingPage = () => {
   const [allMovies, setAllMovies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(null);
+
+  const visibleMonths = useMemo(() => getVisibleMonths(selectedYear), [selectedYear]);
 
   useEffect(() => {
     let cancelled = false;
@@ -168,11 +184,12 @@ const UpcomingPage = () => {
       return true;
     });
 
-    filtered = filtered.sort((a, b) => new Date(a.release_date) - new Date(b.release_date));
-
+    // Pick the most-anticipated for the month, then show them date-wise.
+    filtered = filtered.sort(byAnticipation);
     if (selectedMonth !== null) {
       filtered = filtered.slice(0, MAX_PER_MONTH);
     }
+    filtered = filtered.sort(byReleaseDate);
 
     return filtered;
   }, [allMovies, selectedYear, selectedMonth]);
@@ -181,12 +198,12 @@ const UpcomingPage = () => {
     const organized = {};
     const startDate = new Date(CALENDAR_START_YEAR, 0, 1);
 
-    MONTHS.forEach((month) => {
+    ALL_MONTHS.forEach((month) => {
       organized[month.id] = [];
     });
 
     const tempOrganized = {};
-    MONTHS.forEach((month) => {
+    ALL_MONTHS.forEach((month) => {
       tempOrganized[month.id] = [];
     });
 
@@ -199,10 +216,11 @@ const UpcomingPage = () => {
       tempOrganized[date.getMonth()].push(movie);
     });
 
-    MONTHS.forEach((month) => {
+    ALL_MONTHS.forEach((month) => {
       organized[month.id] = tempOrganized[month.id]
-        .sort((a, b) => new Date(a.release_date) - new Date(b.release_date))
-        .slice(0, MAX_PER_MONTH);
+        .sort(byAnticipation)
+        .slice(0, MAX_PER_MONTH)
+        .sort(byReleaseDate);
     });
 
     return organized;
@@ -210,24 +228,27 @@ const UpcomingPage = () => {
 
   const monthCounts = useMemo(() => {
     const counts = {};
-    MONTHS.forEach((month) => {
+    visibleMonths.forEach((month) => {
       counts[month.id] = Math.min((moviesByMonth[month.id] || []).length, MAX_PER_MONTH);
     });
     return counts;
-  }, [moviesByMonth]);
+  }, [moviesByMonth, visibleMonths]);
 
   const totalMoviesInYear = Object.values(monthCounts).reduce((sum, count) => sum + count, 0);
 
   const handleRegionSelect = (region) => {
     setSelectedRegion(region);
-    localStorage.setItem("selectedRegion", region.code);
+    persistRegion(region);
     setIsRegionOpen(false);
   };
 
   const handleYearSelect = (year) => {
     setSelectedYear(year);
     setIsYearOpen(false);
-    setSelectedMonth(null);
+    const newVisibleMonths = getVisibleMonths(year);
+    if (selectedMonth !== null && !newVisibleMonths.some(m => m.id === selectedMonth)) {
+      setSelectedMonth(null);
+    }
   };
 
   const handleMonthSelect = (monthId) => {
@@ -250,7 +271,7 @@ const UpcomingPage = () => {
                   </h1>
                   <p className="text-xs text-white/40">
                     {selectedMonth !== null
-                      ? `${filteredMovies.length} movies in ${MONTHS[selectedMonth].name} ${selectedYear}`
+                      ? `${filteredMovies.length} movies in ${ALL_MONTHS[selectedMonth].name} ${selectedYear}`
                       : `${totalMoviesInYear} movies in ${selectedYear}`}
                     {" · "}
                     <span className="text-green-400/80">From library</span>
@@ -323,8 +344,8 @@ const UpcomingPage = () => {
                 All
               </button>
 
-              {MONTHS.map((month) => {
-                const count = monthCounts[month.id];
+              {visibleMonths.map((month) => {
+                const count = monthCounts[month.id] || 0;
                 const hasMovies = count > 0;
                 const isSelected = selectedMonth === month.id;
 
@@ -391,7 +412,7 @@ const UpcomingPage = () => {
             )}
 
             {allMovies.length > 0 && selectedMonth === null ? (
-              MONTHS.map((month) => {
+              visibleMonths.map((month) => {
                 const movies = moviesByMonth[month.id];
 
                 return (
@@ -437,11 +458,11 @@ const UpcomingPage = () => {
                 <div className="flex items-center gap-3 mb-6">
                   <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 border border-green-500/30 flex items-center justify-center">
                     <span className="text-green-400 font-bold text-lg">
-                      {MONTHS[selectedMonth].short}
+                      {ALL_MONTHS[selectedMonth].short}
                     </span>
                   </div>
                   <div>
-                    <h2 className="text-2xl font-bold text-white">{MONTHS[selectedMonth].name} {selectedYear}</h2>
+                    <h2 className="text-2xl font-bold text-white">{ALL_MONTHS[selectedMonth].name} {selectedYear}</h2>
                     <p className="text-sm text-white/40">{filteredMovies.length} movie{filteredMovies.length !== 1 ? "s" : ""} releasing</p>
                   </div>
                 </div>
@@ -455,7 +476,7 @@ const UpcomingPage = () => {
                 ) : (
                   <div className="py-12 px-4 rounded-xl bg-white/[0.02] border border-white/5 text-center">
                     <FaFilm className="mx-auto text-4xl text-white/10 mb-4" />
-                    <p className="text-white/40">No movies scheduled for {MONTHS[selectedMonth].name} {selectedYear}</p>
+                    <p className="text-white/40">No movies scheduled for {ALL_MONTHS[selectedMonth].name} {selectedYear}</p>
                   </div>
                 )}
               </div>

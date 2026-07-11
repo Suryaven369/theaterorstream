@@ -16,7 +16,8 @@ export default async function handler(req, res) {
             return res.status(400).json({ error: 'Missing movie id' });
         }
 
-        const data = await fetchMovieDetail(tmdbId);
+        const mediaType = req.query?.mediaType || null;
+        const data = await fetchMovieDetail(tmdbId, mediaType);
 
         if (!data) {
             return res.status(404).json({ error: 'Movie not found' });

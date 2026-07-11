@@ -11,7 +11,21 @@ import {
 const DETAIL_APPEND = 'credits,videos,release_dates,keywords';
 const BATCH_SIZE = 3;
 
+// Helper to get date strings for TMDB discover queries
+function getDateRange(daysBack, daysForward) {
+    const today = new Date();
+    const from = new Date(today);
+    from.setDate(from.getDate() - daysBack);
+    const to = new Date(today);
+    to.setDate(to.getDate() + daysForward);
+    return {
+        from: from.toISOString().split('T')[0],
+        to: to.toISOString().split('T')[0],
+    };
+}
+
 export const SYNC_JOBS = {
+    // === EXISTING JOBS ===
     'trending-daily': {
         region: 'IN',
         sources: [
@@ -30,9 +44,131 @@ export const SYNC_JOBS = {
     'upcoming-weekly': {
         region: 'IN',
         sources: [
+            // Comprehensive upcoming via discover (next ~13 months), most
+            // anticipated first, plus the region-specific theatrical slate.
+            {
+                path: '/discover/movie',
+                mediaType: 'movie',
+                pages: 8,
+                customParams: () => {
+                    const today = new Date().toISOString().split('T')[0];
+                    const future = new Date(Date.now() + 400 * 24 * 60 * 60 * 1000)
+                        .toISOString().split('T')[0];
+                    return {
+                        'primary_release_date.gte': today,
+                        'primary_release_date.lte': future,
+                        sort_by: 'popularity.desc',
+                    };
+                },
+            },
+            {
+                path: '/discover/tv',
+                mediaType: 'tv',
+                pages: 3,
+                customParams: () => {
+                    const today = new Date().toISOString().split('T')[0];
+                    const future = new Date(Date.now() + 400 * 24 * 60 * 60 * 1000)
+                        .toISOString().split('T')[0];
+                    return {
+                        'first_air_date.gte': today,
+                        'first_air_date.lte': future,
+                        sort_by: 'popularity.desc',
+                    };
+                },
+            },
             { path: '/movie/upcoming', mediaType: 'movie', pages: 3, useRegion: true },
         ],
-        maxItems: 45,
+        maxItems: 200,
+    },
+    
+    // === NEW JOBS ===
+    
+    // Popular movies and TV shows (wider coverage)
+    'popular-weekly': {
+        region: 'IN',
+        sources: [
+            { path: '/movie/popular', mediaType: 'movie', pages: 5 },
+            { path: '/tv/popular', mediaType: 'tv', pages: 3 },
+        ],
+        maxItems: 100,
+    },
+    
+    // Top rated content (quality over popularity)
+    'top-rated-monthly': {
+        region: 'IN',
+        sources: [
+            { path: '/movie/top_rated', mediaType: 'movie', pages: 3 },
+            { path: '/tv/top_rated', mediaType: 'tv', pages: 2 },
+        ],
+        maxItems: 80,
+    },
+    
+    // Trending weekly (different from daily)
+    'trending-weekly': {
+        region: 'IN',
+        sources: [
+            { path: '/trending/movie/week', mediaType: 'movie', pages: 3 },
+            { path: '/trending/tv/week', mediaType: 'tv', pages: 2 },
+        ],
+        maxItems: 80,
+    },
+    
+    // New releases with trailers (discover movies released recently)
+    'new-releases-weekly': {
+        region: 'IN',
+        sources: [
+            { 
+                path: '/discover/movie', 
+                mediaType: 'movie', 
+                pages: 3,
+                customParams: () => {
+                    const range = getDateRange(30, 0);
+                    return {
+                        'primary_release_date.gte': range.from,
+                        'primary_release_date.lte': range.to,
+                        'sort_by': 'popularity.desc',
+                        'vote_count.gte': 10,
+                    };
+                },
+            },
+        ],
+        maxItems: 60,
+        enrichVideos: true,
+    },
+    
+    // Upcoming with trailers (movies announcing soon)
+    'upcoming-trailers': {
+        region: 'IN',
+        sources: [
+            {
+                path: '/discover/movie',
+                mediaType: 'movie',
+                pages: 3,
+                customParams: () => {
+                    // Window: today → +120 days (the gte was wrongly set to the
+                    // future bound, collapsing it to a near-empty range).
+                    const range = getDateRange(0, 120);
+                    return {
+                        'primary_release_date.gte': range.from,
+                        'primary_release_date.lte': range.to,
+                        'sort_by': 'popularity.desc',
+                    };
+                },
+            },
+        ],
+        maxItems: 50,
+        enrichVideos: true,
+    },
+    
+    // Multi-region popular (US + India)
+    'popular-global': {
+        region: 'US',
+        sources: [
+            { path: '/movie/popular', mediaType: 'movie', pages: 2 },
+            { path: '/movie/now_playing', mediaType: 'movie', pages: 2, useRegion: true },
+        ],
+        maxItems: 60,
+        additionalRegions: ['IN', 'GB'],
     },
 };
 
@@ -101,6 +237,14 @@ async function fetchSourceItems(source, region) {
     for (let page = 1; page <= source.pages; page += 1) {
         const params = { page };
         if (source.useRegion) params.region = region;
+        
+        // Apply custom params if defined (for discover queries)
+        if (source.customParams) {
+            const custom = typeof source.customParams === 'function' 
+                ? source.customParams() 
+                : source.customParams;
+            Object.assign(params, custom);
+        }
 
         const payload = await fetchTmdbApi(source.path, params);
         pagesFetched += 1;
@@ -232,6 +376,52 @@ export async function runSyncJob(jobName) {
         await updateSyncState(supabase, jobName, config.region, runId, 'failed', null);
         throw error;
     }
+}
+
+// Backfills the `seasons` column for TV shows that were synced into the library
+// before that field existed — fetches each show's current /tv/{id} detail from
+// TMDB and writes just its seasons array, leaving everything else untouched.
+// Capped + batched so a single run can't run past the function's time limit.
+const SEASONS_BACKFILL_BATCH_SIZE = 4;
+
+export async function backfillTvSeasons({ limit = 50 } = {}) {
+    const supabase = getSupabaseAdmin();
+
+    // The seasons column was added with DEFAULT '[]'::jsonb, so every show synced
+    // before this feature existed has seasons = [] rather than NULL.
+    const { data: shows, error } = await supabase
+        .from('movies_library')
+        .select('tmdb_id, title')
+        .eq('media_type', 'tv')
+        .eq('is_active', true)
+        .eq('seasons', JSON.stringify([]))
+        .limit(limit);
+
+    if (error) throw error;
+
+    const stats = { checked: shows?.length || 0, updated: 0, failed: 0, errors: [] };
+    if (!shows?.length) return stats;
+
+    for (let i = 0; i < shows.length; i += SEASONS_BACKFILL_BATCH_SIZE) {
+        const batch = shows.slice(i, i + SEASONS_BACKFILL_BATCH_SIZE);
+        await Promise.all(batch.map(async (show) => {
+            try {
+                const detail = await fetchTmdbApi(`/tv/${show.tmdb_id}`, {});
+                const { error: updateError } = await supabase
+                    .from('movies_library')
+                    .update({ seasons: detail.seasons || [] })
+                    .eq('tmdb_id', show.tmdb_id)
+                    .eq('media_type', 'tv');
+                if (updateError) throw updateError;
+                stats.updated += 1;
+            } catch (itemError) {
+                stats.failed += 1;
+                stats.errors.push(`${show.title || show.tmdb_id}: ${itemError.message}`);
+            }
+        }));
+    }
+
+    return stats;
 }
 
 export function createCronHandler(jobName) {

@@ -84,41 +84,72 @@ export function getTrendingPersonalized(options = {}) {
     return fetchRecommendations('/api/recommendations/trending-personalized', options);
 }
 
-export async function getSimilarRecommendations(tmdbId, options = {}) {
+async function sendJson(path, method, body) {
     const token = await getAccessToken();
-    if (!token) {
-        return { data: [], meta: {}, error: 'not_signed_in' };
-    }
-
-    const query = buildQuery({
-        limit: options.limit,
-        mediaType: options.mediaType,
-        refresh: options.refresh ? 'true' : undefined,
-        ottMode: options.ottMode ? 'true' : undefined,
-    });
-
-    const url = `${resolveApiBase()}/api/recommendations/similar/${encodeURIComponent(tmdbId)}${query}`;
+    if (!token) return { ok: false, error: 'not_signed_in' };
 
     try {
-        const response = await fetch(url, {
+        const response = await fetch(`${resolveApiBase()}${path}`, {
+            method,
             headers: {
                 Accept: 'application/json',
+                'Content-Type': 'application/json',
                 Authorization: `Bearer ${token}`,
             },
+            body: body != null ? JSON.stringify(body) : undefined,
         });
-
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
-            throw new Error(payload.error || `Similar recommendations failed (${response.status})`);
+            throw new Error(payload.error || `Request failed (${response.status})`);
         }
-
-        return {
-            data: payload.data || [],
-            meta: payload.meta || {},
-            generatedAt: payload.generatedAt,
-            fromCache: payload.fromCache,
-        };
+        return { ok: true, ...payload };
     } catch (error) {
-        return { data: [], meta: {}, error: error.message };
+        if (import.meta.env.DEV) console.warn('[recommendationApi]', path, error.message);
+        return { ok: false, error: error.message };
     }
+}
+
+/** Mood-based discovery row (mind_bending, dark_thriller, feel_good, …). */
+export function getMoodRecommendations(moodId, options = {}) {
+    return fetchRecommendations(`/api/recommendations/mood/${encodeURIComponent(moodId)}`, options);
+}
+
+/** A discovery feed section: because-you-loved | hidden-gems | underrated | outside-comfort-zone. */
+export function getDiscoverySection(section, options = {}) {
+    return fetchRecommendations(`/api/recommendations/discovery/${section}`, options);
+}
+
+/** One Perfect Movie Tonight — single daily pick. Returns { movie, message, day }. */
+export async function getOnePerfectMovie() {
+    const res = await sendJson('/api/recommendations/perfect-tonight', 'GET');
+    return res.ok ? res : null;
+}
+
+/** Read manual + learned taste preferences for the Settings editor. */
+export async function getTastePreferences() {
+    const res = await sendJson('/api/recommendations/taste-profile', 'GET');
+    return res.ok ? res.data : null;
+}
+
+/** Persist manual taste preferences from the Settings editor. */
+export async function updateTastePreferences(prefs) {
+    return sendJson('/api/recommendations/taste-profile', 'PUT', prefs);
+}
+
+/** Taste dashboard rollup (favorite genres/moods, evolving interests, accuracy). */
+export async function getTasteDashboard() {
+    const res = await sendJson('/api/recommendations/dashboard', 'GET');
+    return res.ok ? res.data : null;
+}
+
+/** New & upcoming content from the directors/genres/franchises the user follows. */
+export async function getFollowingFeed(limit = 30) {
+    const res = await sendJson(`/api/recommendations/following?limit=${limit}`, 'GET');
+    return res.ok ? res : { items: [], followCount: 0, boardUpdates: [] };
+}
+
+/** Fire-and-forget behavioural event(s). Never throws. */
+export function sendEvents(events) {
+    const list = Array.isArray(events) ? events : [events];
+    return sendJson('/api/recommendations/events', 'POST', { events: list });
 }

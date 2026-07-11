@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase } from './supabaseClient.js';
 
 async function getAccessToken() {
     const { data: { session } } = await supabase.auth.getSession();

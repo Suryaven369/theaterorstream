@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
     supabase,
     searchMoviesLibrary,
@@ -73,20 +73,24 @@ const AdminMovieEditorPage = () => {
         load();
     }, []);
 
-    // Search handler
+    // Search handler — guards against a slower earlier request resolving after a
+    // faster later one and overwriting it with stale results (a real risk once
+    // results come back out of order while the user is still typing).
+    const searchRequestId = useRef(0);
     const handleSearch = useCallback(async (query) => {
         if (!query || query.length < 2) {
             setSearchResults([]);
             return;
         }
+        const requestId = ++searchRequestId.current;
         setSearchLoading(true);
         try {
             const results = await searchMoviesLibrary(query);
-            setSearchResults(results || []);
+            if (requestId === searchRequestId.current) setSearchResults(results || []);
         } catch (err) {
             console.error("Search error:", err);
         }
-        setSearchLoading(false);
+        if (requestId === searchRequestId.current) setSearchLoading(false);
     }, []);
 
     // Debounced search

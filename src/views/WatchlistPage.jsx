@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSelector } from 'react-redux';
-import { getUserWatchlist, toggleWatchlist } from '../lib/supabase';
+import { getUserWatchlist, toggleWatchlist, getProfileByUsername } from '../lib/supabase';
 import { FaBookmark, FaTrash } from 'react-icons/fa';
 import ConfirmationModal from '../components/ConfirmationModal';
 
@@ -17,24 +17,36 @@ const WatchlistPage = () => {
     const [loading, setLoading] = useState(true);
     const [removing, setRemoving] = useState(null);
     const [itemToDelete, setItemToDelete] = useState(null);
+    const [targetProfile, setTargetProfile] = useState(null);
 
-
-    // Check if viewing own profile
-    const isOwnProfile = profile?.username === username;
+    const isOwnProfile = !username
+        || (!!profile?.username && profile.username.toLowerCase() === String(username).toLowerCase());
 
     useEffect(() => {
         const loadWatchlist = async () => {
-            if (user?.id) {
-                setLoading(true);
-                const data = await getUserWatchlist(user.id);
-                setWatchlist(data);
-                setLoading(false);
-            } else {
-                setLoading(false);
+            setLoading(true);
+            let targetUserId = null;
+
+            if (isOwnProfile) {
+                targetUserId = user?.id;
+                setTargetProfile(profile);
+            } else if (username) {
+                const p = await getProfileByUsername(username);
+                setTargetProfile(p);
+                targetUserId = p?.id;
             }
+
+            if (targetUserId) {
+                const data = await getUserWatchlist(targetUserId);
+                setWatchlist(data);
+            } else {
+                setWatchlist([]);
+            }
+            setLoading(false);
         };
-        loadWatchlist();
-    }, [user?.id]);
+
+        if (!authLoading) loadWatchlist();
+    }, [username, user?.id, isOwnProfile, authLoading, profile]);
 
     // Redirect if not authenticated and viewing own profile
     useEffect(() => {
@@ -44,7 +56,7 @@ const WatchlistPage = () => {
     }, [isAuthenticated, authLoading, isOwnProfile, navigate]);
 
     const confirmRemove = async () => {
-        if (!itemToDelete) return;
+        if (!itemToDelete || !isOwnProfile || !user?.id) return;
         const movie = itemToDelete;
 
         setRemoving(movie.movie_id);
@@ -64,6 +76,8 @@ const WatchlistPage = () => {
         );
     }
 
+    const displayUsername = targetProfile?.username || username;
+
     return (
         <div className="min-h-screen bg-[#0a0a0a] pt-24 pb-12 px-4">
             <div className="max-w-5xl mx-auto">
@@ -71,7 +85,7 @@ const WatchlistPage = () => {
                 <div className="flex items-center justify-between mb-8">
                     <div>
                         <Link
-                            to={`/${username}/profile`}
+                            to={displayUsername ? `/${displayUsername}/profile` : '/profile'}
                             className="text-white/50 hover:text-white text-sm mb-2 inline-flex items-center gap-2"
                         >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -81,7 +95,7 @@ const WatchlistPage = () => {
                         </Link>
                         <h1 className="text-3xl font-bold text-white flex items-center gap-3">
                             <FaBookmark className="text-yellow-400" />
-                            {isOwnProfile ? 'My Watchlist' : `@${username}'s Watchlist`}
+                            {isOwnProfile ? 'My Watchlist' : `@${displayUsername}'s Watchlist`}
                         </h1>
                         <p className="text-white/50 mt-1">{watchlist.length} movies to watch</p>
                     </div>

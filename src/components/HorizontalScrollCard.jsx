@@ -6,45 +6,57 @@ const HorizontalScrollCard = ({ data = [], heading, trending, media_type }) => {
   const contaierRef = useRef();
 
   const handleNext = () => {
-    contaierRef.current.scrollLeft += 300;
+    if (!contaierRef.current) return;
+    const step = Math.min(320, Math.floor(contaierRef.current.clientWidth * 0.75));
+    contaierRef.current.scrollLeft += step;
   };
   const handlePrevious = () => {
-    contaierRef.current.scrollLeft -= 300;
+    if (!contaierRef.current) return;
+    const step = Math.min(320, Math.floor(contaierRef.current.clientWidth * 0.75));
+    contaierRef.current.scrollLeft -= step;
   };
+
   return (
-    <div className="container mx-auto px-3 my-10">
-      <h2 className="text-xl lg:text-2xl font-bold mb-3 text-white capitalize">
+    <div className="container mx-auto px-3 sm:px-4 my-8 sm:my-10">
+      <h2 className="text-lg sm:text-xl lg:text-2xl font-bold mb-3 text-white capitalize px-1">
         {heading}
       </h2>
 
-      <div className=" relative">
+      <div className="relative">
         <div
           ref={contaierRef}
-          className="grid grid-cols-[repeat(auto-fit,230px)] grid-flow-col gap-6 overflow-hidden overflow-x-scroll relative z-10 scroll-smooth transition-all scrolbar-none"
+          className="flex gap-3 sm:gap-4 overflow-x-auto overflow-y-hidden relative z-10 scroll-smooth snap-x snap-mandatory scrollbar-hide -mx-3 px-3 sm:mx-0 sm:px-0 pb-1"
+          style={{ WebkitOverflowScrolling: "touch" }}
         >
-          {data.map((data, index) => {
-            return (
+          {data.map((item, index) => (
+            <div
+              key={(item.id || item.tmdb_id) + "heading" + index}
+              className="shrink-0 snap-start w-[132px] sm:w-[152px] md:w-[168px] lg:w-[180px]"
+            >
               <Card
-                key={data.id + "heading" + index}
-                data={data}
+                data={item}
                 index={index + 1}
                 trending={trending}
                 media_type={media_type}
               />
-            );
-          })}
+            </div>
+          ))}
         </div>
 
-        <div className="absolute top-0 hidden lg:flex justify-between w-full h-full items-center">
+        <div className="absolute top-0 hidden lg:flex justify-between w-full h-full items-center pointer-events-none">
           <button
+            type="button"
             onClick={handlePrevious}
-            className="bg-white p-1 text-black rounded-full -ml-2 z-10"
+            className="pointer-events-auto bg-white/95 p-2 text-black rounded-full -ml-1 z-10 shadow tap-target"
+            aria-label="Scroll left"
           >
             <FaAngleLeft />
           </button>
           <button
+            type="button"
             onClick={handleNext}
-            className="bg-white p-1 text-black rounded-full -mr-2 z-10"
+            className="pointer-events-auto bg-white/95 p-2 text-black rounded-full -mr-1 z-10 shadow tap-target"
+            aria-label="Scroll right"
           >
             <FaAngleRight />
           </button>

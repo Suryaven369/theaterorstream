@@ -14,6 +14,7 @@ import UserRatingSystem, { RatingModal } from "../components/UserRatingSystem";
 import { getMovieRatings, getUserRatingForMovie } from "../lib/supabase";
 import { computeOverallFromCategories } from "../lib/ratingUtils";
 import QuickLogModal from "../components/social/QuickLogModal";
+import WriteReviewModal from "../components/social/WriteReviewModal";
 import { getMovieDetailFromEdge } from "../lib/contentEdgeApi";
 import { ShareButton } from "../components/ShareMovie";
 import ParentGuide from "../components/ParentGuide";
@@ -21,10 +22,25 @@ import VibeChart from "../components/VibeChart";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import MovieActionButtons from "../components/MovieActionButtons";
+import TVSeasonsList from "../components/TVSeasonsList";
 import { extractIdFromSlug } from "../lib/slugUtils";
 import { resolveTmdbImageUrl } from "../utils/imageHelper";
+import { trackEvent, EVENT_TYPES } from "../lib/eventTracking";
+import StreamingProviders from "../components/StreamingProviders";
+import SimilarMoviesSection from "../components/discover/SimilarMoviesSection";
+import FollowEntityButton from "../components/FollowEntityButton";
+import { getTitleAnalysisFromEdge } from "../lib/contentEdgeApi";
+import SeoHead from "../components/SeoHead";
 
 const DETAILS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+function formatMoney(amount) {
+  const n = Number(amount);
+  if (!n || n <= 0) return null;
+  if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(2)}B`;
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  return `$${n.toLocaleString('en-US')}`;
+}
 
 const Details = () => {
   const params = useParams();
@@ -54,6 +70,24 @@ const Details = () => {
     return params.explore || 'movie';
   }, [location.pathname, params.explore]);
 
+  // Behavioural signal: a movie page view (+2). One per movie id.
+  useEffect(() => {
+    if (movieId) {
+      trackEvent(EVENT_TYPES.MOVIE_VIEW, { tmdbId: movieId, mediaType });
+    }
+  }, [movieId, mediaType]);
+
+  // Accurate Parent Guide + Vibes (TMDB certification + LLM), works for tv too.
+  const [contentAnalysis, setContentAnalysis] = useState(null);
+  useEffect(() => {
+    if (!movieId) return undefined;
+    let alive = true;
+    getTitleAnalysisFromEdge(movieId, mediaType)
+      .then((r) => { if (alive) setContentAnalysis(r?.data || null); })
+      .catch(() => { if (alive) setContentAnalysis(null); });
+    return () => { alive = false; };
+  }, [movieId, mediaType]);
+
   const [tmbdID, setTmbdID] = useState(null);
   const [AIRatings, setAIRatings] = useState({});
   const [communityRatings, setCommunityRatings] = useState(null);
@@ -65,6 +99,12 @@ const Details = () => {
   const [data, setData] = useState(null);
   const [castData, setCastData] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Prefer admin/DB data; fall back to the live analysis (covers tv + unsynced).
+  const _hasObj = (o) => o && typeof o === 'object' && Object.keys(o).length > 0;
+  const effParentGuide = _hasObj(data?.custom_parent_guide) ? data.custom_parent_guide : (contentAnalysis?.parentGuide || null);
+  const effVibes = _hasObj(data?.custom_vibes) ? data.custom_vibes : (contentAnalysis?.vibes || null);
+  const effCertification = data?.certification || contentAnalysis?.certification || null;
 
   const posterSrc = useMemo(
     () => resolveTmdbImageUrl(data?.poster_path, {
@@ -110,7 +150,7 @@ const Details = () => {
       try {
         // 1. Try DB first
         console.log(`Fetching details for ${movieId} (${mediaType})`);
-        const { success, data: dbData } = await getMovieDetailFromEdge(movieId);
+        const { success, data: dbData } = await getMovieDetailFromEdge(movieId, mediaType);
 
         let fetchedData = null;
         let fetchedCast = null;
@@ -146,6 +186,7 @@ const Details = () => {
   const [playVideoId, setPlayVideoId] = useState("");
   const [ratingModalOpen, setRatingModalOpen] = useState(false);
   const [logModalOpen, setLogModalOpen] = useState(false);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [logPrefillRating, setLogPrefillRating] = useState(null);
   const [ratingsKey, setRatingsKey] = useState(0);
 
@@ -304,8 +345,27 @@ const Details = () => {
     }
   }, [data?.imdb_id]);
 
+  const pageTitle = data?.title || data?.name || 'Title';
+  const year = (data?.release_date || data?.first_air_date || '').slice(0, 4);
+  const seoTitle = year ? `${pageTitle} (${year})` : pageTitle;
+  const seoDesc = (data?.overview || '').trim().slice(0, 160)
+    || `Ratings, streaming info, and theater vs stream guidance for ${pageTitle}.`;
+  const seoImage = backdropSrc || posterSrc || null;
+  const seoUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}${location.pathname}`
+    : location.pathname;
+
   return (
     <div className="min-h-screen bg-[#0a0a0a]">
+      {data && (
+        <SeoHead
+          title={`${seoTitle} | TheaterOrStream`}
+          description={seoDesc}
+          image={seoImage}
+          url={seoUrl}
+          type="video.movie"
+        />
+      )}
       {/* Hero Backdrop - Extended height */}
       <div className="relative h-[55vh] md:h-[65vh] lg:h-[75vh]">
         <div className="absolute inset-0">
@@ -342,7 +402,7 @@ const Details = () => {
               navigate("/");
             }
           }}
-          className="absolute top-24 left-6 z-10 flex items-center gap-2 text-white/70 hover:text-white transition-colors"
+          className="absolute top-[calc(4.75rem+env(safe-area-inset-top,0px))] left-4 sm:left-6 z-10 flex items-center gap-2 text-white/70 hover:text-white transition-colors tap-target"
         >
           <IoArrowBack className="text-xl" />
           <span className="text-sm font-medium">Back</span>
@@ -350,12 +410,12 @@ const Details = () => {
       </div>
 
       {/* Content - Positioned lower */}
-      <div className="container mx-auto px-6 -mt-40 md:-mt-56 lg:-mt-64 relative z-10">
-        <div className="flex flex-col lg:flex-row gap-8 lg:gap-12">
+      <div className="container mx-auto px-4 sm:px-6 -mt-28 sm:-mt-40 md:-mt-48 lg:-mt-64 relative z-10">
+        <div className="flex flex-col md:flex-row gap-6 md:gap-8 lg:gap-12">
           {/* Left Column - Poster, Vibe Chart, Actions */}
-          <div className="flex-shrink-0 w-full lg:w-72">
+          <div className="flex-shrink-0 w-full md:w-56 lg:w-72">
             {/* Poster */}
-            <div className="w-48 md:w-64 lg:w-full mx-auto lg:mx-0 rounded-2xl overflow-hidden shadow-2xl">
+            <div className="w-40 sm:w-48 md:w-full mx-auto md:mx-0 rounded-2xl overflow-hidden shadow-2xl">
               {posterSrc ? (
                 <img
                   src={posterSrc}
@@ -371,8 +431,8 @@ const Details = () => {
 
             {/* Vibe Chart - RIGHT BELOW POSTER */}
             {data?.genres && (
-              <div className="mt-4 hidden lg:block">
-                <VibeChart genres={data.genres} compact={true} customVibes={data.custom_vibes} />
+              <div className="mt-4 hidden md:block">
+                <VibeChart genres={data.genres} compact={true} customVibes={effVibes} />
               </div>
             )}
 
@@ -385,6 +445,15 @@ const Details = () => {
                 posterPath={data?.poster_path}
                 mediaType={mediaType}
               />
+            )}
+            {data && isAuthenticated && (
+              <button
+                type="button"
+                onClick={() => setReviewModalOpen(true)}
+                className="mt-3 w-full py-2.5 rounded-xl border border-[var(--accent-green)]/40 text-[var(--accent-green)] text-sm font-medium hover:bg-[var(--accent-green-dim)] transition-colors"
+              >
+                Write a review
+              </button>
             )}
 
             {/* Share Button */}
@@ -424,8 +493,8 @@ const Details = () => {
               movieId={movieId}
               mediaType={mediaType}
               genres={data?.genres}
-              customParentGuide={data?.custom_parent_guide}
-              customCertification={data?.certification}
+              customParentGuide={effParentGuide}
+              customCertification={effCertification}
             />
 
             {/* Streaming Platforms - from DB */}
@@ -471,6 +540,15 @@ const Details = () => {
               </div>
             )}
 
+            {/* Where to watch (live OTT availability from TMDB) */}
+            <div className="mb-5">
+              <StreamingProviders
+                tmdbId={movieId}
+                mediaType={mediaType}
+                region="IN"
+              />
+            </div>
+
             {/* Meta info */}
             <div className="flex flex-wrap items-center gap-4 mb-6">
               <span className="rating-badge flex items-center gap-1.5">
@@ -493,15 +571,22 @@ const Details = () => {
               </span>
             </div>
 
-            {/* Genres */}
+            {/* Genres — each is followable for the "Following" feed */}
             {data?.genres && (
               <div className="flex flex-wrap gap-2 mb-6">
                 {data.genres.map((genre) => (
                   <span
                     key={genre.id}
-                    className="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-white/70 text-sm"
+                    className="group inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full bg-white/5 border border-white/10 text-white/70 text-sm"
                   >
                     {genre.name}
+                    <FollowEntityButton
+                      targetType="genre"
+                      targetId={genre.id}
+                      targetLabel={genre.name}
+                      size="xs"
+                      className="!px-2 !py-0.5"
+                    />
                   </span>
                 ))}
               </div>
@@ -518,7 +603,7 @@ const Details = () => {
             {/* Vibe Chart - Mobile Only */}
             {data?.genres && (
               <div className="mb-6 lg:hidden">
-                <VibeChart genres={data.genres} customVibes={data.custom_vibes} />
+                <VibeChart genres={data.genres} customVibes={effVibes} />
               </div>
             )}
 
@@ -533,11 +618,20 @@ const Details = () => {
             )}
 
             {/* Credits */}
-            <div className="flex gap-8 mb-6">
+            <div className="flex flex-wrap gap-8 mb-6">
               {director && (
                 <div>
                   <p className="text-white/40 text-sm mb-1">Director</p>
-                  <p className="text-white font-medium">{director.name}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-white font-medium">{director.name}</p>
+                    <FollowEntityButton
+                      targetType="director"
+                      targetId={director.id}
+                      targetLabel={director.name}
+                      targetImage={director.profile_path}
+                      size="xs"
+                    />
+                  </div>
                 </div>
               )}
               {data?.status && (
@@ -546,7 +640,24 @@ const Details = () => {
                   <p className="text-white font-medium">{data.status}</p>
                 </div>
               )}
+              {mediaType === 'movie' && Number(data?.budget) > 0 && (
+                <div>
+                  <p className="text-white/40 text-sm mb-1">Budget</p>
+                  <p className="text-white font-medium">{formatMoney(data.budget)}</p>
+                </div>
+              )}
+              {mediaType === 'movie' && Number(data?.revenue) > 0 && (
+                <div>
+                  <p className="text-white/40 text-sm mb-1">Box office</p>
+                  <p className="text-white font-medium">{formatMoney(data.revenue)}</p>
+                </div>
+              )}
             </div>
+
+            {/* Seasons (TV only) */}
+            {mediaType === 'tv' && data?.seasons?.length > 0 && (
+              <TVSeasonsList tmdbId={movieId} title={data?.name || data?.title} seasons={data.seasons} />
+            )}
 
             {/* Cast - Compact */}
             {castData?.cast?.length > 0 && (
@@ -600,6 +711,11 @@ const Details = () => {
             />
           )}
         </div>
+
+        {/* More like this — similar titles from the recommendation engine */}
+        <div className="-mx-4 sm:-mx-6 pb-8 sm:pb-12">
+          <SimilarMoviesSection tmdbId={movieId} mediaType={mediaType} />
+        </div>
       </div>
 
       {/* Video Player Modal */}
@@ -621,6 +737,19 @@ const Details = () => {
         existingRating={userRating}
         userId={user?.id}
       />
+
+      {reviewModalOpen && data && (
+        <WriteReviewModal
+          movie={{
+            tmdb_id: movieId,
+            title: data?.title || data?.name,
+            poster_path: data?.poster_path,
+            media_type: mediaType,
+          }}
+          onClose={() => setReviewModalOpen(false)}
+          onSuccess={() => setReviewModalOpen(false)}
+        />
+      )}
 
       <QuickLogModal
         isOpen={logModalOpen}

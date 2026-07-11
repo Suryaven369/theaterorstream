@@ -1,7 +1,18 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { FaEye, FaStar, FaTrophy, FaBullseye, FaFilm } from 'react-icons/fa';
+import { FaEye, FaStar, FaTrophy, FaBullseye, FaFilm, FaListUl, FaPencilAlt, FaHeart } from 'react-icons/fa';
 import { generateSlugWithId } from '../../lib/slugUtils';
+
+// Mirrors the createSlug helper already duplicated in CollectionsPage.jsx / CollectionDetails.jsx /
+// supabase.js — kept local rather than introducing a shared import across already-shipped pages.
+function createListSlug(text) {
+    return (text || '')
+        .toLowerCase()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .trim();
+}
 
 function eventIcon(type) {
     switch (type) {
@@ -9,6 +20,10 @@ function eventIcon(type) {
         case 'rating': return FaStar;
         case 'badge': return FaTrophy;
         case 'decision_pick': return FaBullseye;
+        case 'review': return FaStar;
+        case 'list_created': return FaListUl;
+        case 'blog_post': return FaPencilAlt;
+        case 'like': return FaHeart;
         default: return FaFilm;
     }
 }
@@ -19,6 +34,10 @@ function eventLabel(item) {
         case 'rating': return 'rated';
         case 'badge': return 'earned a badge';
         case 'decision_pick': return 'picked tonight';
+        case 'review': return 'reviewed';
+        case 'list_created': return 'created a list';
+        case 'blog_post': return 'wrote a blog';
+        case 'like': return 'liked';
         default: return 'activity';
     }
 }
@@ -66,6 +85,24 @@ export default function ActivityFeedList({ items = [], showUser = false }) {
                                     <span className="font-semibold">
                                         {item.payload?.icon} {item.payload?.name}
                                     </span>
+                                ) : item.event_type === 'review' ? (
+                                    <span className="font-semibold">
+                                        {item.payload?.title || item.target_movie_title}
+                                    </span>
+                                ) : item.event_type === 'list_created' ? (
+                                    <Link
+                                        to={`/collection/${createListSlug(item.payload?.name)}`}
+                                        className="font-semibold hover:text-orange-400"
+                                    >
+                                        {item.payload?.name}
+                                    </Link>
+                                ) : item.event_type === 'blog_post' ? (
+                                    <Link
+                                        to={`/blog/${item.payload?.blog_id}`}
+                                        className="font-semibold hover:text-orange-400"
+                                    >
+                                        {item.payload?.title}
+                                    </Link>
                                 ) : url ? (
                                     <Link to={url} className="font-semibold hover:text-orange-400">
                                         {item.target_movie_title}
@@ -82,6 +119,16 @@ export default function ActivityFeedList({ items = [], showUser = false }) {
                             {item.event_type === 'log' && item.payload?.rating != null && (
                                 <p className="text-xs text-white/40 mt-1">
                                     Rated {item.payload.rating}/10
+                                </p>
+                            )}
+                            {item.event_type === 'list_created' && item.payload?.description && (
+                                <p className="text-xs text-white/40 mt-1 line-clamp-2">
+                                    {item.payload.description}
+                                </p>
+                            )}
+                            {item.event_type === 'blog_post' && item.payload?.excerpt && (
+                                <p className="text-xs text-white/40 mt-1 line-clamp-2">
+                                    {item.payload.excerpt}
                                 </p>
                             )}
                             {(item.watched_in_theater || item.payload?.watched_in_theater) && (

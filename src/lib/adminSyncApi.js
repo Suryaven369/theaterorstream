@@ -40,3 +40,63 @@ export async function triggerSyncJob(jobName) {
 
     return payload;
 }
+
+export async function triggerRssRefresh(sourceId = null) {
+    const token = await getAccessToken();
+    if (!token) {
+        throw new Error('You must be signed in as admin to refresh RSS feeds.');
+    }
+
+    const url = `${resolveApiBase()}/api/admin/rss`;
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(sourceId ? { job: 'refresh-source', sourceId } : { job: 'refresh-all' }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+        if (response.status === 404 && import.meta.env.DEV) {
+            throw new Error(
+                'RSS API is unavailable in Vite-only mode. Run `npm run dev:api` (vercel dev) or test on your Vercel deployment.',
+            );
+        }
+        throw new Error(payload.error || `RSS refresh failed (${response.status})`);
+    }
+
+    return payload;
+}
+
+export async function triggerBackfill(job, { limit } = {}) {
+    const token = await getAccessToken();
+    if (!token) {
+        throw new Error('You must be signed in as admin to run a backfill.');
+    }
+
+    const url = `${resolveApiBase()}/api/admin/backfill`;
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ job, limit }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+        if (response.status === 404 && import.meta.env.DEV) {
+            throw new Error(
+                'Backfill API is unavailable in Vite-only mode. Run `npm run dev:api` (vercel dev) or test on your Vercel deployment.',
+            );
+        }
+        throw new Error(payload.error || `Backfill failed (${response.status})`);
+    }
+
+    return payload;
+}

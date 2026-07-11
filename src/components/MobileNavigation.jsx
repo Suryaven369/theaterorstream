@@ -1,52 +1,71 @@
 import React from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { IoHome, IoSearch, IoTv, IoCalendar, IoList } from "react-icons/io5";
+import { IoHome, IoSearch, IoPerson, IoFilm, IoGrid } from "react-icons/io5";
 
 const MobileNavigation = () => {
   const location = useLocation();
   const { isAuthenticated, profile } = useAuth();
 
-  // Define mobile nav items - matching desktop navigation
   const navItems = [
-    { href: "/", icon: IoHome, label: "Home" },
-    { href: "/tv-series", icon: IoTv, label: "Series" },
-    { href: "/upcoming", icon: IoCalendar, label: "Soon" },
-    { href: "/search", icon: IoSearch, label: "Search" },
+    { href: "/", icon: IoHome, label: "Home", match: "home" },
+    { href: "/?tab=my-feed", icon: IoFilm, label: "Feed", match: "my-feed" },
+    { href: "/boards", icon: IoGrid, label: "Boards", match: "boards" },
+    { href: "/search", icon: IoSearch, label: "Search", match: "search" },
   ];
 
-  // Add profile/collections link if authenticated
   if (isAuthenticated && profile?.username) {
     navItems.push({
-      href: `/${profile.username}/collections`,
-      icon: IoList,
-      label: "Lists"
+      href: `/${profile.username}/profile`,
+      icon: IoPerson,
+      label: "You",
+      match: "profile",
+    });
+  } else {
+    navItems.push({
+      href: "/auth",
+      icon: IoPerson,
+      label: "Sign in",
+      match: "auth",
     });
   }
 
   return (
     <section className="lg:hidden fixed bottom-0 left-0 right-0 z-40 safe-area-bottom">
-      {/* Gradient fade effect at the top */}
-      <div className="absolute inset-x-0 -top-6 h-6 bg-gradient-to-t from-[#0a0a0a] to-transparent pointer-events-none" />
+      <div className="absolute inset-x-0 -top-5 h-5 bg-gradient-to-t from-[#0a0a0a] to-transparent pointer-events-none" />
 
       <nav className="bg-[#0a0a0a]/95 backdrop-blur-xl border-t border-white/10">
-        <div className="flex items-center justify-around px-1 py-1">
+        <div className="flex items-center justify-around px-0.5 py-0.5">
           {navItems.map((nav) => {
             const Icon = nav.icon;
-            const isActive = location.pathname === nav.href ||
-              (nav.href !== "/" && location.pathname.startsWith(nav.href));
+            let isActive = false;
+            if (nav.match === "my-feed") {
+              isActive = location.search.includes("tab=my-feed");
+            } else if (nav.match === "home") {
+              isActive = location.pathname === "/" && !location.search.includes("tab=");
+            } else if (nav.match === "boards") {
+              isActive = location.pathname.startsWith("/boards")
+                || /\/[^/]+\/boards/.test(location.pathname);
+            } else if (nav.match === "profile") {
+              isActive = location.pathname.includes("/profile");
+            } else if (nav.match === "search") {
+              isActive = location.pathname.startsWith("/search");
+            } else if (nav.match === "auth") {
+              isActive = location.pathname.startsWith("/auth");
+            }
 
             return (
               <NavLink
                 key={nav.label}
                 to={nav.href}
-                className={`flex flex-col items-center justify-center min-w-[56px] py-2 px-2 rounded-xl transition-all duration-200 ${isActive
-                  ? "text-orange-400"
-                  : "text-white/50 active:text-white active:scale-95"
-                  }`}
+                className={`flex flex-col items-center justify-center flex-1 max-w-[72px] min-h-[48px] py-1.5 px-1 rounded-xl transition-all duration-200 tap-target ${
+                  isActive
+                    ? "text-[var(--primary)]"
+                    : "text-white/50 active:text-white active:scale-95"
+                }`}
               >
-                <Icon className={`text-lg mb-0.5 transition-transform ${isActive ? 'scale-110' : ''}`} />
-                <span className={`text-[9px] font-medium ${isActive ? 'text-orange-400' : ''}`}>
+                <Icon className={`text-[1.15rem] mb-0.5 transition-transform ${isActive ? "scale-110" : ""}`} />
+                <span className={`text-[10px] font-medium leading-tight ${isActive ? "text-[var(--primary)]" : ""}`}>
                   {nav.label}
                 </span>
               </NavLink>

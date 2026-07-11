@@ -5,10 +5,11 @@
 
 const API_BASE = '/api/content';
 
-async function fetchFromEdge(path, fallbackFn) {
+async function fetchFromEdge(path, fallbackFn, { fresh = false } = {}) {
     try {
         const response = await fetch(path, {
             headers: { Accept: 'application/json' },
+            cache: fresh ? 'no-store' : 'default',
         });
 
         if (!response.ok) {
@@ -22,14 +23,16 @@ async function fetchFromEdge(path, fallbackFn) {
     }
 }
 
-export async function getHomepageSectionsFromEdge(activeOnly = true) {
+export async function getHomepageSectionsFromEdge(activeOnly = true, { fresh = false } = {}) {
+    const bust = fresh ? `&_=${Date.now()}` : '';
     const payload = await fetchFromEdge(
-        `${API_BASE}/homepage?activeOnly=${activeOnly}`,
+        `${API_BASE}/homepage?activeOnly=${activeOnly}${bust}`,
         async () => {
             const { getHomepageSections } = await import('./supabase.js');
             const data = await getHomepageSections(activeOnly);
             return { data };
-        }
+        },
+        { fresh },
     );
 
     return payload.data || [];
@@ -84,12 +87,31 @@ export async function searchContentFromEdge(query, options = {}) {
     );
 }
 
-export async function getMovieDetailFromEdge(tmdbId) {
+export async function searchPeopleFromEdge(query, limit = 20) {
+    const params = new URLSearchParams();
+    params.set('q', query);
+    params.set('limit', String(limit));
+
+    const payload = await fetchFromEdge(
+        `${API_BASE}/people?${params.toString()}`,
+        async () => {
+            const { searchCastCrewFromDb } = await import('./contentApi.js');
+            const data = await searchCastCrewFromDb(query);
+            return { data };
+        }
+    );
+    return payload.data || [];
+}
+
+export async function getMovieDetailFromEdge(tmdbId, mediaType = null) {
+    // tmdb_id alone isn't unique — movie IDs and TV IDs are separate numbering
+    // spaces, so the same id can match a movie AND a show. mediaType disambiguates.
+    const query = mediaType ? `?mediaType=${encodeURIComponent(mediaType)}` : '';
     return fetchFromEdge(
-        `${API_BASE}/movie/${encodeURIComponent(tmdbId)}`,
+        `${API_BASE}/movie/${encodeURIComponent(tmdbId)}${query}`,
         async () => {
             const { getContentByTmdbId } = await import('./contentApi.js');
-            const data = await getContentByTmdbId(tmdbId);
+            const data = await getContentByTmdbId(tmdbId, mediaType);
             return data ? { success: true, data } : { success: false, error: 'Not found' };
         }
     );
@@ -127,4 +149,112 @@ export async function getTrendingContentFromEdge(mediaType = null, limit = 24) {
     );
 
     return payload.data || [];
+}
+
+// =============================================
+// NEW CONTENT ENDPOINTS
+// =============================================
+
+/**
+ * Get movies with trailers
+ */
+/**
+ * Verified RSS trailers (YouTube channels matched to TMDB) for the Home feed.
+ */
+export async function getRssTrailersFromEdge(options = {}) {
+    const params = new URLSearchParams();
+    if (options.limit != null) params.set('limit', String(options.limit));
+    if (options.daysBack != null) params.set('daysBack', String(options.daysBack));
+    return fetchFromEdge(
+        `${API_BASE}/rss-trailers?${params.toString()}`,
+        async () => ({ data: [], total: 0 }),
+    );
+}
+
+export async function getTrailersFromEdge(options = {}) {
+    const params = new URLSearchParams();
+    if (options.mediaType) params.set('mediaType', options.mediaType);
+    if (options.limit != null) params.set('limit', String(options.limit));
+    if (options.offset != null) params.set('offset', String(options.offset));
+    if (options.daysBack != null) params.set('daysBack', String(options.daysBack));
+    if (options.type) params.set('type', options.type);
+    if (options.sortBy) params.set('sortBy', options.sortBy);
+
+    return fetchFromEdge(
+        `${API_BASE}/trailers?${params.toString()}`,
+        async () => ({ data: [], total: 0 }),
+    );
+}
+
+/**
+ * Get admin-curated news articles (DB-backed, sourced from RSS feeds) for the
+ * public Home feed.
+ */
+export async function getArticlesFromEdge(options = {}) {
+    const params = new URLSearchParams();
+    if (options.limit != null) params.set('limit', String(options.limit));
+    if (options.offset != null) params.set('offset', String(options.offset));
+
+    const payload = await fetchFromEdge(
+        `${API_BASE}/articles?${params.toString()}`,
+        async () => ({ data: [], total: 0 }),
+    );
+
+    return payload.data || [];
+}
+
+/**
+ * Accurate Parent Guide + Movie Vibes (TMDB certification + LLM analysis).
+ * @param {string|number} tmdbId
+ * @param {'movie'|'tv'} mediaType
+ */
+export async function getTitleAnalysisFromEdge(tmdbId, mediaType = 'movie', region = 'IN') {
+    const params = new URLSearchParams({ region });
+    return fetchFromEdge(
+        `${API_BASE}/analysis/${mediaType}/${tmdbId}?${params.toString()}`,
+        async () => ({ data: { certification: null, parentGuide: null, vibes: null } }),
+    );
+}
+
+/**
+ * "More like this" — content-based similar titles (NOT personalised to the user).
+ * @param {string|number} tmdbId
+ * @param {'movie'|'tv'} mediaType
+ */
+export async function getSimilarTitlesFromEdge(tmdbId, mediaType = 'movie', limit = 18) {
+    const params = new URLSearchParams({ limit: String(limit) });
+    return fetchFromEdge(
+        `${API_BASE}/similar/${mediaType}/${tmdbId}?${params.toString()}`,
+        async () => ({ data: [], total: 0 }),
+    );
+}
+
+/**
+ * Where-to-watch (OTT) availability for a title.
+ * @param {string|number} tmdbId
+ * @param {'movie'|'tv'} mediaType
+ * @param {string} region ISO country code (default IN)
+ */
+export async function getWatchProvidersFromEdge(tmdbId, mediaType = 'movie', region = 'IN') {
+    const params = new URLSearchParams({ region });
+    return fetchFromEdge(
+        `${API_BASE}/watch-providers/${mediaType}/${tmdbId}?${params.toString()}`,
+        async () => ({ data: { region: null, link: null, flatrate: [], rent: [], buy: [] } }),
+    );
+}
+
+/**
+ * Alternate TMDB poster + still (backdrop) art for a movie or TV title.
+ * @returns {Promise<{ posters: Array, backdrops: Array, default_poster: string|null, default_backdrop: string|null }>}
+ */
+export async function getTitlePostersFromEdge(tmdbId, mediaType = 'movie') {
+    const params = new URLSearchParams({
+        tmdbId: String(tmdbId),
+        mediaType: mediaType === 'tv' ? 'tv' : 'movie',
+    });
+    const payload = await fetchFromEdge(
+        `${API_BASE}/posters?${params.toString()}`,
+        async () => ({ data: { posters: [], backdrops: [], default_poster: null, default_backdrop: null } }),
+    );
+    return payload.data || { posters: [], backdrops: [], default_poster: null, default_backdrop: null };
 }

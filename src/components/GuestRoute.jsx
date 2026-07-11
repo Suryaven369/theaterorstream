@@ -11,9 +11,10 @@ function AuthLoadingScreen() {
 
 /**
  * Auth-only pages — redirect signed-in users away from /auth.
+ * Users always go to home or their previous location after login.
  */
 export function GuestRoute({ children }) {
-    const { loading, isAuthenticated, isOnboarded } = useAuth();
+    const { loading, isAuthenticated } = useAuth();
     const location = useLocation();
 
     if (loading) {
@@ -22,9 +23,8 @@ export function GuestRoute({ children }) {
 
     if (isAuthenticated) {
         const from = location.state?.from;
-        const destination = isOnboarded
-            ? (from && from !== '/auth' ? from : '/')
-            : '/onboarding';
+        // Always go to home or previous location, never force onboarding
+        const destination = from && from !== '/auth' ? from : '/';
         return <Navigate to={destination} replace />;
     }
 

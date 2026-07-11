@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useDispatch } from "react-redux";
 import tmdbApi from "../../lib/tmdbApi";
 import {
     supabase,
@@ -11,20 +12,8 @@ import {
     saveFullMovieToLibrary
 } from "../../lib/supabase";
 import { useToast } from "../../components/Toast";
-
-// Available regions for fetching content
-const REGIONS = [
-    { code: "IN", name: "India", flag: "🇮🇳" },
-    { code: "US", name: "United States", flag: "🇺🇸" },
-    { code: "GB", name: "United Kingdom", flag: "🇬🇧" },
-    { code: "CA", name: "Canada", flag: "🇨🇦" },
-    { code: "AU", name: "Australia", flag: "🇦🇺" },
-    { code: "DE", name: "Germany", flag: "🇩🇪" },
-    { code: "FR", name: "France", flag: "🇫🇷" },
-    { code: "JP", name: "Japan", flag: "🇯🇵" },
-    { code: "KR", name: "South Korea", flag: "🇰🇷" },
-    { code: "BR", name: "Brazil", flag: "🇧🇷" },
-];
+import { REGIONS } from "../../constants/regions";
+import { invalidateHomepageSections } from "../../store/movieSlice";
 
 // Language codes by region for discover API
 const REGION_LANGUAGES = {
@@ -52,7 +41,7 @@ const API_ENDPOINTS = {
     top_rated_tv: "/tv/top_rated",
     upcoming: "/movie/upcoming", // Use official upcoming endpoint with region
     coming_soon: "/discover/movie", // Use discover for flexible date filtering
-    airing_today: "/tv/airing_today",
+    airing_today: "/tv/on_the_air", // legacy — remapped away from airing_today
     on_the_air: "/tv/on_the_air",
     provider_8: "/discover/movie",
     provider_119: "/discover/movie",
@@ -64,6 +53,7 @@ const API_ENDPOINTS = {
 const AdminSectionsPage = () => {
     // Toast notifications
     const toast = useToast();
+    const dispatch = useDispatch();
 
     // Saved sections from DB
     const [savedSections, setSavedSections] = useState([]);
@@ -81,8 +71,8 @@ const AdminSectionsPage = () => {
     // Region selection for API fetches
     const [selectedRegion, setSelectedRegion] = useState(REGIONS[0]); // Default India
 
-    // Content mode: 'movies' or 'tv' - for managing different section types
-    const [contentMode, setContentMode] = useState('movies');
+    // My Feed only — movies + series live in homepage_sections together
+    const contentMode = 'movies';
 
     // Track if there are unsaved changes
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -92,7 +82,7 @@ const AdminSectionsPage = () => {
     const containerRef = useRef(null);
     const scrollPositionRef = useRef(0);
 
-    // Load sections from DB based on content mode
+    // Load raw homepage sections (do not merge TV table — that is for the public My Feed only)
     const loadSections = useCallback(async (preserveScroll = false) => {
         if (preserveScroll && containerRef.current) {
             scrollPositionRef.current = containerRef.current.scrollTop;
@@ -100,52 +90,29 @@ const AdminSectionsPage = () => {
 
         setLoading(true);
 
-        // Load from appropriate table based on content mode
-        const tableName = contentMode === 'tv' ? 'tv_sections' : 'homepage_sections';
-
         try {
-            // For TV mode, try tv_sections first, fall back to homepage_sections
-            let data;
-            if (contentMode === 'tv') {
-                const { data: tvData, error: tvError } = await supabase
-                    .from('tv_sections')
-                    .select('*')
-                    .order('display_order', { ascending: true });
-
-                if (!tvError && tvData && tvData.length > 0) {
-                    data = tvData;
-                } else {
-                    // Fall back to homepage_sections but filter for TV
-                    data = await getHomepageSections();
-                    // You may want to filter or mark these
-                }
-            } else {
-                data = await getHomepageSections();
-            }
-
+            const data = await getHomepageSections(false, { mergeTv: false });
             setSavedSections(data || []);
             setSections(data || []);
         } catch (err) {
             console.error('Error loading sections:', err);
-            const data = await getHomepageSections();
-            setSavedSections(data || []);
-            setSections(data || []);
+            setSavedSections([]);
+            setSections([]);
         }
 
         setHasUnsavedChanges(false);
         setLoading(false);
 
-        // Restore scroll position
         if (preserveScroll && containerRef.current) {
             requestAnimationFrame(() => {
                 containerRef.current.scrollTop = scrollPositionRef.current;
             });
         }
-    }, [contentMode]);
+    }, []);
 
     useEffect(() => {
         loadSections();
-    }, [loadSections, contentMode]);
+    }, [loadSections]);
 
     // Live search with debounce
     useEffect(() => {
@@ -159,22 +126,24 @@ const AdminSectionsPage = () => {
         return () => clearTimeout(timer);
     }, [searchQuery]);
 
+    // Guards against a slower earlier request resolving after a faster later one
+    // and overwriting it with stale results while the user is still typing.
+    const searchRequestId = useRef(0);
     const performSearch = async (query) => {
+        const requestId = ++searchRequestId.current;
         setSearchLoading(true);
         try {
             const response = await tmdbApi.get("/search/multi", {
                 params: { query, page: 1 }
             });
-            // Filter results based on content mode
-            const targetType = contentMode === 'tv' ? 'tv' : 'movie';
             const results = response.data.results
-                ?.filter(r => r.media_type === targetType)
+                ?.filter((r) => r.media_type === 'movie' || r.media_type === 'tv')
                 .slice(0, 12) || [];
-            setSearchResults(results);
+            if (requestId === searchRequestId.current) setSearchResults(results);
         } catch (error) {
             console.error("Search error:", error);
         }
-        setSearchLoading(false);
+        if (requestId === searchRequestId.current) setSearchLoading(false);
     };
 
     // Helper to get date strings for API filters
@@ -195,103 +164,206 @@ const AdminSectionsPage = () => {
         setFetchingApi(section.id);
         try {
             let endpoint = "/trending/all/week";
-            let params = { page: 1 };
+            // Params WITHOUT `page` — page is added per-request below based on max_movies, since a
+            // single TMDB page only returns 20 items and previously this never fetched more than
+            // page 1, so raising the limit above 20 had no effect.
+            let baseParams = {};
             const { todayStr, sixMonthsStr } = getDateFilters();
             const regionCode = selectedRegion.code;
             const regionLanguages = REGION_LANGUAGES[regionCode] || 'en';
 
-            console.log(`🌍 Fetching for region: ${selectedRegion.name} (${regionCode}), Mode: ${contentMode}`);
+            console.log(
+                section.api_source === 'now_playing' || section.api_source === 'on_the_air'
+                    ? `🌍 Fetching theater movies for ${selectedRegion.name} (${regionCode})`
+                    : `🌍 Fetching movies + series for ${selectedRegion.name} (${regionCode})`
+            );
 
-            // ============================================
-            // TV MODE: Override ALL endpoints to fetch TV content
-            // ============================================
-            if (contentMode === 'tv') {
-                console.log(`📺 TV Mode active - forcing TV endpoints`);
+            // Always mix series into My Feed section fetches
+            const mixTvIntoHomepage = true;
+            let tvCompanion = null;
 
-                if (section.api_source?.startsWith("provider_")) {
-                    // Streaming provider - use /discover/tv
-                    const providerId = section.api_source.split("_")[1];
-                    endpoint = "/discover/tv";
-                    params = {
-                        with_watch_providers: providerId,
-                        watch_region: regionCode,
-                        sort_by: "popularity.desc",
-                        page: 1
-                    };
-                } else if (section.api_source === 'trending' || section.api_source === 'trending_tv' || section.api_source === 'trending_movies') {
-                    // Trending - use TV trending
-                    endpoint = "/trending/tv/week";
-                    params = { page: 1 };
-                } else if (section.api_source === 'popular' || section.api_source === 'popular_tv') {
-                    endpoint = "/tv/popular";
-                    params = { page: 1 };
-                } else if (section.api_source === 'top_rated' || section.api_source === 'top_rated_tv') {
-                    endpoint = "/tv/top_rated";
-                    params = { page: 1 };
-                } else if (section.api_source === 'airing_today') {
-                    endpoint = "/tv/airing_today";
-                    params = { page: 1 };
-                } else if (section.api_source === 'on_the_air') {
-                    endpoint = "/tv/on_the_air";
-                    params = { page: 1 };
-                } else {
-                    // Default for TV mode - trending TV
-                    endpoint = "/trending/tv/week";
-                    params = { page: 1 };
-                }
-            } else {
-                // ============================================
-                // MOVIES MODE: Use movie endpoints
-                // ============================================
+            {
+                // My Feed: movies + series in the same rows
                 endpoint = API_ENDPOINTS[section.api_source] || "/trending/movie/week";
 
-                if (section.api_source === 'now_playing') {
-                    params = { region: regionCode, page: 1 };
+                if (section.api_source === 'now_playing' || section.api_source === 'on_the_air') {
+                    // In Theaters = theatrical movies only (no series)
+                    endpoint = "/movie/now_playing";
+                    baseParams = { region: regionCode };
+                    tvCompanion = null;
                 } else if (section.api_source === 'upcoming') {
-                    params = { region: regionCode, page: 1 };
+                    baseParams = { region: regionCode };
+                    tvCompanion = {
+                        endpoint: "/discover/tv",
+                        params: {
+                            'first_air_date.gte': todayStr,
+                            'first_air_date.lte': sixMonthsStr,
+                            sort_by: 'popularity.desc',
+                            with_original_language: regionLanguages,
+                        },
+                    };
                 } else if (section.api_source === 'coming_soon') {
                     endpoint = "/discover/movie";
-                    params = {
+                    baseParams = {
                         region: regionCode,
                         'primary_release_date.gte': todayStr,
                         'primary_release_date.lte': sixMonthsStr,
                         sort_by: 'popularity.desc',
                         with_original_language: regionLanguages,
-                        page: 1
+                    };
+                    tvCompanion = {
+                        endpoint: "/discover/tv",
+                        params: {
+                            'first_air_date.gte': todayStr,
+                            'first_air_date.lte': sixMonthsStr,
+                            sort_by: 'popularity.desc',
+                            with_original_language: regionLanguages,
+                        },
                     };
                 } else if (section.api_source?.startsWith("provider_")) {
                     const providerId = section.api_source.split("_")[1];
                     endpoint = "/discover/movie";
-                    params = {
+                    baseParams = {
                         with_watch_providers: providerId,
                         watch_region: regionCode,
+                        with_watch_monetization_types: "flatrate",
                         sort_by: "popularity.desc",
-                        page: 1
                     };
-                } else if (['popular', 'top_rated'].includes(section.api_source)) {
-                    params = { region: regionCode, page: 1 };
+                    tvCompanion = {
+                        endpoint: "/discover/tv",
+                        params: {
+                            with_watch_providers: providerId,
+                            watch_region: regionCode,
+                            with_watch_monetization_types: "flatrate",
+                            sort_by: "popularity.desc",
+                        },
+                    };
+                } else if (
+                    section.api_source === 'trending'
+                    || section.api_source === 'trending_movies'
+                    || section.api_source === 'trending_tv'
+                    || !section.api_source
+                ) {
+                    endpoint = "/trending/movie/week";
+                    tvCompanion = { endpoint: "/trending/tv/week", params: {} };
+                } else if (['popular', 'popular_tv', 'top_rated', 'top_rated_tv'].includes(section.api_source)) {
+                    const isTop = section.api_source.includes('top_rated');
+                    endpoint = isTop ? "/movie/top_rated" : "/movie/popular";
+                    baseParams = { region: regionCode };
+                    tvCompanion = {
+                        endpoint: isTop ? "/tv/top_rated" : "/tv/popular",
+                        params: {},
+                    };
+                } else if (section.api_source === 'airing_today') {
+                    // Remap legacy airing_today → In Theaters (movies only)
+                    endpoint = "/movie/now_playing";
+                    baseParams = { region: regionCode };
+                    tvCompanion = null;
                 }
             }
 
-            // Determine media type based on content mode
-            const defaultMediaType = contentMode === 'tv' ? 'tv' : 'movie';
+            const defaultMediaType = 'movie';
+            const isOttProvider = section.api_source?.startsWith('provider_');
+            // OTT rows always pull a balanced 3 movies + 3 series
+            const OTT_MOVIE_COUNT = 3;
+            const OTT_SERIES_COUNT = 3;
 
-            console.log(`🔄 Fetching ${section.api_source} from: ${endpoint} (mediaType: ${defaultMediaType})`, params);
+            const desiredCount = isOttProvider
+                ? OTT_MOVIE_COUNT + OTT_SERIES_COUNT
+                : (section.max_movies || 10);
+            const isUpcomingFilter = section.api_source === 'upcoming' || section.api_source === 'coming_soon';
+            const pagesToFetch = Math.min(10, Math.ceil(desiredCount / 20) + (isUpcomingFilter ? 1 : 0));
 
-            const response = await tmdbApi.get(endpoint, { params });
-            let items = response.data.results?.slice(0, section.max_movies || 10) || [];
+            console.log(`🔄 Fetching ${section.api_source} from: ${endpoint} (+ TV companion), ${pagesToFetch} page(s)`, baseParams);
 
-            // Filter for upcoming (movies only)
-            if (contentMode !== 'tv' && (section.api_source === 'upcoming' || section.api_source === 'coming_soon')) {
+            const fetchPages = async (ep, params, pages) => {
+                const pageResponses = await Promise.all(
+                    Array.from({ length: pages }, (_, i) =>
+                        tmdbApi.get(ep, { params: { ...params, page: i + 1 } })
+                    )
+                );
+                const seen = new Set();
+                const out = [];
+                for (const response of pageResponses) {
+                    for (const item of response.data.results || []) {
+                        if (!seen.has(item.id)) {
+                            seen.add(item.id);
+                            out.push(item);
+                        }
+                    }
+                }
+                return out;
+            };
+
+            let items = await fetchPages(endpoint, baseParams, pagesToFetch);
+
+            // Mix TV into homepage sections (Hot / OTT / Coming Soon) — never In Theaters
+            if (mixTvIntoHomepage && tvCompanion) {
+                try {
+                    const tvPages = isOttProvider ? 1 : Math.min(5, Math.ceil(desiredCount / 20) + 1);
+                    const tvItems = await fetchPages(tvCompanion.endpoint, tvCompanion.params, tvPages);
+                    const taggedMovies = items.map((i) => ({ ...i, media_type: i.media_type || 'movie' }));
+                    const taggedTv = tvItems.map((i) => ({ ...i, media_type: 'tv' }));
+
+                    if (isOttProvider) {
+                        // Exactly 3 movies + 3 series, interleaved for the row
+                        const topMovies = taggedMovies
+                            .sort((a, b) => (b.popularity || 0) - (a.popularity || 0))
+                            .slice(0, OTT_MOVIE_COUNT);
+                        const topSeries = taggedTv
+                            .sort((a, b) => (b.popularity || 0) - (a.popularity || 0))
+                            .slice(0, OTT_SERIES_COUNT);
+                        items = [];
+                        for (let i = 0; i < Math.max(topMovies.length, topSeries.length); i++) {
+                            if (topMovies[i]) items.push(topMovies[i]);
+                            if (topSeries[i]) items.push(topSeries[i]);
+                        }
+                        console.log(`📺 OTT mix for "${section.name}": ${topMovies.length} movies + ${topSeries.length} series`);
+                    } else {
+                        items = [...taggedMovies, ...taggedTv]
+                            .sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+                        console.log(`📺 Mixed ${taggedTv.length} series into "${section.name}"`);
+                    }
+                } catch (tvErr) {
+                    console.warn('TV companion fetch failed, keeping movies only', tvErr);
+                    if (isOttProvider) {
+                        items = items
+                            .map((i) => ({ ...i, media_type: i.media_type || 'movie' }))
+                            .sort((a, b) => (b.popularity || 0) - (a.popularity || 0))
+                            .slice(0, OTT_MOVIE_COUNT);
+                    }
+                }
+            }
+
+            const isTheaterSection =
+                section.api_source === 'now_playing'
+                || section.api_source === 'on_the_air'
+                || section.api_source === 'airing_today';
+
+            // In Theaters: movies only — drop any series
+            if (isTheaterSection) {
+                items = items
+                    .filter((item) => (item.media_type || 'movie') !== 'tv')
+                    .map((item) => ({ ...item, media_type: 'movie' }));
+            }
+
+            // Filter for upcoming (movies only) BEFORE truncating to max_movies — filtering after
+            // slicing could drop already-released items out of the requested count entirely.
+            if (isUpcomingFilter) {
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
-                items = items.filter(item => {
-                    const releaseDate = new Date(item.release_date);
-                    return releaseDate >= today;
+                items = items.filter((item) => {
+                    const dateStr = item.release_date || item.first_air_date;
+                    if (!dateStr) return item.media_type === 'tv';
+                    return new Date(dateStr) >= today;
                 });
             }
 
-            console.log(`📦 Found ${items.length} ${defaultMediaType === 'tv' ? 'TV shows' : 'movies'} for ${section.name}`);
+            if (!isOttProvider) {
+                items = items.slice(0, desiredCount);
+            }
+
+            console.log(`📦 Found ${items.length} titles for ${section.name}`);
 
             // Save each item to library and prepare section data
             const itemDataPromises = items.map(async (item) => {
@@ -341,21 +413,51 @@ const AdminSectionsPage = () => {
 
             const itemData = await Promise.all(itemDataPromises);
 
-            // Update locally (staged) - save items BY REGION
+            // Build the region payload and persist immediately (Fetch = publish for this region)
+            const existingMoviesByRegion = section.movies_by_region || {};
+            const nextMoviesByRegion = {
+                ...existingMoviesByRegion,
+                [selectedRegion.code]: itemData,
+            };
+            const nextMaxMovies = isOttProvider
+                ? OTT_MOVIE_COUNT + OTT_SERIES_COUNT
+                : section.max_movies;
+
             setSections(prev => prev.map(s => {
                 if (s.id !== section.id) return s;
-                const existingMoviesByRegion = s.movies_by_region || {};
                 return {
                     ...s,
-                    movies_by_region: {
-                        ...existingMoviesByRegion,
-                        [selectedRegion.code]: itemData
-                    }
+                    ...(isOttProvider ? { max_movies: nextMaxMovies } : {}),
+                    movies_by_region: nextMoviesByRegion,
                 };
             }));
-            setHasUnsavedChanges(true);
-            console.log(`✅ Staged ${itemData.length} ${defaultMediaType === 'tv' ? 'TV shows' : 'movies'} for "${section.name}" in ${selectedRegion.name} region`);
-            toast.success(`Saved ${itemData.length} ${defaultMediaType === 'tv' ? 'TV shows' : 'movies'} for ${selectedRegion.flag} ${selectedRegion.name}`);
+
+            const result = await updateHomepageSection(section.id, {
+                movies_by_region: nextMoviesByRegion,
+                ...(isOttProvider ? { max_movies: nextMaxMovies } : {}),
+            });
+            if (!result.success) throw result.error || new Error('Failed to publish section');
+
+            setSavedSections(prev => prev.map(s => {
+                if (s.id !== section.id) return s;
+                return {
+                    ...s,
+                    ...(isOttProvider ? { max_movies: nextMaxMovies } : {}),
+                    movies_by_region: nextMoviesByRegion,
+                };
+            }));
+            setHasUnsavedChanges(false);
+            dispatch(invalidateHomepageSections());
+            try {
+                localStorage.setItem('homepage_sections_rev', String(Date.now()));
+            } catch { /* ignore */ }
+
+            console.log(`✅ Published ${itemData.length} titles for "${section.name}" in ${selectedRegion.name}`);
+            toast.success(
+                isOttProvider
+                    ? `Published ${OTT_MOVIE_COUNT} movies + ${OTT_SERIES_COUNT} series for ${selectedRegion.flag} ${selectedRegion.name}`
+                    : `Published ${itemData.length} titles for ${selectedRegion.flag} ${selectedRegion.name}`
+            );
 
         } catch (error) {
             console.error("Error fetching from API:", error);
@@ -368,31 +470,11 @@ const AdminSectionsPage = () => {
     const handleCreateSection = async () => {
         if (!newSection.name.trim()) return;
         const slug = newSection.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-
-        if (contentMode === 'tv') {
-            // Create in tv_sections table
-            const { error } = await supabase
-                .from('tv_sections')
-                .insert({
-                    ...newSection,
-                    slug,
-                    display_order: sections.length + 1,
-                    movies_by_region: {}
-                });
-
-            if (error) {
-                console.error('Error creating TV section:', error);
-                toast.error('Failed to create TV section');
-                return;
-            }
-            toast.success(`TV Section "${newSection.name}" created!`);
-        } else {
-            await createHomepageSection({ ...newSection, slug });
-            toast.success(`Section "${newSection.name}" created!`);
-        }
-
+        await createHomepageSection({ ...newSection, slug });
+        toast.success(`Section "${newSection.name}" created!`);
         setNewSection({ name: "", icon: "🎬", section_type: "manual", api_source: "trending", max_movies: 10 });
         await loadSections(true);
+        dispatch(invalidateHomepageSections());
     };
 
     // Delete section (immediate save)
@@ -405,6 +487,7 @@ const AdminSectionsPage = () => {
             await deleteHomepageSection(id);
             toast.success("Section deleted");
             await loadSections(true);
+            dispatch(invalidateHomepageSections());
         }
     };
 
@@ -436,7 +519,7 @@ const AdminSectionsPage = () => {
             const fullData = detailResponse.data;
 
             // Save to library (immediate)
-            await saveFullMovieToLibrary(fullData);
+            await saveFullMovieToLibrary(fullData, { media_type: mediaType });
             console.log(`✓ Saved to library: ${fullData.title || fullData.name}`);
 
             // Get existing movies for this section (for selected region)
@@ -510,6 +593,7 @@ const AdminSectionsPage = () => {
             setSearchResults([]);
             console.log(`✅ Auto-saved movie "${newMovie.title}"`);
             toast.success(`Added & Saved "${newMovie.title}"`);
+            dispatch(invalidateHomepageSections());
 
         } catch (error) {
             console.error("Error adding movie:", error);
@@ -601,11 +685,11 @@ const AdminSectionsPage = () => {
         setHasUnsavedChanges(true);
     };
 
-    // Clear all movies from section - STAGES locally
+    // Clear all movies from section (every region) - STAGES locally
     const handleClearMovies = (sectionId) => {
         if (confirm("Remove all movies from this section?")) {
             setSections(prev => prev.map(s =>
-                s.id === sectionId ? { ...s, movies: [] } : s
+                s.id === sectionId ? { ...s, movies_by_region: {} } : s
             ));
             setHasUnsavedChanges(true);
         }
@@ -615,125 +699,66 @@ const AdminSectionsPage = () => {
     const handleSaveChanges = async () => {
         setSaving(true);
         try {
-            const tableName = contentMode === 'tv' ? 'tv_sections' : 'homepage_sections';
-            console.log(`💾 Saving all changes to ${tableName}...`);
+            console.log('💾 Saving all changes to homepage_sections...');
 
-            // Find changed sections and save them
             for (const section of sections) {
                 const savedVersion = savedSections.find(s => s.id === section.id);
                 if (!savedVersion) continue;
 
-                // Check if anything changed
                 const moviesByRegionChanged = JSON.stringify(section.movies_by_region) !== JSON.stringify(savedVersion.movies_by_region);
-                const activeChanged = section.is_active !== savedVersion.is_active;
+                const metaChanged =
+                    section.is_active !== savedVersion.is_active
+                    || section.name !== savedVersion.name
+                    || section.icon !== savedVersion.icon
+                    || section.description !== savedVersion.description
+                    || section.api_source !== savedVersion.api_source
+                    || section.section_type !== savedVersion.section_type
+                    || section.max_movies !== savedVersion.max_movies;
 
-                if (moviesByRegionChanged || activeChanged) {
-                    // Count total items across all regions
+                if (moviesByRegionChanged || metaChanged) {
                     const totalItems = Object.values(section.movies_by_region || {}).reduce((acc, arr) => acc + (arr?.length || 0), 0);
                     const regionCount = Object.keys(section.movies_by_region || {}).length;
-                    console.log(`  Updating section: ${section.name} (${totalItems} ${contentMode === 'tv' ? 'shows' : 'movies'} across ${regionCount} regions)`);
+                    console.log(`  Updating section: ${section.name} (${totalItems} titles across ${regionCount} regions)`);
 
-                    // ========================================================
-                    // OPTIMIZATION: Strip heavy Base64 images before saving section
-                    // We only need TMDB ID + basic info. Images are now in movies_library.
-                    // This creates a lightweight payload for fast saving.
-                    // ========================================================
                     const optimizedMoviesByRegion = {};
                     if (section.movies_by_region) {
                         Object.keys(section.movies_by_region).forEach(code => {
                             const movies = section.movies_by_region[code] || [];
                             optimizedMoviesByRegion[code] = movies.map(m => {
-                                // Create a clean copy WITHOUT images/videos arrays
-                                // We keep essential UI data for fast initial render if hydration fails
                                 const { images, videos, credits, similar, recommendations, reviews, ...cleanMovie } = m;
                                 return cleanMovie;
                             });
                         });
                     }
 
-                    // Save to appropriate table
-                    if (contentMode === 'tv') {
-                        // For TV mode - check if this section exists in tv_sections or needs to be created
-                        // First try to update, if not found, insert
-                        const { data: existingSection, error: checkError } = await supabase
-                            .from('tv_sections')
-                            .select('id')
-                            .eq('id', section.id)
-                            .maybeSingle(); // Changed from single() to maybeSingle() to avoid 406 error
+                    const result = await updateHomepageSection(section.id, {
+                        name: section.name,
+                        icon: section.icon,
+                        description: section.description,
+                        api_source: section.api_source,
+                        section_type: section.section_type,
+                        max_movies: section.max_movies,
+                        movies_by_region: optimizedMoviesByRegion,
+                        is_active: section.is_active,
+                    });
 
-                        if (existingSection) {
-                            // Update existing tv_sections record
-                            const { error } = await supabase
-                                .from('tv_sections')
-                                .update({
-                                    movies_by_region: optimizedMoviesByRegion, // Save CLEAN data
-                                    is_active: section.is_active,
-                                    updated_at: new Date().toISOString()
-                                })
-                                .eq('id', section.id);
-
-                            if (error) {
-                                console.error('Error updating tv_sections:', error);
-                                throw error;
-                            }
-                        } else {
-                            // Section doesn't exist in tv_sections - need to create it
-                            // This happens when falling back to homepage_sections
-                            console.log(`  Creating new TV section for: ${section.name}`);
-                            const { error } = await supabase
-                                .from('tv_sections')
-                                .insert({
-                                    name: section.name,
-                                    slug: section.slug || section.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-                                    icon: section.icon,
-                                    description: section.description,
-                                    section_type: section.section_type,
-                                    api_source: section.api_source,
-                                    display_order: section.display_order,
-                                    movies_by_region: optimizedMoviesByRegion, // Save CLEAN data
-                                    is_active: section.is_active
-                                });
-
-                            if (error) {
-                                console.error('Error creating tv_section:', error);
-                                throw error;
-                            }
-                        }
-                    } else {
-                        // Movies mode - saves to homepage_sections
-                        const { error } = await updateHomepageSection(section.id, {
-                            movies_by_region: optimizedMoviesByRegion, // Save CLEAN data
-                            is_active: section.is_active
-                        });
-
-                        if (error) throw error;
-                    }
+                    if (!result.success) throw result.error || new Error('Failed to update section');
                 }
             }
 
-
-
-            // Save reorder if changed
             const orderChanged = JSON.stringify(sections.map(s => s.id)) !== JSON.stringify(savedSections.map(s => s.id));
             if (orderChanged) {
                 console.log('  Updating section order...');
-                if (contentMode === 'tv') {
-                    // Reorder tv_sections
-                    for (let i = 0; i < sections.length; i++) {
-                        await supabase
-                            .from('tv_sections')
-                            .update({ display_order: i + 1 })
-                            .eq('id', sections[i].id);
-                    }
-                } else {
-                    await reorderHomepageSections(sections.map(s => s.id));
-                }
+                await reorderHomepageSections(sections.map(s => s.id));
             }
 
-            // Reload from DB to confirm
             await loadSections(true);
+            dispatch(invalidateHomepageSections());
+            try {
+                localStorage.setItem('homepage_sections_rev', String(Date.now()));
+            } catch { /* ignore */ }
             console.log('✅ All changes saved and published!');
-            toast.success(`Changes saved and published to the ${contentMode === 'tv' ? 'Series page' : 'Homepage'}!`);
+            toast.success('Changes saved and published to My Feed!');
 
         } catch (error) {
             console.error('Error saving changes:', error);
@@ -774,15 +799,14 @@ const AdminSectionsPage = () => {
 
     return (
         <div className="p-6 h-full overflow-auto" ref={containerRef}>
-            {/* Header with Save Button and Content Mode Toggle */}
+            {/* Header */}
             <div className="mb-6 flex flex-col gap-4">
                 <div className="flex items-start justify-between">
                     <div>
-                        <h1 className="text-2xl font-bold text-white">
-                            {contentMode === 'movies' ? '🎬 Movie Sections' : '📺 TV Series Sections'}
-                        </h1>
-                        <p className="text-white/50 text-sm">
-                            Manage {contentMode === 'movies' ? 'movie' : 'TV series'} sections displayed on the {contentMode === 'movies' ? 'homepage' : 'Series page'}. Changes are staged locally until you click Save.
+                        <h1 className="text-2xl font-bold text-white">My Feed Sections</h1>
+                        <p className="text-white/50 text-sm max-w-xl">
+                            Manage rows on My Feed. <span className="text-white/70">Fetch from API</span> pulls
+                            movies and TV series together for the selected region. Fetch publishes that region immediately.
                         </p>
                     </div>
 
@@ -812,35 +836,9 @@ const AdminSectionsPage = () => {
                     </div>
                 </div>
 
-                {/* Content Mode Toggle - Movies / TV */}
-                <div className="flex items-center gap-2">
-                    <span className="text-white/40 text-sm mr-2">Content Type:</span>
-                    <div className="flex gap-1 p-1 bg-white/5 rounded-xl">
-                        <button
-                            onClick={() => setContentMode('movies')}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${contentMode === 'movies'
-                                ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg shadow-orange-500/20'
-                                : 'text-white/50 hover:text-white hover:bg-white/5'
-                                }`}
-                        >
-                            🎬 Movies
-                        </button>
-                        <button
-                            onClick={() => setContentMode('tv')}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${contentMode === 'tv'
-                                ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg shadow-purple-500/20'
-                                : 'text-white/50 hover:text-white hover:bg-white/5'
-                                }`}
-                        >
-                            📺 TV Series
-                        </button>
-                    </div>
-                    <span className="text-xs text-white/30 ml-3">
-                        {contentMode === 'movies'
-                            ? 'Managing sections for the In Theaters / Homepage'
-                            : 'Managing sections for the Series page'
-                        }
-                    </span>
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs text-white/50">
+                    Tip: pick a region → open a section → <span className="text-purple-300">Fetch Movies + Series</span> →
+                    Save & Publish. Hot / OTT mix movies + series; In Theaters is movies only.
                 </div>
             </div>
 
@@ -876,16 +874,17 @@ const AdminSectionsPage = () => {
                             onChange={(e) => setNewSection({ ...newSection, api_source: e.target.value })}
                             className="bg-black/30 rounded-lg px-4 py-2 text-sm text-white border border-white/10 outline-none"
                         >
-                            <option value="trending">Trending</option>
-                            <option value="now_playing">Now Playing</option>
-                            <option value="popular">Popular</option>
-                            <option value="top_rated">Top Rated</option>
+                            <option value="trending">Hot / Trending (Movies + Series)</option>
+                            <option value="now_playing">In Theaters (movies only)</option>
+                            <option value="popular">Popular (Movies + Series)</option>
+                            <option value="top_rated">Top Rated (Movies + Series)</option>
                             <option value="upcoming">Upcoming</option>
                             <option value="coming_soon">Coming Soon</option>
-                            <option value="airing_today">Airing Today (TV)</option>
-                            <option value="on_the_air">On The Air (TV)</option>
-                            <option value="popular_tv">Popular TV</option>
-                            <option value="top_rated_tv">Top Rated TV</option>
+                            <option value="provider_8">Netflix (3 movies + 3 series)</option>
+                            <option value="provider_119">Prime Video (3 movies + 3 series)</option>
+                            <option value="provider_337">Disney+ (3 movies + 3 series)</option>
+                            <option value="provider_350">Apple TV+ (3 movies + 3 series)</option>
+                            <option value="provider_122">Hotstar (3 movies + 3 series)</option>
                         </select>
                     )}
                     <input
@@ -931,7 +930,8 @@ const AdminSectionsPage = () => {
                     ))}
                 </div>
                 <p className="text-xs text-white/40 mt-3">
-                    💡 Select a region before clicking "Fetch from API" on sections. This affects Now Playing, Upcoming, Coming Soon, and streaming provider results.
+                    Select a region, then click <span className="text-purple-300">Fetch Movies + Series</span> on a section.
+                    That fills Hot / OTT / Coming Soon with movies + TV. In Theaters stays movies only.
                 </p>
             </div>
 
@@ -1008,7 +1008,7 @@ const AdminSectionsPage = () => {
                                             disabled={fetchingApi === section.id}
                                             className="px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 transition-colors disabled:opacity-50"
                                         >
-                                            {fetchingApi === section.id ? "⏳ Fetching..." : "🔄 Fetch from API"}
+                                            {fetchingApi === section.id ? "⏳ Fetching…" : "🔄 Fetch Movies + Series"}
                                         </button>
                                     )}
                                     <button
@@ -1050,7 +1050,10 @@ const AdminSectionsPage = () => {
                                         <div className="px-4 pb-4">
                                             <div className="flex items-center justify-between mb-2">
                                                 <p className="text-xs text-white/50">
-                                                    {selectedRegion.flag} Showing {regionMovies.length} movies for <span className="text-orange-400">{selectedRegion.name}</span>
+                                                    {selectedRegion.flag} Showing {regionMovies.length} titles for <span className="text-orange-400">{selectedRegion.name}</span>
+                                                    <span className="text-white/30 ml-2">
+                                                        ({regionMovies.filter((m) => m.media_type === 'tv').length} series · {regionMovies.filter((m) => m.media_type !== 'tv').length} movies)
+                                                    </span>
                                                 </p>
                                                 {editingSection === section.id && (
                                                     <span className="text-xs text-white/40">💡 Drag to reorder</span>
@@ -1082,6 +1085,9 @@ const AdminSectionsPage = () => {
                                                                 : 'border-white/10'
                                                                 }`}
                                                         />
+                                                        <span className={`absolute bottom-1 left-1 right-1 text-center text-[9px] font-bold rounded px-0.5 ${movie.media_type === 'tv' ? 'bg-purple-600/90 text-white' : 'bg-black/70 text-white/80'}`}>
+                                                            {movie.media_type === 'tv' ? 'TV' : 'Movie'}
+                                                        </span>
 
                                                         {/* Drag indicator overlay */}
                                                         {editingSection === section.id && (
@@ -1175,29 +1181,28 @@ const AdminSectionsPage = () => {
                                                     <select
                                                         value={section.api_source}
                                                         onChange={(e) => {
-                                                            const newSections = sections.map(s => s.id === section.id ? { ...s, api_source: e.target.value } : s);
+                                                            const api_source = e.target.value;
+                                                            const newSections = sections.map(s => s.id === section.id ? {
+                                                                ...s,
+                                                                api_source,
+                                                                ...(api_source.startsWith('provider_') ? { max_movies: 6 } : {}),
+                                                            } : s);
                                                             setSections(newSections);
                                                             setHasUnsavedChanges(true);
                                                         }}
                                                         className="w-full bg-black/30 rounded px-3 py-2 text-sm text-white border border-white/10 focus:border-orange-500/50 outline-none"
                                                     >
-                                                        <option value="trending">Trending (All)</option>
-                                                        <option value="trending_movies">Trending Movies</option>
-                                                        <option value="trending_tv">Trending TV</option>
-                                                        <option value="now_playing">Now Playing (In Theaters)</option>
-                                                        <option value="popular">Popular Movies</option>
-                                                        <option value="top_rated">Top Rated Movies</option>
-                                                        <option value="upcoming">Upcoming Movies</option>
-                                                        <option value="coming_soon">Coming Soon (Discover)</option>
-                                                        <option value="popular_tv">Popular TV</option>
-                                                        <option value="top_rated_tv">Top Rated TV</option>
-                                                        <option value="airing_today">Airing Today (TV)</option>
-                                                        <option value="on_the_air">On The Air (TV)</option>
-                                                        <option value="provider_8">Netflix</option>
-                                                        <option value="provider_119">Prime Video</option>
-                                                        <option value="provider_337">Disney+</option>
-                                                        <option value="provider_350">Apple TV+</option>
-                                                        <option value="provider_122">Hotstar</option>
+                                                        <option value="trending">Hot / Trending (Movies + Series)</option>
+                                                        <option value="now_playing">In Theaters (movies only)</option>
+                                                        <option value="popular">Popular (Movies + Series)</option>
+                                                        <option value="top_rated">Top Rated (Movies + Series)</option>
+                                                        <option value="upcoming">Upcoming</option>
+                                                        <option value="coming_soon">Coming Soon</option>
+                                                        <option value="provider_8">Netflix (3 movies + 3 series)</option>
+                                                        <option value="provider_119">Prime Video (3 movies + 3 series)</option>
+                                                        <option value="provider_337">Disney+ (3 movies + 3 series)</option>
+                                                        <option value="provider_350">Apple TV+ (3 movies + 3 series)</option>
+                                                        <option value="provider_122">Hotstar (3 movies + 3 series)</option>
                                                     </select>
                                                 </div>
                                             )}
@@ -1205,7 +1210,7 @@ const AdminSectionsPage = () => {
                                     </div>
 
                                     <div className="flex items-center justify-between mb-4">
-                                        <h4 className="text-sm font-medium text-white">Add Movies to "{section.name}"</h4>
+                                        <h4 className="text-sm font-medium text-white">Titles in "{section.name}"</h4>
                                         <div className="flex gap-2">
                                             {section.section_type === 'api' && (
                                                 <button
@@ -1213,10 +1218,10 @@ const AdminSectionsPage = () => {
                                                     disabled={fetchingApi === section.id}
                                                     className="px-4 py-2 rounded-lg text-xs font-medium bg-purple-500 text-white hover:bg-purple-600 transition-colors disabled:opacity-50 shadow-lg shadow-purple-500/20"
                                                 >
-                                                    {fetchingApi === section.id ? "⏳ Fetching..." : "🔄 Refresh & Fetch API"}
+                                                    {fetchingApi === section.id ? "⏳ Fetching…" : "🔄 Fetch Movies + Series"}
                                                 </button>
                                             )}
-                                            {section.movies?.length > 0 && (
+                                            {Object.values(section.movies_by_region || {}).some(arr => arr?.length > 0) && (
                                                 <button
                                                     onClick={() => handleClearMovies(section.id)}
                                                     className="px-4 py-2 rounded-lg text-xs font-medium bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
@@ -1247,7 +1252,7 @@ const AdminSectionsPage = () => {
                                     {searchResults.length > 0 && (
                                         <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-3">
                                             {searchResults.map((movie) => {
-                                                const alreadyAdded = section.movies?.some(m => m.tmdb_id === movie.id);
+                                                const alreadyAdded = section.movies_by_region?.[selectedRegion.code]?.some(m => m.tmdb_id === movie.id);
                                                 const isAddingThis = addingMovieId === movie.id && processingSectionId === section.id;
 
                                                 return (

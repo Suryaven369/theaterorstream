@@ -7,7 +7,8 @@ import {
     removeFromCollection,
     addMoviesToCollection,
     updateUserCollection,
-    saveFullMovieToLibrary
+    saveFullMovieToLibrary,
+    deleteUserCollection,
 } from '../lib/supabase';
 import { FaTrash, FaLock, FaGlobe, FaFolderOpen, FaArrowLeft, FaPlus, FaSearch, FaCheck, FaTimes, FaEdit, FaSave, FaShare, FaLink, FaTwitter } from 'react-icons/fa';
 import ConfirmationModal from '../components/ConfirmationModal';
@@ -216,13 +217,15 @@ const ShareModal = ({ collection, movies, imageURL, shareUrl, onClose }) => {
 const CollectionDetails = () => {
     const navigate = useNavigate();
     const { slug } = useParams();
-    const { user, loading: authLoading } = useAuth();
+    const { user, profile, loading: authLoading } = useAuth();
     const imageURL = useSelector((state) => state.movieData.imageURL);
 
     const [collection, setCollection] = useState(null);
     const [loading, setLoading] = useState(true);
     const [removing, setRemoving] = useState(null);
     const [itemToDelete, setItemToDelete] = useState(null);
+    const [deleteCollectionOpen, setDeleteCollectionOpen] = useState(false);
+    const [deletingCollection, setDeletingCollection] = useState(false);
 
     // Edit mode state
     const [isEditing, setIsEditing] = useState(false);
@@ -246,13 +249,12 @@ const CollectionDetails = () => {
         if (slug) {
             loadCollection();
         }
-    }, [slug]);
+    }, [slug, user?.id]);
 
     const loadCollection = async () => {
         setLoading(true);
         try {
-            const data = await getCollectionBySlug(slug);
-            console.log("Loaded collection:", data);
+            const data = await getCollectionBySlug(slug, user?.id || null);
             setCollection(data);
             if (data) {
                 setEditName(data.name);
@@ -260,7 +262,7 @@ const CollectionDetails = () => {
                 setEditIsPublic(data.is_public);
             }
         } catch (error) {
-            console.error("Error loading collection:", error);
+            console.error('Error loading collection:', error);
         }
         setLoading(false);
     };
@@ -284,6 +286,20 @@ const CollectionDetails = () => {
         }
         setRemoving(null);
         setItemToDelete(null);
+    };
+
+    const confirmDeleteCollection = async () => {
+        if (!collection?.id || !user?.id || isTheaterCollection) return;
+        setDeletingCollection(true);
+        const result = await deleteUserCollection(collection.id, user.id);
+        setDeletingCollection(false);
+        setDeleteCollectionOpen(false);
+        if (result.success) {
+            const uname = collection.user_profiles?.username || profile?.username;
+            navigate(uname ? `/${uname}/collections` : '/');
+        } else {
+            alert(result.error?.message || 'Could not delete collection');
+        }
     };
 
     // Live search as user types
@@ -461,13 +477,13 @@ const CollectionDetails = () => {
             <meta name="twitter:description" content={collection.description || `${movies.length} movies curated with love`} />
             {ogImage && <meta name="twitter:image" content={ogImage} />}
 
-            <div className="min-h-screen bg-[#0a0a0a] pt-20 sm:pt-24 pb-20 sm:pb-12 px-3 sm:px-4 relative safe-area-bottom">
-                <div className="max-w-6xl mx-auto">
+            <div className="min-h-screen bg-[#0a0a0a] pt-[calc(4.5rem+env(safe-area-inset-top,0px))] sm:pt-24 pb-4 px-3 sm:px-4 relative">
+                <div className="max-w-6xl mx-auto min-w-0">
                     {/* Header */}
-                    <div className="mb-8">
+                    <div className="mb-6 sm:mb-8">
                         <Link
                             to={collection.user_profiles ? `/${collection.user_profiles.username}/collections` : '/'}
-                            className="inline-flex items-center gap-2 text-white/50 hover:text-white mb-6 transition-colors"
+                            className="inline-flex items-center gap-2 text-white/50 hover:text-white mb-5 sm:mb-6 transition-colors min-h-[44px]"
                         >
                             <FaArrowLeft />
                             <span>Back to Collections</span>
@@ -552,7 +568,7 @@ const CollectionDetails = () => {
                                                 )}
                                             </div>
                                             <p className="text-white/60 text-sm sm:text-base line-clamp-2 sm:line-clamp-none mb-2 sm:mb-3">{collection.description || 'No description'}</p>
-                                            {isTheaterCollection && (
+                                            {isOwnCollection && isTheaterCollection && (
                                                 <p className="text-xs text-amber-400/90 mb-2">
                                                     🍿 Titles appear here when you log a movie with &quot;In theater&quot; on your diary.
                                                 </p>
@@ -593,6 +609,15 @@ const CollectionDetails = () => {
                                                         <FaPlus /> <span>Add</span>
                                                     </button>
                                                 )}
+                                                {!isTheaterCollection && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setDeleteCollectionOpen(true)}
+                                                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 sm:px-4 py-2.5 bg-red-500/10 text-red-400 rounded-xl hover:bg-red-500/20 transition-all border border-red-500/20 text-sm sm:text-base"
+                                                    >
+                                                        <FaTrash /> <span className="hidden sm:inline">Delete</span>
+                                                    </button>
+                                                )}
                                             </>
                                         )}
                                     </div>
@@ -601,13 +626,13 @@ const CollectionDetails = () => {
                         </div>
                     </div>
 
-                    {/* Movies Grid */}
+                    {/* Movies Grid — 3 across on phones */}
                     {movies.length > 0 ? (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4">
+                        <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1.5 sm:gap-3 md:gap-4">
                             {movies.map((movie) => (
                                 <div
                                     key={movie.id || movie.movie_id}
-                                    className="group relative rounded-xl overflow-hidden bg-[#1a1a1a] border border-white/5 hover:border-purple-500/30 transition-all"
+                                    className="group relative rounded-lg sm:rounded-xl overflow-hidden bg-[#1a1a1a] border border-white/5 hover:border-purple-500/30 transition-all min-w-0"
                                 >
                                     <Link to={`/${movie.media_type || 'movie'}/${movie.movie_id}`}>
                                         <div className="aspect-[2/3] relative">
@@ -620,19 +645,19 @@ const CollectionDetails = () => {
                                                 />
                                             ) : (
                                                 <div className="w-full h-full bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
-                                                    <span className="text-4xl">🎬</span>
+                                                    <span className="text-2xl sm:text-4xl">🎬</span>
                                                 </div>
                                             )}
                                             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                                         </div>
                                     </Link>
-                                    <div className="p-3">
-                                        <div className="flex items-start justify-between gap-2">
-                                            <Link to={`/${movie.media_type || 'movie'}/${movie.movie_id}`} className="flex-1 min-w-0">
-                                                <h3 className="text-sm font-medium text-white truncate hover:text-purple-400 transition-colors">
+                                    <div className="p-1.5 sm:p-3">
+                                        <div className="flex items-start justify-between gap-1 sm:gap-2 min-w-0">
+                                            <Link to={`/${movie.media_type || 'movie'}/${movie.movie_id}`} className="flex-1 min-w-0 overflow-hidden">
+                                                <h3 className="text-[11px] sm:text-sm font-medium text-white leading-snug line-clamp-2 break-words hover:text-purple-400 transition-colors">
                                                     {movie.movie_title}
                                                 </h3>
-                                                <p className="text-xs text-white/40">
+                                                <p className="text-[10px] sm:text-xs text-white/40 mt-0.5 truncate">
                                                     {movie.added_at ? `Added ${new Date(movie.added_at).toLocaleDateString()}` : ''}
                                                 </p>
                                             </Link>
@@ -640,7 +665,7 @@ const CollectionDetails = () => {
                                                 <button
                                                     onClick={() => setItemToDelete(movie)}
                                                     disabled={removing === movie.movie_id}
-                                                    className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors opacity-0 group-hover:opacity-100"
+                                                    className="p-1 sm:p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100 shrink-0"
                                                     title="Remove from collection"
                                                 >
                                                     {removing === movie.movie_id ? (
@@ -818,6 +843,14 @@ const CollectionDetails = () => {
                 onConfirm={confirmRemove}
                 title="Remove from Collection"
                 message={`Are you sure you want to remove "${itemToDelete?.movie_title}" from this collection?`}
+            />
+            <ConfirmationModal
+                isOpen={deleteCollectionOpen}
+                onClose={() => !deletingCollection && setDeleteCollectionOpen(false)}
+                onConfirm={confirmDeleteCollection}
+                title="Delete collection"
+                message={`Delete “${collection?.name}”? This removes the list and all titles in it. This cannot be undone.`}
+                confirmText={deletingCollection ? 'Deleting…' : 'Delete'}
             />
         </>
     );

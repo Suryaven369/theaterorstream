@@ -47,3 +47,11 @@ export function recordDecisionPick(movie) {
         media_type: movie.media_type || 'movie',
     });
 }
+
+export function updateStreak() {
+    return postSocial('/api/social/streak-update', {});
+}
+
+export function toggleCollectionLike(collectionId) {
+    return postSocial('/api/social/collection-like', { collection_id: collectionId });
+}

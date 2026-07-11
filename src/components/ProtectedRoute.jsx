@@ -15,11 +15,11 @@ function AuthLoadingScreen() {
 }
 
 /**
- * Guards app routes — unauthenticated users go to /auth,
- * authenticated but not onboarded go to /onboarding.
+ * Full-page auth guard (admin shell, etc.).
+ * Public browsing uses App without this wrapper; use RequireAuth for nested locks.
  */
-export function ProtectedRoute({ requireOnboarding = true }) {
-    const { loading, isAuthenticated, isOnboarded } = useAuth();
+export function ProtectedRoute() {
+    const { loading, isAuthenticated } = useAuth();
     const location = useLocation();
 
     if (loading) {
@@ -34,17 +34,6 @@ export function ProtectedRoute({ requireOnboarding = true }) {
                 state={{ from: location.pathname + location.search }}
             />
         );
-    }
-
-    if (isOnboarded && location.pathname === '/onboarding') {
-        const tasteMode = new URLSearchParams(location.search).get('mode') === 'taste';
-        if (!tasteMode) {
-            return <Navigate to="/" replace />;
-        }
-    }
-
-    if (requireOnboarding && !isOnboarded && location.pathname !== '/onboarding') {
-        return <Navigate to="/onboarding" replace />;
     }
 
     return <Outlet />;

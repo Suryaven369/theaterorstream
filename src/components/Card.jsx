@@ -4,6 +4,7 @@ import moment from "moment";
 import { Link } from "react-router-dom";
 import { FaStar } from "react-icons/fa";
 import { generateSlugWithId } from "../lib/slugUtils";
+import PosterQuickActions from "./PosterQuickActions";
 
 // Fallback TMDB image URL if Redux store hasn't loaded yet
 const FALLBACK_IMAGE_URL = "https://image.tmdb.org/t/p/original";
@@ -53,9 +54,21 @@ const Card = ({ data, trending, index, media_type }) => {
   return (
     <Link
       to={movieUrl}
-      className="group block animate-fadeInUp"
+      className="group relative block animate-fadeInUp hover:z-40 focus-within:z-50"
       style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
     >
+      {/* Quick-add menu (Watchlist / Favorite / Collection). Sits OUTSIDE the
+          overflow-hidden image wrapper below so its dropdown isn't clipped. */}
+      <div
+        className={`absolute z-20 top-2 ${trending ? 'left-11' : 'left-2'} opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100 transition-opacity`}
+      >
+        <PosterQuickActions
+          movieId={movieId}
+          movieTitle={data?.title || data?.name}
+          posterPath={data.poster_path}
+          mediaType={mediaType}
+        />
+      </div>
       <div className="relative overflow-hidden rounded-xl bg-white/5 card-hover">
         {/* Image */}
         <div className="aspect-[2/3] overflow-hidden">

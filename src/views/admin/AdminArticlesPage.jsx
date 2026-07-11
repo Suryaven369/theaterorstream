@@ -1,0 +1,822 @@
+import React, { useState, useEffect, useCallback } from "react";
+import { FaCheck, FaTimes, FaTrash, FaToggleOn, FaToggleOff, FaSync, FaPlus, FaRss, FaGlobe, FaPen, FaYoutube, FaFilter, FaSortAmountDown, FaSortAmountUp } from "react-icons/fa";
+import {
+    getRssSources,
+    createRssSource,
+    updateRssSource,
+    getRssGlobalFilters,
+    setRssGlobalFilters,
+    toggleRssSourceActive,
+    deleteRssSource,
+    getFeedArticles,
+    getFeedArticleCountsBySource,
+    updateFeedArticleStatus,
+    toggleFeedArticleActive,
+    deleteFeedArticle,
+} from "../../lib/supabase";
+import { triggerRssRefresh } from "../../lib/adminSyncApi";
+import { useToast } from "../../components/Toast";
+import ConfirmationModal from "../../components/ConfirmationModal";
+
+const STATUS_TABS = [
+    { key: "pending", label: "Pending" },
+    { key: "approved", label: "Live" },
+    { key: "rejected", label: "Rejected" },
+];
+
+const DAYS_BACK_OPTIONS = [
+    { value: 3, label: "Last 3 days" },
+    { value: 7, label: "Last 7 days" },
+    { value: 14, label: "Last 14 days" },
+    { value: 30, label: "Last 30 days" },
+    { value: 0, label: "All time" },
+];
+
+const SourceListItem = ({ source, active, pendingCount, onSelect, onToggle, onRefresh, onDelete, onEdit, refreshing }) => (
+    <div
+        onClick={() => onSelect(source.id)}
+        className={`group flex items-center gap-2.5 px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${
+            active ? "bg-orange-500/15 border border-orange-500/30" : "border border-transparent hover:bg-white/5"
+        }`}
+    >
+        {source.logo_url ? (
+            <img
+                src={source.logo_url}
+                alt={source.name}
+                className="w-4 h-4 rounded-sm shrink-0"
+                onError={(e) => {
+                    e.currentTarget.style.display = "none";
+                    e.currentTarget.nextSibling.style.display = "inline-block";
+                }}
+            />
+        ) : null}
+        <FaRss className={`shrink-0 text-sm ${active ? "text-orange-400" : "text-white/30"} ${source.logo_url ? "hidden" : ""}`} />
+        <div className="flex-1 min-w-0">
+            <p className={`text-sm truncate ${active ? "text-white font-medium" : "text-white/70"}`}>{source.name}</p>
+            {source.last_fetch_error && (
+                <p className="text-[10px] text-red-400 truncate">Fetch error</p>
+            )}
+        </div>
+        {pendingCount > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-400 shrink-0">
+                {pendingCount}
+            </span>
+        )}
+        <button
+            onClick={(e) => { e.stopPropagation(); onEdit(source); }}
+            className="text-white/30 hover:text-white shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+            title="Edit name, link & filters"
+        >
+            <FaPen className="text-[11px]" />
+        </button>
+        <button
+            onClick={(e) => { e.stopPropagation(); onRefresh(source); }}
+            disabled={refreshing}
+            className="text-white/30 hover:text-white shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+            title="Refresh this source"
+        >
+            <FaSync className={`text-xs ${refreshing ? "animate-spin" : ""}`} />
+        </button>
+        <button
+            onClick={(e) => { e.stopPropagation(); onToggle(source); }}
+            className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+            title={source.is_active ? "Pause source" : "Resume source"}
+        >
+            {source.is_active ? <FaToggleOn className="text-base text-green-400" /> : <FaToggleOff className="text-base text-white/30" />}
+        </button>
+        <button
+            onClick={(e) => { e.stopPropagation(); onDelete(source); }}
+            className="text-white/30 hover:text-red-400 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+            title="Delete this RSS feed"
+        >
+            <FaTrash className="text-xs" />
+        </button>
+    </div>
+);
+
+const keywordsToText = (arr) => (Array.isArray(arr) ? arr.join(", ") : "");
+const textToKeywords = (text) => String(text || "")
+    .split(/[,\n]/).map((k) => k.trim()).filter(Boolean);
+
+// Add/edit a feed source — just the name, link and kind. Keyword filtering is
+// global (set once via "Filter Keywords"), so adding a channel stays simple.
+const SourceFormModal = ({ open, initial, defaultKind = "article", onClose, onSaved }) => {
+    const toast = useToast();
+    const [name, setName] = useState("");
+    const [feedUrl, setFeedUrl] = useState("");
+    const [siteUrl, setSiteUrl] = useState("");
+    const [kind, setKind] = useState("article");
+    const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        if (!open) return;
+        setName(initial?.name || "");
+        setFeedUrl(initial?.feed_url || "");
+        setSiteUrl(initial?.site_url || "");
+        setKind(initial?.source_kind || defaultKind || "article");
+    }, [open, initial, defaultKind]);
+
+    if (!open) return null;
+    const isEdit = !!initial?.id;
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!name.trim() || !feedUrl.trim()) return;
+        setSaving(true);
+        const payload = {
+            name: name.trim(),
+            feed_url: feedUrl.trim(),
+            site_url: siteUrl.trim() || null,
+            source_kind: kind,
+        };
+        const result = isEdit
+            ? await updateRssSource(initial.id, payload)
+            : await createRssSource(payload);
+        setSaving(false);
+        if (result.success) {
+            toast.success(`${isEdit ? "Updated" : "Added"} "${payload.name}".`);
+            onSaved();
+            onClose();
+        } else {
+            toast.error(`Failed: ${result.error?.message || "Unknown error"}`);
+        }
+    };
+
+    const inputCls = "w-full text-sm bg-white/5 border border-white/10 rounded-md px-3 py-2 text-white placeholder:text-white/30 focus:outline-none focus:border-orange-500/50";
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
+            <form
+                onClick={(e) => e.stopPropagation()}
+                onSubmit={handleSubmit}
+                className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#1a1a1a] p-5 space-y-3"
+            >
+                <div className="flex items-center justify-between">
+                    <h3 className="text-base font-bold text-white">{isEdit ? "Edit Source" : "Add Source"}</h3>
+                    <button type="button" onClick={onClose} className="text-white/40 hover:text-white"><FaTimes /></button>
+                </div>
+
+                <div className="flex gap-1 bg-white/5 rounded-lg p-1 w-fit">
+                    {[{ k: "article", label: "News Article", icon: <FaRss className="text-[10px]" /> }, { k: "trailer", label: "Trailer (YouTube)", icon: <FaYoutube className="text-[11px]" /> }].map((t) => (
+                        <button
+                            key={t.k}
+                            type="button"
+                            onClick={() => setKind(t.k)}
+                            className={`text-xs px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors ${kind === t.k ? "bg-orange-500/20 text-orange-400" : "text-white/50 hover:text-white"}`}
+                        >
+                            {t.icon} {t.label}
+                        </button>
+                    ))}
+                </div>
+
+                <div>
+                    <label className="text-xs text-white/50">Title</label>
+                    <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. IndieWire / Marvel YouTube" />
+                </div>
+                <div>
+                    <label className="text-xs text-white/50">Link (feed URL)</label>
+                    <input className={inputCls} value={feedUrl} onChange={(e) => setFeedUrl(e.target.value)} placeholder="https://site.com/feed/ or YouTube channel RSS" />
+                    {kind === "trailer" && (
+                        <p className="mt-1 text-[10px] text-white/30">
+                            YouTube channel feed: <code>https://www.youtube.com/feeds/videos.xml?channel_id=CHANNEL_ID</code>
+                        </p>
+                    )}
+                </div>
+                <div>
+                    <label className="text-xs text-white/50">Site URL (optional)</label>
+                    <input className={inputCls} value={siteUrl} onChange={(e) => setSiteUrl(e.target.value)} placeholder="https://site.com" />
+                </div>
+
+                <p className="text-[10px] text-white/30 flex items-center gap-1.5">
+                    <FaFilter className="text-[9px]" /> Keyword filtering is global — set it once via “Filter Keywords”.
+                </p>
+
+                <div className="flex justify-end gap-2 pt-1">
+                    <button type="button" onClick={onClose} className="text-sm px-4 py-2 rounded-md text-white/60 hover:text-white">Cancel</button>
+                    <button type="submit" disabled={saving} className="text-sm px-4 py-2 rounded-md bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 disabled:opacity-50">
+                        {saving ? "Saving…" : isEdit ? "Save changes" : "Add source"}
+                    </button>
+                </div>
+            </form>
+        </div>
+    );
+};
+
+// Global keyword filters — set once per kind, applied to every source.
+const GlobalFiltersModal = ({ open, onClose }) => {
+    const toast = useToast();
+    const [trailerInc, setTrailerInc] = useState("");
+    const [trailerExc, setTrailerExc] = useState("");
+    const [articleInc, setArticleInc] = useState("");
+    const [articleExc, setArticleExc] = useState("");
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        if (!open) return;
+        setLoading(true);
+        getRssGlobalFilters().then((f) => {
+            setTrailerInc(keywordsToText(f.trailer.include));
+            setTrailerExc(keywordsToText(f.trailer.exclude));
+            setArticleInc(keywordsToText(f.article.include));
+            setArticleExc(keywordsToText(f.article.exclude));
+            setLoading(false);
+        });
+    }, [open]);
+
+    if (!open) return null;
+
+    const handleSave = async () => {
+        setSaving(true);
+        const result = await setRssGlobalFilters({
+            trailer: { include: textToKeywords(trailerInc), exclude: textToKeywords(trailerExc) },
+            article: { include: textToKeywords(articleInc), exclude: textToKeywords(articleExc) },
+        });
+        setSaving(false);
+        if (result.success) { toast.success("Saved global filters. Refresh sources to apply."); onClose(); }
+        else toast.error(`Failed: ${result.error?.message || "Unknown error"}`);
+    };
+
+    const inputCls = "w-full text-sm bg-white/5 border border-white/10 rounded-md px-3 py-2 text-white placeholder:text-white/30 focus:outline-none focus:border-orange-500/50";
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
+            <div onClick={(e) => e.stopPropagation()} className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#1a1a1a] p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+                <div className="flex items-center justify-between">
+                    <h3 className="text-base font-bold text-white flex items-center gap-2"><FaFilter className="text-sm" /> Global Keyword Filters</h3>
+                    <button type="button" onClick={onClose} className="text-white/40 hover:text-white"><FaTimes /></button>
+                </div>
+                <p className="text-[11px] text-white/40">Set once — applied to every source of that kind. Comma-separated, case-insensitive, matched against title + summary. Leave blank to fetch everything.</p>
+
+                {loading ? (
+                    <div className="h-40 animate-pulse rounded-lg bg-white/5" />
+                ) : (
+                    <>
+                        <div className="rounded-xl border border-red-500/20 bg-red-500/[0.04] p-3 space-y-2">
+                            <p className="text-xs font-semibold text-red-400 flex items-center gap-1.5"><FaYoutube /> Trailers</p>
+                            <div>
+                                <label className="text-[11px] text-white/50">Include (only keep items with any of these)</label>
+                                <input className={inputCls} value={trailerInc} onChange={(e) => setTrailerInc(e.target.value)} placeholder="trailer, teaser, first look" />
+                            </div>
+                            <div>
+                                <label className="text-[11px] text-white/50">Exclude</label>
+                                <input className={inputCls} value={trailerExc} onChange={(e) => setTrailerExc(e.target.value)} placeholder="reaction, breakdown, podcast" />
+                            </div>
+                        </div>
+
+                        <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3 space-y-2">
+                            <p className="text-xs font-semibold text-white/70 flex items-center gap-1.5"><FaRss className="text-[10px]" /> News Articles</p>
+                            <div>
+                                <label className="text-[11px] text-white/50">Include</label>
+                                <input className={inputCls} value={articleInc} onChange={(e) => setArticleInc(e.target.value)} placeholder="(blank = fetch all)" />
+                            </div>
+                            <div>
+                                <label className="text-[11px] text-white/50">Exclude</label>
+                                <input className={inputCls} value={articleExc} onChange={(e) => setArticleExc(e.target.value)} placeholder="sponsored, advertisement" />
+                            </div>
+                        </div>
+                    </>
+                )}
+
+                <div className="flex justify-end gap-2">
+                    <button type="button" onClick={onClose} className="text-sm px-4 py-2 rounded-md text-white/60 hover:text-white">Cancel</button>
+                    <button type="button" onClick={handleSave} disabled={saving || loading} className="text-sm px-4 py-2 rounded-md bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 disabled:opacity-50">
+                        {saving ? "Saving…" : "Save filters"}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const ArticleRow = ({ article, status, selected, onSelectToggle, onApprove, onReject, onToggle, onDelete }) => (
+    <div className={`flex items-center gap-3 p-3 rounded-xl bg-[#1a1a1a] border transition-colors ${selected ? "border-orange-500/50" : "border-white/10"}`}>
+        <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => onSelectToggle(article.id)}
+            className="shrink-0 w-4 h-4 accent-orange-500 cursor-pointer"
+        />
+        {article.image_url ? (
+            <img
+                src={article.image_url}
+                alt={article.title}
+                loading="lazy"
+                className="w-20 h-12 object-cover rounded-lg bg-black shrink-0"
+                onError={(e) => {
+                    e.currentTarget.style.display = "none";
+                    e.currentTarget.nextSibling?.classList.remove("hidden");
+                }}
+            />
+        ) : null}
+        <div className={`w-20 h-12 rounded-lg bg-white/5 shrink-0 flex items-center justify-center text-white/20 text-[10px] ${article.image_url ? "hidden" : ""}`}>
+            No image
+        </div>
+        <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-white truncate">{article.title}</p>
+            <p className="text-[11px] text-white/40 truncate">
+                {article.source_name} &middot; {article.published_at ? new Date(article.published_at).toLocaleDateString() : "—"}
+            </p>
+        </div>
+        {status === "pending" && (
+            <>
+                <button
+                    onClick={() => onApprove(article)}
+                    className="text-xs px-3 py-1.5 rounded-md bg-green-500/20 text-green-400 hover:bg-green-500/30 shrink-0 flex items-center gap-1.5"
+                >
+                    <FaCheck /> Approve
+                </button>
+                <button
+                    onClick={() => onReject(article)}
+                    className="text-xs px-3 py-1.5 rounded-md bg-white/5 text-white/50 hover:bg-white/10 shrink-0 flex items-center gap-1.5"
+                >
+                    <FaTimes /> Reject
+                </button>
+            </>
+        )}
+        {status === "approved" && (
+            <button onClick={() => onToggle(article)} className="text-white/50 hover:text-white shrink-0">
+                {article.is_active ? <FaToggleOn className="text-xl text-green-400" /> : <FaToggleOff className="text-xl" />}
+            </button>
+        )}
+        <button onClick={() => onDelete(article)} className="text-white/40 hover:text-red-400 shrink-0">
+            <FaTrash />
+        </button>
+    </div>
+);
+
+const AdminArticlesPage = () => {
+    const toast = useToast();
+    const [sources, setSources] = useState([]);
+    const [loadingSources, setLoadingSources] = useState(true);
+    const [counts, setCounts] = useState({});
+    const [activeKind, setActiveKind] = useState("article"); // 'article' | 'trailer'
+    const [selectedSourceId, setSelectedSourceId] = useState(null); // null = All Sources
+    const [sourceFormOpen, setSourceFormOpen] = useState(false);
+    const [editingSource, setEditingSource] = useState(null); // null = add new
+    const [filtersOpen, setFiltersOpen] = useState(false);
+    const [refreshingId, setRefreshingId] = useState(null);
+    const [refreshingAll, setRefreshingAll] = useState(false);
+    const [statusTab, setStatusTab] = useState("pending");
+    const [daysBack, setDaysBack] = useState(0);
+    const [sortOrder, setSortOrder] = useState("desc"); // 'desc' = latest first, 'asc' = oldest first
+    const [articles, setArticles] = useState([]);
+    const [loadingArticles, setLoadingArticles] = useState(true);
+    const [message, setMessage] = useState(null);
+    const [sourceToDelete, setSourceToDelete] = useState(null);
+    const [selectedIds, setSelectedIds] = useState(new Set());
+    const [bulkActing, setBulkActing] = useState(false);
+    const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+
+    const loadSources = useCallback(async () => {
+        setLoadingSources(true);
+        const [sourceList, countMap] = await Promise.all([getRssSources(), getFeedArticleCountsBySource()]);
+        setSources(sourceList);
+        setCounts(countMap);
+        setLoadingSources(false);
+    }, []);
+
+    const loadArticles = useCallback(async (status, sourceId, days, sort) => {
+        setLoadingArticles(true);
+        setArticles(await getFeedArticles(status, 50, sourceId, days, sort));
+        setLoadingArticles(false);
+    }, []);
+
+    // Sources of the currently-selected kind (Articles vs Trailers).
+    const kindSources = sources.filter((s) => (s.source_kind || "article") === activeKind);
+    const kindSourceIds = kindSources.map((s) => s.id);
+    // Articles to show: a specific source, or all sources of the active kind.
+    const articleSourceFilter = selectedSourceId || kindSourceIds;
+
+    useEffect(() => { loadSources(); }, [loadSources]);
+    useEffect(() => {
+        loadArticles(statusTab, articleSourceFilter, daysBack, sortOrder);
+        setSelectedIds(new Set());
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [statusTab, selectedSourceId, daysBack, sortOrder, activeKind, sources, loadArticles]);
+
+    const switchKind = (k) => { setActiveKind(k); setSelectedSourceId(null); };
+
+    const refreshAll = () => {
+        loadSources();
+        loadArticles(statusTab, articleSourceFilter, daysBack, sortOrder);
+    };
+
+    const openAddSource = () => { setEditingSource(null); setSourceFormOpen(true); };
+    const openEditSource = (source) => { setEditingSource(source); setSourceFormOpen(true); };
+
+    const handleToggleSource = async (source) => {
+        await toggleRssSourceActive(source.id);
+        loadSources();
+    };
+
+    const handleDeleteSource = (source) => setSourceToDelete(source);
+
+    const confirmDeleteSource = async () => {
+        const source = sourceToDelete;
+        if (!source) return;
+        const result = await deleteRssSource(source.id);
+        if (result.success) {
+            toast.success(`Removed "${source.name}" from RSS sources.`);
+            if (selectedSourceId === source.id) setSelectedSourceId(null);
+            loadSources();
+        } else {
+            toast.error(`Failed to remove "${source.name}": ${result.error?.message || "Unknown error"}`);
+        }
+    };
+
+    const handleRefreshSource = async (source) => {
+        setRefreshingId(source.id);
+        setMessage(null);
+        try {
+            const res = await triggerRssRefresh(source.id);
+            setMessage({
+                type: res.result?.error ? "error" : "success",
+                text: res.result?.error
+                    ? `${source.name}: ${res.result.error}`
+                    : `${source.name}: fetched ${res.result?.fetched ?? 0}, added ${res.result?.added ?? 0} new article(s).`,
+            });
+            refreshAll();
+        } catch (err) {
+            setMessage({ type: "error", text: err.message });
+        }
+        setRefreshingId(null);
+    };
+
+    const handleRefreshAll = async () => {
+        setRefreshingAll(true);
+        setMessage(null);
+        try {
+            const res = await triggerRssRefresh();
+            const totalAdded = (res.results || []).reduce((sum, r) => sum + (r.added || 0), 0);
+            const skipped = res.skipped ? ` (${res.skipped} already up to date)` : "";
+            setMessage({ type: "success", text: `Refreshed ${res.sourcesProcessed} source(s), ${totalAdded} new article(s)${skipped}.` });
+            refreshAll();
+        } catch (err) {
+            setMessage({ type: "error", text: err.message });
+        }
+        setRefreshingAll(false);
+    };
+
+    const handleApprove = async (article) => {
+        await updateFeedArticleStatus(article.id, "approved");
+        loadArticles(statusTab, articleSourceFilter, daysBack, sortOrder);
+        loadSources();
+    };
+
+    const handleReject = async (article) => {
+        await updateFeedArticleStatus(article.id, "rejected");
+        loadArticles(statusTab, articleSourceFilter, daysBack, sortOrder);
+        loadSources();
+    };
+
+    const handleToggleArticle = async (article) => {
+        await toggleFeedArticleActive(article.id);
+        loadArticles(statusTab, articleSourceFilter, daysBack, sortOrder);
+    };
+
+    const handleDeleteArticle = async (article) => {
+        if (!confirm(`Delete "${article.title}"?`)) return;
+        const result = await deleteFeedArticle(article.id);
+        if (result.success) {
+            toast.success(`Deleted "${article.title}".`);
+        } else {
+            toast.error(`Failed to delete article: ${result.error?.message || "Unknown error"}`);
+        }
+        loadArticles(statusTab, articleSourceFilter, daysBack, sortOrder);
+        loadSources();
+    };
+
+    const toggleSelect = (id) => {
+        setSelectedIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    const allSelected = articles.length > 0 && selectedIds.size === articles.length;
+
+    const toggleSelectAll = () => {
+        setSelectedIds(allSelected ? new Set() : new Set(articles.map((a) => a.id)));
+    };
+
+    const handleBulkApprove = async () => {
+        setBulkActing(true);
+        const ids = [...selectedIds];
+        const results = await Promise.all(ids.map((id) => updateFeedArticleStatus(id, "approved")));
+        const failed = results.filter((r) => !r.success).length;
+        toast[failed ? "error" : "success"](
+            failed
+                ? `Approved ${ids.length - failed}, failed on ${failed} article(s).`
+                : `Approved ${ids.length} article(s).`,
+        );
+        setSelectedIds(new Set());
+        loadArticles(statusTab, articleSourceFilter, daysBack, sortOrder);
+        loadSources();
+        setBulkActing(false);
+    };
+
+    const handleBulkDelete = () => setConfirmBulkDelete(true);
+
+    const confirmBulkDeleteAction = async () => {
+        setBulkActing(true);
+        const ids = [...selectedIds];
+        const results = await Promise.all(ids.map((id) => deleteFeedArticle(id)));
+        const failed = results.filter((r) => !r.success).length;
+        toast[failed ? "error" : "success"](
+            failed
+                ? `Deleted ${ids.length - failed}, failed on ${failed} article(s).`
+                : `Deleted ${ids.length} article(s).`,
+        );
+        setSelectedIds(new Set());
+        loadArticles(statusTab, articleSourceFilter, daysBack, sortOrder);
+        loadSources();
+        setBulkActing(false);
+    };
+
+    const selectedSource = sources.find((s) => s.id === selectedSourceId) || null;
+    const totalPending = kindSources.reduce((sum, s) => sum + (counts[s.id]?.pending || 0), 0);
+    const isTrailers = activeKind === "trailer";
+
+    return (
+        <div className="flex h-screen overflow-hidden">
+            {/* Left: RSS sources sidebar */}
+            <aside className="w-72 shrink-0 border-r border-white/10 flex flex-col h-full">
+                <div className="p-4 border-b border-white/10 shrink-0">
+                    {/* Articles vs Trailers space */}
+                    <div className="flex gap-1 bg-white/5 rounded-lg p-1 mb-3">
+                        <button
+                            onClick={() => switchKind("article")}
+                            className={`flex-1 text-xs px-2 py-1.5 rounded-md flex items-center justify-center gap-1.5 transition-colors ${!isTrailers ? "bg-orange-500/20 text-orange-400" : "text-white/50 hover:text-white"}`}
+                        >
+                            <FaRss className="text-[10px]" /> Articles
+                        </button>
+                        <button
+                            onClick={() => switchKind("trailer")}
+                            className={`flex-1 text-xs px-2 py-1.5 rounded-md flex items-center justify-center gap-1.5 transition-colors ${isTrailers ? "bg-red-500/20 text-red-400" : "text-white/50 hover:text-white"}`}
+                        >
+                            <FaYoutube className="text-[11px]" /> Trailers
+                        </button>
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <h1 className="text-sm font-bold text-white">{isTrailers ? "Trailer Channels" : "RSS Sources"}</h1>
+                        <button
+                            onClick={handleRefreshAll}
+                            disabled={refreshingAll}
+                            className="text-white/40 hover:text-white disabled:opacity-50"
+                            title="Refresh all sources"
+                        >
+                            <FaSync className={refreshingAll ? "animate-spin" : ""} />
+                        </button>
+                    </div>
+                    <div className="mt-2 flex items-center gap-3">
+                        <button
+                            onClick={openAddSource}
+                            className="text-xs text-orange-400 hover:text-orange-300 flex items-center gap-1.5"
+                        >
+                            <FaPlus className="text-[10px]" /> {isTrailers ? "Add YouTube channel" : "Add source"}
+                        </button>
+                        <button
+                            onClick={() => setFiltersOpen(true)}
+                            className="text-xs text-white/40 hover:text-white flex items-center gap-1.5"
+                            title="Global keyword filters (set once)"
+                        >
+                            <FaFilter className="text-[10px]" /> Filter Keywords
+                        </button>
+                    </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-3 space-y-1">
+                    <div
+                        onClick={() => setSelectedSourceId(null)}
+                        className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${
+                            selectedSourceId === null ? "bg-orange-500/15 border border-orange-500/30" : "border border-transparent hover:bg-white/5"
+                        }`}
+                    >
+                        <FaGlobe className={`shrink-0 text-sm ${selectedSourceId === null ? "text-orange-400" : "text-white/30"}`} />
+                        <p className={`flex-1 text-sm ${selectedSourceId === null ? "text-white font-medium" : "text-white/70"}`}>{isTrailers ? "All Trailers" : "All Sources"}</p>
+                        {totalPending > 0 && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-400 shrink-0">
+                                {totalPending}
+                            </span>
+                        )}
+                    </div>
+
+                    {loadingSources ? (
+                        <div className="space-y-2 pt-2">
+                            {[...Array(4)].map((_, i) => <div key={i} className="h-10 rounded-lg bg-white/5 animate-pulse" />)}
+                        </div>
+                    ) : kindSources.length === 0 ? (
+                        <p className="text-xs text-white/40 py-4 text-center">
+                            {isTrailers ? "No trailer channels yet. Add a YouTube channel above." : "No sources yet."}
+                        </p>
+                    ) : (
+                        kindSources.map((source) => (
+                            <SourceListItem
+                                key={source.id}
+                                source={source}
+                                active={selectedSourceId === source.id}
+                                pendingCount={counts[source.id]?.pending || 0}
+                                refreshing={refreshingId === source.id}
+                                onSelect={setSelectedSourceId}
+                                onToggle={handleToggleSource}
+                                onRefresh={handleRefreshSource}
+                                onDelete={handleDeleteSource}
+                                onEdit={openEditSource}
+                            />
+                        ))
+                    )}
+                </div>
+
+                {selectedSource && (
+                    <div className="p-3 border-t border-white/10 shrink-0">
+                        <p className="text-[11px] text-white/30 truncate">{selectedSource.feed_url}</p>
+                    </div>
+                )}
+            </aside>
+
+            {/* Center: articles for the selected source (or all) */}
+            <main className="flex-1 overflow-y-auto p-6">
+                <div className="max-w-3xl mx-auto">
+                    <div className="mb-4 flex items-start justify-between gap-4">
+                        <div>
+                            <h2 className="text-lg font-bold text-white">
+                                {selectedSource ? selectedSource.name : isTrailers ? "All Trailers" : "All Sources"}
+                            </h2>
+                            <p className="text-sm text-white/40 mt-0.5">
+                                {isTrailers
+                                    ? "Review fetched trailers/teasers before they go live."
+                                    : "Review fetched articles before they go live on the Home feed."}
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                            <button
+                                onClick={() => (selectedSource ? handleRefreshSource(selectedSource) : handleRefreshAll())}
+                                disabled={selectedSource ? refreshingId === selectedSource.id : refreshingAll}
+                                className="text-xs px-3 py-2 rounded-md bg-white/5 text-white/70 hover:bg-white/10 flex items-center gap-1.5 disabled:opacity-50"
+                            >
+                                <FaSync className={(selectedSource ? refreshingId === selectedSource.id : refreshingAll) ? "animate-spin" : ""} />
+                                Refresh
+                            </button>
+                            {selectedSource && (
+                                <button
+                                    onClick={() => openEditSource(selectedSource)}
+                                    className="text-xs px-3 py-2 rounded-md bg-white/5 text-white/70 hover:bg-white/10 flex items-center gap-1.5"
+                                >
+                                    <FaPen /> Edit
+                                </button>
+                            )}
+                            {selectedSource && (
+                                <button
+                                    onClick={() => handleDeleteSource(selectedSource)}
+                                    className="text-xs px-3 py-2 rounded-md bg-red-500/10 text-red-400 hover:bg-red-500/20 flex items-center gap-1.5"
+                                >
+                                    <FaTrash /> Delete Feed
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {message && (
+                        <p className={`text-sm mb-4 ${message.type === "error" ? "text-red-400" : "text-green-400"}`}>
+                            {message.text}
+                        </p>
+                    )}
+
+                    <div className="flex items-center justify-between gap-2 mb-4">
+                        <div className="flex gap-1 bg-white/5 rounded-lg p-1 w-fit">
+                            {STATUS_TABS.map((tab) => (
+                                <button
+                                    key={tab.key}
+                                    onClick={() => setStatusTab(tab.key)}
+                                    className={`text-xs px-3 py-1.5 rounded-md transition-colors ${
+                                        statusTab === tab.key ? "bg-orange-500/20 text-orange-400" : "text-white/50 hover:text-white"
+                                    }`}
+                                >
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setSortOrder((o) => (o === "desc" ? "asc" : "desc"))}
+                                title={sortOrder === "desc" ? "Showing latest first — click for oldest first" : "Showing oldest first — click for latest first"}
+                                className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md bg-white/5 border border-white/10 text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                            >
+                                {sortOrder === "desc" ? <FaSortAmountDown className="text-[11px]" /> : <FaSortAmountUp className="text-[11px]" />}
+                                {sortOrder === "desc" ? "Latest" : "Oldest"}
+                            </button>
+                            <select
+                                value={daysBack}
+                                onChange={(e) => setDaysBack(Number(e.target.value))}
+                                className="text-xs bg-white/5 border border-white/10 rounded-md px-2 py-1.5 text-white/70 focus:outline-none focus:border-orange-500/50"
+                            >
+                                {DAYS_BACK_OPTIONS.map((opt) => (
+                                    <option key={opt.value} value={opt.value} className="bg-[#1a1a1a]">
+                                        {opt.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                    {loadingArticles ? (
+                        <div className="space-y-2">
+                            {[...Array(4)].map((_, i) => <div key={i} className="h-16 rounded-xl bg-white/5 animate-pulse" />)}
+                        </div>
+                    ) : articles.length === 0 ? (
+                        <p className="text-sm text-white/40 py-12 text-center">No articles in this category.</p>
+                    ) : (
+                        <>
+                            <div className="flex items-center justify-between gap-2 mb-2 px-1">
+                                <label className="flex items-center gap-2 text-xs text-white/50 cursor-pointer select-none">
+                                    <input
+                                        type="checkbox"
+                                        checked={allSelected}
+                                        onChange={toggleSelectAll}
+                                        className="w-4 h-4 accent-orange-500 cursor-pointer"
+                                    />
+                                    Select all ({articles.length})
+                                </label>
+
+                                {selectedIds.size > 0 && (
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs text-white/40">{selectedIds.size} selected</span>
+                                        {statusTab === "pending" && (
+                                            <button
+                                                onClick={handleBulkApprove}
+                                                disabled={bulkActing}
+                                                className="text-xs px-3 py-1.5 rounded-md bg-green-500/20 text-green-400 hover:bg-green-500/30 flex items-center gap-1.5 disabled:opacity-50"
+                                            >
+                                                <FaCheck /> Approve Selected
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={handleBulkDelete}
+                                            disabled={bulkActing}
+                                            className="text-xs px-3 py-1.5 rounded-md bg-red-500/10 text-red-400 hover:bg-red-500/20 flex items-center gap-1.5 disabled:opacity-50"
+                                        >
+                                            <FaTrash /> Delete Selected
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="space-y-2">
+                                {articles.map((article) => (
+                                    <ArticleRow
+                                        key={article.id}
+                                        article={article}
+                                        status={statusTab}
+                                        selected={selectedIds.has(article.id)}
+                                        onSelectToggle={toggleSelect}
+                                        onApprove={handleApprove}
+                                        onReject={handleReject}
+                                        onToggle={handleToggleArticle}
+                                        onDelete={handleDeleteArticle}
+                                    />
+                                ))}
+                            </div>
+                        </>
+                    )}
+                </div>
+            </main>
+
+            <SourceFormModal
+                open={sourceFormOpen}
+                initial={editingSource}
+                defaultKind={activeKind}
+                onClose={() => setSourceFormOpen(false)}
+                onSaved={() => { loadSources(); loadArticles(statusTab, articleSourceFilter, daysBack, sortOrder); }}
+            />
+
+            <GlobalFiltersModal open={filtersOpen} onClose={() => setFiltersOpen(false)} />
+
+            <ConfirmationModal
+                isOpen={!!sourceToDelete}
+                onClose={() => setSourceToDelete(null)}
+                onConfirm={confirmDeleteSource}
+                title="Delete RSS Feed"
+                message={
+                    sourceToDelete
+                        ? `Remove "${sourceToDelete.name}" (${sourceToDelete.feed_url})? Its already-fetched articles stay, but no new ones will be pulled in.`
+                        : ""
+                }
+                confirmText="Delete"
+            />
+
+            <ConfirmationModal
+                isOpen={confirmBulkDelete}
+                onClose={() => setConfirmBulkDelete(false)}
+                onConfirm={confirmBulkDeleteAction}
+                title="Delete Selected Articles"
+                message={`Delete ${selectedIds.size} selected article(s)? This can't be undone.`}
+                confirmText="Delete"
+            />
+        </div>
+    );
+};
+
+export default AdminArticlesPage;

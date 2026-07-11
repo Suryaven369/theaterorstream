@@ -8,7 +8,6 @@ import {
     submitRating,
     submitReview,
     upvoteReview,
-    downvoteReview,
     removeUpvoteReview
 } from "../lib/supabase";
 import { requestTasteProfileRebuild } from "../lib/tasteProfileApi";
@@ -329,7 +328,9 @@ export const RatingModal = ({ isOpen, onClose, movieId, movieTitle, onSubmitSucc
                         }));
                     }
 
-                    requestTasteProfileRebuild().catch(() => {});
+                    // Refresh embedding too so the semantic vector search reflects
+                    // this rating (debounced server-side against rating bursts).
+                    requestTasteProfileRebuild({ includeEmbedding: true }).catch(() => {});
                     publishRatingActivity(userId, ratingResult.data || {
                         movie_id: movieId,
                         movie_title: movieTitle,

@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { FaBook, FaTrash, FaArrowLeft } from 'react-icons/fa';
+import { FaBook, FaArrowLeft } from 'react-icons/fa';
 import { useAuth } from '../context/AuthContext';
 import { getProfileByUsername } from '../lib/supabase';
-import { getUserMovieLogs, deleteMovieLog } from '../lib/movieDiary';
+import { getUserMovieLogs } from '../lib/movieDiary';
 import { generateSlugWithId } from '../lib/slugUtils';
 
 export default function DiaryPage() {
@@ -13,7 +13,10 @@ export default function DiaryPage() {
     const [loading, setLoading] = useState(true);
     const [targetProfile, setTargetProfile] = useState(null);
 
-    const isOwnProfile = !username || profile?.username === username;
+    const isOwnProfile = !username || (
+        !!profile?.username
+        && profile.username.toLowerCase() === String(username).toLowerCase()
+    );
 
     useEffect(() => {
         const load = async () => {
@@ -24,28 +27,27 @@ export default function DiaryPage() {
                 const p = await getProfileByUsername(username);
                 setTargetProfile(p);
                 targetUserId = p?.id;
-            } else {
+            } else if (isOwnProfile) {
                 setTargetProfile(profile);
+                targetUserId = user?.id;
             }
 
             if (targetUserId) {
                 const data = await getUserMovieLogs(targetUserId, { limit: 100 });
                 setLogs(data);
+            } else {
+                setLogs([]);
             }
             setLoading(false);
         };
 
-        if (isAuthenticated) load();
-    }, [username, user?.id, isOwnProfile, profile, isAuthenticated]);
-
-    const handleDelete = async (logId) => {
-        if (!isOwnProfile || !user?.id) return;
-        if (!window.confirm('Remove this diary entry?')) return;
-        const result = await deleteMovieLog(user.id, logId);
-        if (result.success) {
-            setLogs((prev) => prev.filter((l) => l.id !== logId));
+        // Guests can view another user's public diary; own diary needs auth.
+        if (isOwnProfile && !isAuthenticated) {
+            setLoading(false);
+            return;
         }
-    };
+        load();
+    }, [username, user?.id, isOwnProfile, profile, isAuthenticated]);
 
     const displayUser = targetProfile?.username || profile?.username;
 
@@ -107,16 +109,6 @@ export default function DiaryPage() {
                                             <p className="text-sm text-white/55 mt-2 line-clamp-2">{log.review_text}</p>
                                         )}
                                     </div>
-                                    {isOwnProfile && (
-                                        <button
-                                            type="button"
-                                            onClick={() => handleDelete(log.id)}
-                                            className="text-white/30 hover:text-red-400 p-2"
-                                            aria-label="Delete log"
-                                        >
-                                            <FaTrash />
-                                        </button>
-                                    )}
                                 </div>
                             );
                         })}

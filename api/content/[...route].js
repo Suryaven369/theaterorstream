@@ -5,6 +5,20 @@ import {
     fetchTVSections,
     fetchUpcoming,
     searchContent,
+    searchPeople,
+    fetchTrailers,
+    fetchShowcaseTrailers,
+    fetchArticles,
+    fetchComingSoon,
+    fetchNewReleases,
+    fetchPopularByPeriod,
+    fetchNowPlaying,
+    fetchAdminStats,
+    fetchWatchProviders,
+    fetchTitlePosters,
+    fetchSimilarTitles,
+    fetchTitleAnalysis,
+    fetchRssTrailers,
     jsonResponse,
     errorResponse,
 } from '../_lib/content-server.js';
@@ -54,10 +68,13 @@ export default async function handler(request) {
 
         if (segment === 'homepage') {
             const activeOnly = url.searchParams.get('activeOnly') !== 'false';
+            const fresh = url.searchParams.has('_') || url.searchParams.get('fresh') === '1';
             const sections = await fetchHomepageSections(activeOnly);
             return jsonResponse(
                 { data: sections },
-                'public, s-maxage=300, stale-while-revalidate=600',
+                fresh
+                    ? 'private, no-store'
+                    : 'public, s-maxage=60, stale-while-revalidate=120',
             );
         }
 
@@ -80,6 +97,12 @@ export default async function handler(request) {
             return jsonResponse(result, 'public, s-maxage=120, stale-while-revalidate=300');
         }
 
+        if (segment === 'people') {
+            const query = url.searchParams.get('q') || url.searchParams.get('query') || '';
+            const people = await searchPeople(query, parseInt(url.searchParams.get('limit') || '20', 10));
+            return jsonResponse({ data: people }, 'public, s-maxage=300, stale-while-revalidate=600');
+        }
+
         if (segment === 'upcoming') {
             const result = await fetchUpcoming({
                 yearFrom: url.searchParams.get('yearFrom') ? parseInt(url.searchParams.get('yearFrom'), 10) : null,
@@ -91,6 +114,193 @@ export default async function handler(request) {
                 fetchAll: url.searchParams.get('fetchAll') === 'true',
             });
             return jsonResponse(result, 'public, s-maxage=600, stale-while-revalidate=1200');
+        }
+
+        // === NEW ENDPOINTS ===
+
+        // Trailers - candidate trailers scanned live from TMDB-derived library data.
+        // Used by the admin Showcase Trailers panel to browse what to feature — the
+        // public Home feed no longer reads this directly, see 'showcase-trailers' below.
+        if (segment === 'trailers') {
+            const result = await fetchTrailers({
+                mediaType: url.searchParams.get('mediaType') || null,
+                limit: parseInt(url.searchParams.get('limit') || '20', 10),
+                offset: parseInt(url.searchParams.get('offset') || '0', 10),
+                daysBack: parseInt(url.searchParams.get('daysBack') || '90', 10),
+                trailerType: url.searchParams.get('type') || 'Trailer',
+                sortBy: url.searchParams.get('sortBy') || 'recent',
+            });
+            return jsonResponse(result, 'public, s-maxage=300, stale-while-revalidate=600');
+        }
+
+        // RSS trailers — verified-against-TMDB YouTube trailers for the Home feed
+        if (segment === 'rss-trailers') {
+            const result = await fetchRssTrailers({
+                limit: parseInt(url.searchParams.get('limit') || '15', 10),
+                daysBack: parseInt(url.searchParams.get('daysBack') || '21', 10),
+            });
+            return jsonResponse(result, 'public, s-maxage=300, stale-while-revalidate=600');
+        }
+
+        // Showcase trailers - admin-curated, DB-backed trailers for the public Home feed
+        if (segment === 'showcase-trailers') {
+            const activeOnly = url.searchParams.get('activeOnly') !== 'false';
+            const data = await fetchShowcaseTrailers(activeOnly);
+            return jsonResponse(
+                { data, total: data.length },
+                'public, s-maxage=300, stale-while-revalidate=600',
+            );
+        }
+
+        // Articles - admin-curated RSS news articles for the public Home feed
+        if (segment === 'articles') {
+            const result = await fetchArticles({
+                limit: parseInt(url.searchParams.get('limit') || '20', 10),
+                offset: parseInt(url.searchParams.get('offset') || '0', 10),
+            });
+            return jsonResponse(result, 'public, s-maxage=300, stale-while-revalidate=600');
+        }
+
+        // Coming soon - not yet released
+        if (segment === 'coming-soon') {
+            const result = await fetchComingSoon({
+                mediaType: url.searchParams.get('mediaType') || 'movie',
+                limit: parseInt(url.searchParams.get('limit') || '20', 10),
+                offset: parseInt(url.searchParams.get('offset') || '0', 10),
+                daysAhead: parseInt(url.searchParams.get('daysAhead') || '90', 10),
+            });
+            return jsonResponse(result, 'public, s-maxage=600, stale-while-revalidate=1200');
+        }
+
+        // New releases - recently released
+        if (segment === 'new-releases') {
+            const result = await fetchNewReleases({
+                mediaType: url.searchParams.get('mediaType') || null,
+                limit: parseInt(url.searchParams.get('limit') || '20', 10),
+                offset: parseInt(url.searchParams.get('offset') || '0', 10),
+                daysBack: parseInt(url.searchParams.get('daysBack') || '30', 10),
+            });
+            return jsonResponse(result, 'public, s-maxage=300, stale-while-revalidate=600');
+        }
+
+        // Popular by period
+        if (segment === 'popular') {
+            const result = await fetchPopularByPeriod({
+                mediaType: url.searchParams.get('mediaType') || null,
+                period: url.searchParams.get('period') || 'week',
+                limit: parseInt(url.searchParams.get('limit') || '20', 10),
+                offset: parseInt(url.searchParams.get('offset') || '0', 10),
+            });
+            return jsonResponse(result, 'public, s-maxage=300, stale-while-revalidate=600');
+        }
+
+        // Now playing - in theaters
+        if (segment === 'now-playing') {
+            const result = await fetchNowPlaying({
+                limit: parseInt(url.searchParams.get('limit') || '20', 10),
+                offset: parseInt(url.searchParams.get('offset') || '0', 10),
+            });
+            return jsonResponse(result, 'public, s-maxage=300, stale-while-revalidate=600');
+        }
+
+        // More like this — content-based similar titles (NOT personalised)
+        // /similar/:mediaType/:id
+        if (segment === 'similar') {
+            const mediaType = route[1] || url.searchParams.get('mediaType') || 'movie';
+            const tmdbId = route[2] || url.searchParams.get('id');
+            if (!tmdbId) return errorResponse('Missing title id', 400);
+            const limit = parseInt(url.searchParams.get('limit') || '18', 10);
+            const data = await fetchSimilarTitles(tmdbId, mediaType, limit);
+            return jsonResponse(
+                { data, total: data.length },
+                'public, s-maxage=3600, stale-while-revalidate=86400',
+            );
+        }
+
+        // Accurate Parent Guide + Movie Vibes — /analysis/:mediaType/:id
+        if (segment === 'analysis') {
+            const mediaType = route[1] || url.searchParams.get('mediaType') || 'movie';
+            const tmdbId = route[2] || url.searchParams.get('id');
+            if (!tmdbId) return errorResponse('Missing title id', 400);
+            const region = url.searchParams.get('region') || 'IN';
+            const data = await fetchTitleAnalysis(tmdbId, mediaType, region);
+            return jsonResponse(
+                { data },
+                'public, s-maxage=86400, stale-while-revalidate=604800',
+            );
+        }
+
+        // Where-to-watch (OTT) availability — /watch-providers/:mediaType/:id
+        if (segment === 'watch-providers') {
+            const mediaType = route[1] || url.searchParams.get('mediaType') || 'movie';
+            const tmdbId = route[2] || url.searchParams.get('id');
+            if (!tmdbId) return errorResponse('Missing title id', 400);
+            const region = url.searchParams.get('region') || 'IN';
+            const data = await fetchWatchProviders(tmdbId, mediaType, region);
+            return jsonResponse(
+                { data },
+                'public, s-maxage=3600, stale-while-revalidate=86400',
+            );
+        }
+
+        // Alternate posters — /posters?tmdbId=&mediaType=
+        if (segment === 'posters') {
+            const tmdbId = url.searchParams.get('tmdbId') || url.searchParams.get('id');
+            if (!tmdbId) return errorResponse('Missing title id', 400);
+            const mediaType = url.searchParams.get('mediaType') || 'movie';
+            const data = await fetchTitlePosters(tmdbId, mediaType);
+            return jsonResponse(
+                { data },
+                'public, s-maxage=3600, stale-while-revalidate=86400',
+            );
+        }
+
+        // Proxy remote image bytes (for board drag/paste from Google etc.)
+        if (segment === 'fetch-image') {
+            const target = url.searchParams.get('url');
+            if (!target || !/^https?:\/\//i.test(target)) {
+                return errorResponse('Missing or invalid url', 400);
+            }
+            let parsed;
+            try {
+                parsed = new URL(target);
+            } catch {
+                return errorResponse('Invalid url', 400);
+            }
+            if (!['http:', 'https:'].includes(parsed.protocol)) {
+                return errorResponse('Invalid protocol', 400);
+            }
+            const upstream = await fetch(target, {
+                headers: {
+                    Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+                    'User-Agent': 'TheaterOrStream/1.0 (image import)',
+                },
+                redirect: 'follow',
+            });
+            if (!upstream.ok) {
+                return errorResponse(`Upstream ${upstream.status}`, upstream.status === 404 ? 404 : 502);
+            }
+            const contentType = upstream.headers.get('content-type') || 'image/jpeg';
+            if (!contentType.startsWith('image/') && !contentType.includes('octet-stream')) {
+                return errorResponse('URL did not return an image', 415);
+            }
+            const buf = await upstream.arrayBuffer();
+            if (!buf.byteLength || buf.byteLength > 8 * 1024 * 1024) {
+                return errorResponse('Image empty or too large', 413);
+            }
+            return new Response(buf, {
+                status: 200,
+                headers: {
+                    'Content-Type': contentType.startsWith('image/') ? contentType : 'image/jpeg',
+                    'Cache-Control': 'private, max-age=300',
+                },
+            });
+        }
+
+        // Admin stats (public read, sensitive data filtered)
+        if (segment === 'stats') {
+            const stats = await fetchAdminStats();
+            return jsonResponse({ data: stats }, 'public, s-maxage=60, stale-while-revalidate=120');
         }
 
         return errorResponse('Unknown content route', 404);

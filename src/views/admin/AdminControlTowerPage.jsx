@@ -4,9 +4,11 @@ import {
     getContentEvents,
     getSyncRuns,
     getSyncState,
+    getTvSeasonsBackfillRemaining,
     updateContentEventStatus,
 } from "../../lib/supabase";
-import { triggerSyncJob } from "../../lib/adminSyncApi";
+import { triggerSyncJob, triggerBackfill } from "../../lib/adminSyncApi";
+import Loader from "../../components/Loader";
 
 const SYNC_JOBS = [
     {
@@ -72,6 +74,8 @@ const AdminControlTowerPage = () => {
     const [loading, setLoading] = useState(true);
     const [runningJob, setRunningJob] = useState(null);
     const [message, setMessage] = useState(null);
+    const [backfillRunning, setBackfillRunning] = useState(false);
+    const [backfillRemaining, setBackfillRemaining] = useState(null);
     const [newEvent, setNewEvent] = useState({
         event_type: "ingest",
         tmdb_id: "",
@@ -96,6 +100,14 @@ const AdminControlTowerPage = () => {
         loadData();
     }, [loadData]);
 
+    const refreshBackfillRemaining = useCallback(async () => {
+        setBackfillRemaining(await getTvSeasonsBackfillRemaining());
+    }, []);
+
+    useEffect(() => {
+        refreshBackfillRemaining();
+    }, [refreshBackfillRemaining]);
+
     const showMessage = (text, isError = false) => {
         setMessage({ text, isError });
         setTimeout(() => setMessage(null), 4000);
@@ -113,6 +125,20 @@ const AdminControlTowerPage = () => {
             showMessage(error.message, true);
         } finally {
             setRunningJob(null);
+        }
+    };
+
+    const handleBackfillSeasons = async () => {
+        setBackfillRunning(true);
+        try {
+            const result = await triggerBackfill('tv-seasons', { limit: 100 });
+            const remaining = result.checked === 100 ? ' Click again to continue with the rest.' : '';
+            showMessage(`TV seasons backfill: checked ${result.checked}, updated ${result.updated}, failed ${result.failed}.${remaining}`);
+            await refreshBackfillRemaining();
+        } catch (error) {
+            showMessage(error.message, true);
+        } finally {
+            setBackfillRunning(false);
         }
     };
 
@@ -211,13 +237,54 @@ const AdminControlTowerPage = () => {
                                 <button
                                     onClick={() => handleRunJob(job.id)}
                                     disabled={runningJob === job.id}
-                                    className="w-full py-2 rounded-lg text-xs font-medium bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50"
+                                    className="w-full py-2 rounded-lg text-xs font-medium bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50 flex items-center justify-center gap-2"
                                 >
-                                    {runningJob === job.id ? "Running…" : "Run now"}
+                                    {runningJob === job.id ? (
+                                        <>
+                                            <Loader size="sm" colorClass="border-white" />
+                                            Running…
+                                        </>
+                                    ) : "Run now"}
                                 </button>
                             </div>
                         );
                     })}
+                </div>
+            </section>
+
+            <section className="mb-8">
+                <h2 className="text-sm font-semibold text-white/70 uppercase tracking-wide mb-3">
+                    Maintenance
+                </h2>
+                <div className="grid gap-4 md:grid-cols-3">
+                    <div className="bg-white/5 rounded-xl p-4 border border-white/10">
+                        <h3 className="text-white font-medium mb-1">Backfill TV Seasons</h3>
+                        <p className="text-white/40 text-xs mb-2">
+                            One-off: fetches the seasons array from TMDB for TV shows synced before
+                            this field existed (100 per click).
+                        </p>
+                        <p className="text-[11px] text-white/45 mb-4">
+                            {backfillRemaining === null ? (
+                                "Checking remaining…"
+                            ) : backfillRemaining === 0 ? (
+                                <span className="text-green-400">All caught up — 0 remaining</span>
+                            ) : (
+                                <>{backfillRemaining} show{backfillRemaining === 1 ? "" : "s"} still need seasons data</>
+                            )}
+                        </p>
+                        <button
+                            onClick={handleBackfillSeasons}
+                            disabled={backfillRunning || backfillRemaining === 0}
+                            className="w-full py-2 rounded-lg text-xs font-medium bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50 flex items-center justify-center gap-2"
+                        >
+                            {backfillRunning ? (
+                                <>
+                                    <Loader size="sm" colorClass="border-white" />
+                                    Running…
+                                </>
+                            ) : "Run now"}
+                        </button>
+                    </div>
                 </div>
             </section>
 

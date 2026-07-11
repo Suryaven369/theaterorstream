@@ -4,31 +4,10 @@ import { FaGlobe, FaChevronDown, FaCalendarAlt } from "react-icons/fa";
 import { Link } from "react-router-dom";
 import { getTVSectionsFromEdge } from "../lib/contentEdgeApi";
 import { generateSlugWithId } from "../lib/slugUtils";
-
-// Available regions for content filtering
-const REGIONS = [
-    { code: "IN", name: "India", flag: "🇮🇳" },
-    { code: "US", name: "United States", flag: "🇺🇸" },
-    { code: "GB", name: "United Kingdom", flag: "🇬🇧" },
-    { code: "CA", name: "Canada", flag: "🇨🇦" },
-    { code: "AU", name: "Australia", flag: "🇦🇺" },
-    { code: "DE", name: "Germany", flag: "🇩🇪" },
-    { code: "FR", name: "France", flag: "🇫🇷" },
-    { code: "JP", name: "Japan", flag: "🇯🇵" },
-    { code: "KR", name: "South Korea", flag: "🇰🇷" },
-    { code: "BR", name: "Brazil", flag: "🇧🇷" },
-];
+import { REGIONS, getSavedRegion, persistRegion } from "../constants/regions";
 
 const TVSeries = () => {
-    // Load saved region from localStorage or default to India
-    const [selectedRegion, setSelectedRegion] = useState(() => {
-        const saved = localStorage.getItem('selectedRegion');
-        if (saved) {
-            const found = REGIONS.find(r => r.code === saved);
-            return found || REGIONS[0];
-        }
-        return REGIONS[0];
-    });
+    const [selectedRegion, setSelectedRegion] = useState(getSavedRegion);
     const [isRegionOpen, setIsRegionOpen] = useState(false);
     const [tvSections, setTvSections] = useState([]);
     const [loadingSections, setLoadingSections] = useState(true);
@@ -66,7 +45,7 @@ const TVSeries = () => {
 
     const handleRegionSelect = (region) => {
         setSelectedRegion(region);
-        localStorage.setItem('selectedRegion', region.code);
+        persistRegion(region);
         setIsRegionOpen(false);
     };
 

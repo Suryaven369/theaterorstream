@@ -2,7 +2,289 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** May 2026 · HEAD `ba262d9` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 2026 · HEAD pending push · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Jul 2026 — Cinema Feed Following = people lists
+
+### Following tab shows Followers / Following ✅
+
+**Problem:** Cinema Feed → Following showed activity from followed users + entity-follow CTA, not the user's people lists.
+
+**Files changed:**
+- `src/components/social/FollowersFollowingPanel.jsx` — Followers/Following toggles, follow/unfollow
+- `src/components/social/SocialFeedPanel.jsx` — Following tab uses people panel (no activity feed)
+- `src/views/FeedPage.jsx` — subtitle tweak
+- `src/lib/db/social.js` — hydrate follow profiles with `avatar_url`
+
+**Behavior:** Following tab lists people you follow / who follow you. Recent/Diary/For You unchanged.
+
+---
+
+## Session: Jul 2026 — Guest public profiles + polish
+
+### Guests see empty profiles after search ✅
+
+**Problem:** Searching a user worked, but opening `/:username/profile` while signed out showed "USER", all zeros, and empty sections. RLS policies labeled "Public read" were actually `TO authenticated` only.
+
+**Also fixed:**
+- Profile posts render `MovieMentionText` (no raw `[[movie|…]]` tokens)
+- Theater system list helper text owner-only (`CollectionsPage`, `CollectionDetails`)
+
+**Files changed:**
+- `supabase/migrations/20260714000000_anon_public_profile_read.sql`
+- Profile/social/routes/diary/watchlist/blogs/activity/achievements guest-safe loads
+- Mention + theater-list UI polish
+
+**Requires:** Run `20260714000000_anon_public_profile_read.sql` in Supabase.
+
+---
+
+## Session: Jul 2026 — Movie Boards (standalone)
+
+### Boards separate from Lists/Collections ✅
+
+**Problem:** Boards were incorrectly rebranded on top of `user_collections`. User wants Lists unchanged; Boards as their own cinematic product.
+
+**Approach:** New `boards` / `board_items` / `board_likes` / `board_comments` / `board_activity` tables. Lists stay on `user_collections`.
+
+**Files added:**
+- `supabase/migrations/20260712000000_movie_boards_phase1.sql` — standalone boards schema (rewritten)
+- `src/lib/db/boards.js` — CRUD, reorder, likes, comments, explore, followed activity
+- `src/views/BoardDetailsPage.jsx` — cinematic UI, owner DnD, movies/TV/directors/actors, comments
+- `src/views/UserBoardsPage.jsx` — per-user boards index
+- `src/views/BoardsExplorePage.jsx` — explore (amber cinematic aesthetic)
+
+**Files changed:**
+- Collections restored as Lists (`CollectionsPage`, `CollectionDetails`, `CollectionsModal`, Profile/Search labels)
+- Routes: `/boards`, `/boards/:slug`, `/:user/boards`, `/:user/boards/:slug` → board pages; `/collection` + `/:user/collections` → lists
+- `following-feed-server.js` + `FollowingFeed.jsx` — board follow activity
+- `middleware.js` — OG for boards table
+- `profileSystem.js` — `ENTITY_TYPES` includes `board`
+
+**Behavior:**
+- Lists/Collections unchanged
+- Boards: movies, TV, directors, actors; owner-only drag reorder; like/follow/comments; following feed board updates
+- No collaborators (deferred)
+
+**Requires:** Re-run `20260712000000_movie_boards_phase1.sql` in Supabase (creates `boards*` tables). If you already ran the old collections-based version, this migration still creates the new tables safely.
+
+**Next recommended:** Mobile DnD polish, board delete UI, AI suggestions, sections.
+
+**Paused:** Hashtag Phase 3 · Board collaborators
+
+---
+
+## Session: Jul 2026 — OG / social link sharing
+
+### Crawler OG meta for movies, profiles, posts + public share routes ✅
+
+**Problem:** Twitter/Instagram/Facebook only got homepage meta for most links; collections/blogs required login; `/post/:id` 404.
+
+**Files changed:**
+- `middleware.js` — bot HTML for `/movies`, `/tv`, `/movie`, `/collection`, `/blog`, `/:user/profile`, `/post`
+- `src/routes/index.jsx` — collections/blogs/posts public
+- `src/views/PostDetails.jsx` — new share landing page
+- `socialFeedApi.js` — `getFeedPostById`
+- `Details.jsx`, `ProfilePage.jsx` — client SeoHead
+- `index.html` — www canonical + `name="twitter:*"`
+- `collections.js` — public-only slug fetch for guests
+
+**Behavior:** Shared links show title/image/description in social previews; guests can open collection/blog/post URLs.
+
+**Next recommended:** Deploy + validate with Facebook Sharing Debugger / Twitter Card Validator; optional `@vercel/og` branded cards.
+
+---
+
+## Session: Jul 2026 — supabase split + admin sections dedupe
+
+### Split supabase.js; retire legacy Admin sections tab ✅
+
+**Problem:** `supabase.js` god-module; AdminPanel duplicated `/admin/sections`.
+
+**Files added:**
+- `src/lib/supabaseClient.js`
+- `src/lib/db/{profiles,ratings,library,sections,rss,userLists,collections,social,adminOps}.js`
+
+**Files changed:**
+- `src/lib/supabase.js` — barrel re-exports only (~143 lines)
+- `AdminPanel.jsx` — sections tab → link to `/admin/sections`
+- `AdminSectionsPage.jsx` — uses shared `REGIONS`
+- `adminLibraryApi.js` — imports client from `supabaseClient`
+
+**Behavior:** Same APIs via `from '../lib/supabase'`; sections CMS only at `/admin/sections`.
+
+**Next recommended:** Further shrink AdminPanel browse/bulk; optional ProfilePage split.
+
+---
+
+## Session: Jul 2026 — Home browse extract + delete onboarding
+
+### HomeBrowseTab / sidebars + remove onboarding subtree ✅
+
+**Problem:** My Feed CMS UI + region picker bloated Home; unused onboarding still in repo.
+
+**Files added:**
+- `src/constants/regions.js`
+- `src/components/home/HomeRegionPicker.jsx`, `HomeBrowseTab.jsx`, `HomeComingSoonSidebar.jsx`, `HomeSocialSidebar.jsx`
+
+**Files changed:**
+- `Home.jsx` (~760 lines)
+- `upcoming.jsx`, `TVSeries.jsx` — shared `REGIONS` helpers
+- `supabase.js` — removed unused onboarding completion helpers (kept `getUserTasteProfile`)
+- `WatchPage.jsx` — copy tweak
+
+**Deleted:** OnboardingPage, onboarding components/constants/utils, tasteIdentity, tastePreferences
+
+**Next recommended:** Dedupe AdminSectionsPage REGIONS; further supabase.js split.
+
+---
+
+## Session: Jul 2026 — Split Home feed cards (pass 2)
+
+### Extract activity card, composer, comment/share modals ✅
+
+**Problem:** Home still owned composer + modals + activity JSX after card split.
+
+**Files added:**
+- `FeedActivityCard.jsx`, `FeedComposer.jsx`, `FeedCommentModal.jsx`, `FeedShareModal.jsx`
+
+**Files changed:** `src/views/Home.jsx` (~1,075 lines; was ~1,463)
+
+**Behavior:** Same feed UX; composer/comments/share own their state.
+
+**Next recommended:** Extract CMS browse sidebar / region picker; or delete onboarding if abandoned.
+
+---
+
+## Session: Jul 2026 — Split Home feed cards
+
+### Extract FeedPostCard / FeedTrailerCard / FeedArticleCard ✅
+
+**Problem:** `Home.jsx` inlined ~400 lines of feed card JSX (`renderPost` / `renderTrailer` / `renderArticle`).
+
+**Files changed:**
+- Added `src/components/social/FeedPostCard.jsx`, `FeedTrailerCard.jsx`, `FeedArticleCard.jsx`
+- `src/views/Home.jsx` — uses components; activity row stays inline
+
+**Behavior:** Same feed UI; Home is thinner orchestrator.
+
+**Next recommended:** Extract `FeedActivityCard` or composer/modals next; or delete onboarding if abandoned.
+
+---
+
+## Session: Jul 2026 — Dead-code cleanup + audit
+
+### Removed unused files/exports; audited heavy modules ✅
+
+**Problem:** Unused components/API after article-page removal; large god-files hard to maintain.
+
+**Deleted (orphaned):**
+- `HomeSocialFeed.jsx`, `BannerHome.jsx`, `BadgeGrid.jsx`, `BadgeList.jsx`, `StatsRow.jsx`
+
+**Removed dead API/exports:**
+- `/api/content/article/:id` + `fetchArticleById` + duplicate `fetchMovieDetail` in content-server
+- Unused edge wrappers: showcase/coming-soon/new-releases/popular/now-playing/stats clients
+- `downvoteReview`, `getSimilarRecommendations` (client), `trackRating`, `normalizeSearchQuery`
+
+**Kept (unused but feature-sized):** full onboarding subtree (~1.5k lines) — confirm before delete
+
+**Heavy files (refactor later, not this pass):**
+- `AdminPanel.jsx` ~2.6k, `supabase.js` ~2.5k, `Home.jsx` ~1.8k, `ProfilePage.jsx` ~1.4k
+
+**Next recommended:** Confirm delete onboarding; split Home feed cards; retire AdminPanel sections tab in favor of AdminSectionsPage.
+
+---
+
+## Session: Jul 2026 — Remove in-app article page
+
+### Article cards open source URL only ✅
+
+**Problem:** Clicking a news article opened a separate `/article/:id` page; not needed.
+
+**Files changed:**
+- `src/views/Home.jsx` — article cards use external `link`; “Read on {source} ↗”
+- `src/routes/index.jsx` — removed `article/:id` route
+- Deleted `src/views/ArticleDetails.jsx`
+- `src/lib/contentEdgeApi.js` — removed unused `getArticleFromEdge`
+
+**Behavior:** Feed articles open the publisher URL in a new tab. No in-app full-article page.
+
+**Next recommended:** Smoke-test Home news cards open external links.
+
+---
+
+## Session: Jul 2026 — Public feed browse (guest access)
+
+### Guest can browse feed; lock AI / collections / blogs ✅
+
+**Problem:** Entire app required login; Supabase Auth outages blocked all browsing.
+
+**Files changed:**
+- `src/routes/index.jsx` — App shell public; `RequireAuth` wraps watch, collections, blogs, diary, watchlist, settings
+- `src/components/RequireAuth.jsx`, `SignInGate.jsx` — nested auth gate + inline CTA
+- `src/views/WatchPage.jsx` — AI reco gated for guests
+- `src/views/Home.jsx` — public feed; sign-in for post/like/save/comment
+- `src/components/MobileNavigation.jsx` — Sign in tab for guests
+
+**Behavior:** Guests browse Home feed, movies, TV, search, upcoming, public profiles. Sign-in required for Watch (AI), collections, blogs, diary, watchlist, settings, and feed write actions.
+
+**Next recommended:** Smoke-test guest `/` feed + locked `/watch` redirect; keep Supabase Auth healthy for sign-in.
+
+---
+
+## Session: May 2026 — Admin CMS Enhancement
+
+### Admin panel modularization + security hardening (uncommitted) ✅
+
+**Problem:** AdminPanel.jsx was 150K+ char monolith; no audit logging; limited sync jobs; missing trailer/coming-soon APIs.
+
+**Files changed:**
+- `supabase/migrations/20260528100000_admin_audit_logs.sql` — `admin_audit_logs`, `admin_rate_limits`, `admin_sessions` tables + indexes + RLS
+- `api/_lib/admin-auth.js` — enhanced with rate limiting, IP whitelist, audit logging integration
+- `api/_lib/rate-limit.js` — sliding window rate limiter (DB + memory fallback)
+- `api/_lib/audit-log.js` — admin action audit trail helper
+- `api/_lib/tmdb-sync-server.js` — new sync jobs: `popular-weekly`, `top-rated-monthly`, `trending-weekly`, `new-releases-weekly`, `upcoming-trailers`
+- `api/_lib/content-server.js` — `fetchTrailers`, `fetchComingSoon`, `fetchNewReleases`, `fetchPopularByPeriod`, `fetchNowPlaying`, `fetchAdminStats`
+- `api/content/[...route].js` — `/trailers`, `/coming-soon`, `/new-releases`, `/popular`, `/now-playing`, `/stats` endpoints
+- `src/lib/contentEdgeApi.js` — client wrappers for new endpoints
+- `src/views/admin/AdminDashboardPage.jsx` — new modular dashboard with stats, health, quick actions
+- `src/routes/index.jsx` — `/admin` now shows new dashboard; legacy at `/admin/legacy`
+- `src/components/AdminLayout.jsx` — updated sidebar nav
+- `vercel.json` — new cron schedules (trending/now-playing now daily)
+- `.env.example` — `ADMIN_IP_WHITELIST` documentation
+
+**Behavior:** 
+- New admin dashboard at `/admin` with stats, sync job status, quick links
+- Rate limiting: 100 reads/min, 30 writes/min per IP
+- Audit logs capture all admin actions with IP + user agent
+- Trailers endpoint returns YouTube keys + thumbnails for recent movies
+- Coming soon returns future releases; new releases returns last 30 days
+- Cron jobs now run daily for trending/now-playing
+
+**Next recommended:** Run `20260528100000_admin_audit_logs.sql` migration; test `/api/content/trailers`; optionally set `ADMIN_IP_WHITELIST` for production.
+
+---
+
+## Session: May 2026 — Social Media Transformation
+
+### Social platform layer (uncommitted) ✅
+
+**Problem:** Home was catalog-only; limited retention (5 badges); no global social feed or Letterboxd-style reviews.
+
+**Files changed:**
+- `supabase/migrations/20260528000000_social_media_phase.sql` — `social_reviews`, `review_comments`, `review_likes`, `collection_likes`, `user_streaks`, profile/collection/badge extensions
+- `supabase/migrations/20260528000100_social_badges_seed.sql` — 40+ tiered badges
+- `api/feed/[...route].js`, `api/_lib/feed-server.js` — global / for-you / suggestions feeds
+- `api/_lib/social-server.js` — expanded badge checks, reviews, likes, streaks
+- `api/_lib/streak-server.js`, `api/_lib/embedding-server.js` — HF free embeddings
+- `src/components/social/*` — ReviewCard, BadgeGrid, StatsRow, HomeSocialFeed, WhoToFollow, WriteReviewModal
+- `src/views/Home.jsx`, `ProfilePage.jsx`, `Details.jsx`, `src/index.css`
+
+**Behavior:** Home has Feed (Popular/Recent/Following/For You) + Browse tabs; users publish social reviews from movie details; streaks update on diary log; profiles show taste identity, stats row, badge grid; who-to-follow sidebar uses taste overlap.
+
+**Next recommended:** Run both new SQL migrations in Supabase; set `HF_API_KEY` on Vercel; smoke-test `/api/feed/global` after deploy.
 
 ---
 

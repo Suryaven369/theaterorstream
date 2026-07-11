@@ -187,17 +187,26 @@ export const getMoviesFromDb = async (options = {}) => {
 /**
  * Get a single movie/TV show from database by TMDB ID
  */
-export const getContentByTmdbId = async (tmdbId) => {
-    const cacheKey = `content:${tmdbId}`;
+export const getContentByTmdbId = async (tmdbId, mediaType = null) => {
+    const cacheKey = `content:${tmdbId}:${mediaType || 'any'}`;
     const cached = getCached(cacheKey, CACHE_TTL.library);
     if (cached) return cached;
 
-    const { data, error } = await supabase
+    // tmdb_id alone isn't unique — movie IDs and TV IDs are separate numbering
+    // spaces in TMDB, so the same id can match a movie row AND a show row.
+    // Filter by media_type when known so .single() doesn't error out on that
+    // collision (it requires exactly one match).
+    let query = supabase
         .from('movies_library')
         .select(MOVIE_DETAIL_SELECT)
         .eq('tmdb_id', tmdbId.toString())
-        .eq('is_active', true)
-        .single();
+        .eq('is_active', true);
+
+    if (mediaType) {
+        query = query.eq('media_type', mediaType);
+    }
+
+    const { data, error } = await query.single();
 
     if (error && error.code !== 'PGRST116') {
         console.error('Error fetching content:', error);
@@ -398,7 +407,7 @@ export const getSectionsForRegion = async (regionCode, activeOnly = true) => {
  */
 export const searchContentFromDb = async (query, options = {}) => {
     const {
-        mediaType = null,  // null = search all, 'movie' or 'tv'
+        mediaType = null,
         limit = 20,
         offset = 0,
     } = options;
@@ -408,39 +417,132 @@ export const searchContentFromDb = async (query, options = {}) => {
         return { data: [], total: 0 };
     }
 
-    const cacheKey = `search:v2:${term}:${mediaType}:${limit}:${offset}`;
+    const cacheKey = `search:v4:${term}:${mediaType}:${limit}:${offset}`;
     const cached = getCached(cacheKey, CACHE_TTL.library);
     if (cached) return cached;
 
-    const { buildLibrarySearchOrClause } = await import('./searchUtils.js');
+    const { buildLibrarySearchOrClause, rankLibrarySearchHits } = await import('./searchUtils.js');
     const orClause = buildLibrarySearchOrClause(term);
 
-    if (!orClause) {
-        return { data: [], total: 0 };
+    const pool = Math.min(120, Math.max(60, limit * 4));
+    let titleHits = [];
+
+    if (orClause) {
+        let dbQuery = supabase
+            .from('movies_library')
+            .select('tmdb_id, title, original_title, poster_path, backdrop_path, media_type, release_date, first_air_date, vote_average, popularity, overview, genres, runtime, number_of_seasons, number_of_episodes')
+            .eq('is_active', true)
+            .or(orClause)
+            .order('popularity', { ascending: false, nullsFirst: false })
+            .range(0, pool - 1);
+
+        if (mediaType) dbQuery = dbQuery.eq('media_type', mediaType);
+
+        const { data, error } = await dbQuery;
+        if (error) {
+            console.error('Error searching content:', error);
+            return { data: [], total: 0, error };
+        }
+        titleHits = rankLibrarySearchHits(term, data || []);
     }
+
+    let personHits = [];
+    if (offset === 0) {
+        personHits = await searchLibraryByPersonLocal(term, { mediaType, limit: Math.max(limit, 30) });
+    }
+
+    const seen = new Set();
+    const merged = [];
+    for (const row of [...titleHits, ...personHits]) {
+        const id = String(row.tmdb_id || row.id);
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        merged.push(row);
+    }
+
+    const result = { data: merged.slice(offset, offset + limit), total: merged.length };
+    setCache(cacheKey, result);
+    return result;
+};
+
+async function searchLibraryByPersonLocal(term, { mediaType = null, limit = 40 } = {}) {
+    let people = [];
+    try {
+        const { tmdbFetch } = await import('./tmdbApi.js');
+        const res = await tmdbFetch('/search/person', { query: term, include_adult: 'false' });
+        const q = term.toLowerCase();
+        people = (res?.results || [])
+            .filter((p) => {
+                const n = (p.name || '').toLowerCase();
+                return n === q || n.includes(q) || q.includes(n) ||
+                    q.split(/\s+/).every((t) => n.split(/\s+/).some((w) => w.startsWith(t) || t.startsWith(w)));
+            })
+            .slice(0, 2);
+    } catch {
+        return [];
+    }
+    if (!people.length) return [];
+
+    const ids = new Set();
+    const CREW_JOBS = new Set(['Director', 'Writer', 'Screenplay', 'Producer', 'Creator', 'Executive Producer']);
+
+    await Promise.all(people.map(async (person) => {
+        for (const k of person.known_for || []) {
+            if (k?.id) ids.add(String(k.id));
+        }
+        try {
+            const { tmdbFetch } = await import('./tmdbApi.js');
+            const credits = await tmdbFetch(`/person/${person.id}/combined_credits`, {});
+            for (const c of credits?.cast || []) if (c?.id) ids.add(String(c.id));
+            for (const c of credits?.crew || []) {
+                if (c?.id && CREW_JOBS.has(c.job)) ids.add(String(c.id));
+            }
+        } catch { /* known_for only */ }
+    }));
+
+    const idList = [...ids].slice(0, 80);
+    if (!idList.length) return [];
 
     let dbQuery = supabase
         .from('movies_library')
-        .select(MOVIES_LIBRARY_SELECT, { count: 'exact' })
+        .select('tmdb_id, title, original_title, poster_path, backdrop_path, media_type, release_date, first_air_date, vote_average, popularity, overview, genres, runtime, number_of_seasons, number_of_episodes')
         .eq('is_active', true)
-        .or(orClause)
+        .in('tmdb_id', idList)
         .order('popularity', { ascending: false, nullsFirst: false })
-        .range(offset, offset + limit - 1);
+        .limit(limit);
 
-    if (mediaType) {
-        dbQuery = dbQuery.eq('media_type', mediaType);
+    if (mediaType) dbQuery = dbQuery.eq('media_type', mediaType);
+
+    const { data } = await dbQuery;
+    return data || [];
+}
+
+/**
+ * Search cast & crew via TMDB person search (fast).
+ */
+export const searchCastCrewFromDb = async (query) => {
+    const term = (query || '').trim();
+    if (term.length < 2) return [];
+
+    try {
+        const { tmdbFetch } = await import('./tmdbApi.js');
+        const res = await tmdbFetch('/search/person', { query: term, include_adult: 'false' });
+        return (res?.results || []).slice(0, 24).map((p) => {
+            const kf = (p.known_for || [])[0];
+            const dept = p.known_for_department || '';
+            return {
+                id: p.id,
+                name: p.name,
+                role: dept === 'Directing' ? 'Director' : dept === 'Acting' ? 'Actor' : dept || 'Person',
+                profile_path: p.profile_path,
+                known_for_movie: kf?.title || kf?.name || '',
+                known_for_tmdb_id: kf?.id || null,
+                media_type: kf?.media_type || 'movie',
+            };
+        });
+    } catch {
+        return [];
     }
-
-    const { data, error, count } = await dbQuery;
-
-    if (error) {
-        console.error('Error searching content:', error);
-        return { data: [], total: 0, error };
-    }
-
-    const result = { data: data || [], total: count || 0 };
-    setCache(cacheKey, result);
-    return result;
 };
 
 /**
@@ -450,29 +552,30 @@ export const quickSearchFromDb = async (query, limit = 8) => {
     const term = (query || '').trim();
     if (term.length < 2) return [];
 
-    const cacheKey = `quicksearch:v2:${term}:${limit}`;
+    const cacheKey = `quicksearch:v3:${term}:${limit}`;
     const cached = getCached(cacheKey, CACHE_TTL.library);
     if (cached) return cached;
 
-    const { buildLibrarySearchOrClause } = await import('./searchUtils.js');
+    const { buildLibrarySearchOrClause, rankLibrarySearchHits } = await import('./searchUtils.js');
     const orClause = buildLibrarySearchOrClause(term);
     if (!orClause) return [];
 
     const { data, error } = await supabase
         .from('movies_library')
-        .select('tmdb_id, title, poster_path, media_type, release_date, vote_average')
+        .select('tmdb_id, title, poster_path, media_type, release_date, vote_average, popularity, original_title')
         .eq('is_active', true)
         .or(orClause)
         .order('popularity', { ascending: false, nullsFirst: false })
-        .limit(limit);
+        .limit(Math.min(80, Math.max(24, limit * 6)));
 
     if (error) {
         console.error('Error in quick search:', error);
         return [];
     }
 
-    setCache(cacheKey, data || []);
-    return data || [];
+    const ranked = rankLibrarySearchHits(term, data || []).slice(0, limit);
+    setCache(cacheKey, ranked);
+    return ranked;
 };
 
 // =============================================

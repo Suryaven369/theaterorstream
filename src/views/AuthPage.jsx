@@ -1,16 +1,27 @@
 import React, { useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
     getEmailValidationError,
     getPasswordValidationError,
-    sendLoginOtp,
     sendSignupOtp,
     signInWithPassword,
     signUpWithPassword,
+    signInWithGoogle,
     verifyEmailOtp,
     requestPasswordReset,
 } from '../lib/auth';
+
+function GoogleIcon() {
+    return (
+        <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+            <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z" />
+            <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z" />
+            <path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z" />
+            <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.46 3.44 1.35l2.58-2.58A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z" />
+        </svg>
+    );
+}
 
 const AuthPage = () => {
     const navigate = useNavigate();
@@ -18,8 +29,8 @@ const AuthPage = () => {
     const { loading: authLoading } = useAuth();
 
     const [mode, setMode] = useState('login');
-    const [verifyType, setVerifyType] = useState('signup');
     const [loading, setLoading] = useState(false);
+    const [googleLoading, setGoogleLoading] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [authMessage, setAuthMessage] = useState('');
@@ -46,6 +57,18 @@ const AuthPage = () => {
         setError('');
         setSuccess('');
         setOtp('');
+    };
+
+    const handleGoogle = async () => {
+        setGoogleLoading(true);
+        setError('');
+        setSuccess('');
+        const result = await signInWithGoogle();
+        // On success the browser navigates away to Google, so we only land here on failure.
+        if (!result.success) {
+            setError(result.error || 'Could not sign in with Google.');
+            setGoogleLoading(false);
+        }
     };
 
     const handleSignUp = async (e) => {
@@ -82,14 +105,13 @@ const AuthPage = () => {
         }
 
         const otpResult = await sendSignupOtp(email);
-        setVerifyType('signup');
         setMode('verify');
 
         if (!otpResult.success) {
             setSuccess('Account created! Check your email for the verification code.');
             setError(otpResult.error);
         } else {
-            setSuccess('Account created! Enter the 6-digit code sent to your email.');
+            setSuccess('Account created! Enter the 6-digit code once to verify your email. After that, log in with just your password.');
             setError('');
         }
 
@@ -108,7 +130,7 @@ const AuthPage = () => {
             return;
         }
 
-        const result = await verifyEmailOtp(email, otp, verifyType);
+        const result = await verifyEmailOtp(email, otp, 'signup');
         if (!result.success) {
             setError(result.error);
             setLoading(false);
@@ -127,20 +149,21 @@ const AuthPage = () => {
 
         const result = await signInWithPassword(email, password);
         if (result.success) {
+            // Password login only — no OTP after login
             setSuccess('Welcome back!');
             setLoading(false);
             return;
         }
 
+        // Unverified signup: one-time email OTP only (not a login step)
         if (result.needsVerification) {
-            const otpResult = await sendLoginOtp(email);
+            const otpResult = await sendSignupOtp(email);
+            setMode('verify');
             if (otpResult.success) {
-                setVerifyType('email');
-                setMode('verify');
-                setSuccess('Verify your email to continue. We sent a new 6-digit code.');
+                setSuccess('Finish signup first — enter the 6-digit code we sent to verify your email. After that, log in with just your password.');
                 setError('');
             } else {
-                setError(result.error);
+                setError(result.error || otpResult.error);
             }
             setLoading(false);
             return;
@@ -155,13 +178,12 @@ const AuthPage = () => {
         setError('');
         setSuccess('');
 
-        const sendFn = verifyType === 'signup' ? sendSignupOtp : sendLoginOtp;
-        const result = await sendFn(email);
+        const result = await sendSignupOtp(email);
 
         if (!result.success) {
             setError(result.error);
         } else {
-            setSuccess('New verification code sent!');
+            setSuccess('New signup verification code sent!');
         }
 
         setLoading(false);
@@ -192,6 +214,25 @@ const AuthPage = () => {
     }
 
     const emailError = email ? getEmailValidationError(email) : null;
+
+    const googleBlock = (
+        <>
+            <button
+                type="button"
+                onClick={handleGoogle}
+                disabled={googleLoading || loading}
+                className="w-full flex items-center justify-center gap-3 py-3 rounded-lg bg-white text-gray-800 font-medium hover:bg-gray-100 disabled:opacity-50 transition-colors"
+            >
+                <GoogleIcon />
+                {googleLoading ? 'Connecting…' : 'Continue with Google'}
+            </button>
+            <div className="flex items-center gap-3 my-4">
+                <div className="flex-1 h-px bg-white/10" />
+                <span className="text-xs text-white/30">or</span>
+                <div className="flex-1 h-px bg-white/10" />
+            </div>
+        </>
+    );
 
     return (
         <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center px-4 py-10">
@@ -228,6 +269,7 @@ const AuthPage = () => {
 
                 {mode === 'signup' && (
                     <form onSubmit={handleSignUp} className="space-y-4">
+                        {googleBlock}
                         <div>
                             <label className="text-xs text-white/50 mb-1 block">Email address</label>
                             <input
@@ -253,10 +295,10 @@ const AuthPage = () => {
                                 type="password"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                placeholder="At least 6 characters"
+                                placeholder="Min 8 chars, with a letter & number"
                                 className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-orange-500"
                                 required
-                                minLength={6}
+                                minLength={8}
                                 autoComplete="new-password"
                             />
                         </div>
@@ -270,7 +312,7 @@ const AuthPage = () => {
                                 placeholder="Confirm your password"
                                 className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-orange-500"
                                 required
-                                minLength={6}
+                                minLength={8}
                                 autoComplete="new-password"
                             />
                         </div>
@@ -312,7 +354,7 @@ const AuthPage = () => {
                                 autoComplete="one-time-code"
                             />
                             <p className="text-xs text-white/40 mt-2 text-center">
-                                Code sent to {email}
+                                One-time signup code sent to {email}. After verifying, you only need your password to log in.
                             </p>
                         </div>
 
@@ -346,6 +388,7 @@ const AuthPage = () => {
 
                 {mode === 'login' && (
                     <form onSubmit={handleLogin} className="space-y-4">
+                        {googleBlock}
                         <div>
                             <label className="text-xs text-white/50 mb-1 block">Email</label>
                             <input
@@ -435,7 +478,14 @@ const AuthPage = () => {
                 )}
 
                 <p className="text-center text-xs text-white/30 mt-8">
-                    By continuing, you agree to our Terms of Service
+                    By continuing, you agree to our{' '}
+                    <Link to="/terms" className="text-white/50 hover:text-white/80 underline underline-offset-2">
+                        Terms
+                    </Link>{' '}
+                    and{' '}
+                    <Link to="/privacy" className="text-white/50 hover:text-white/80 underline underline-offset-2">
+                        Privacy Policy
+                    </Link>
                 </p>
             </div>
         </div>

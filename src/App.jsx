@@ -47,19 +47,23 @@ function App() {
     };
   }, [dispatch]);
 
-  // Scroll to top on route change
+  const isSearchPage = location.pathname === '/search';
+
+  // Scroll to top on route change (skip search overlay — it manages its own scroll)
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [location.pathname]);
+    if (!isSearchPage) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [location.pathname, isSearchPage]);
 
   return (
-    <div className="bg-[#0a0a0a] min-h-screen">
-      <Header />
-      <main className="pb-20 lg:pb-0">
+    <div className="bg-[var(--bg-primary)] min-h-screen">
+      {!isSearchPage && <Header />}
+      <main className={isSearchPage ? '' : 'pb-nav'}>
         <Outlet />
       </main>
-      <Footer />
-      <MobileNavigation />
+      {!isSearchPage && <Footer />}
+      {!isSearchPage && <MobileNavigation />}
     </div>
   );
 }

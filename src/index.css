@@ -6,19 +6,26 @@
 @tailwind utilities;
 
 :root {
-  /* Premium color palette */
+  /* Letterboxd-inspired dark cinema palette */
   --primary: #f5c518;
   --primary-hover: #e4b400;
-  --bg-primary: #0a0a0a;
-  --bg-secondary: #141414;
-  --bg-card: #1a1a1a;
+  --accent-green: #00c030;
+  --accent-green-dim: rgba(0, 192, 48, 0.15);
+  --bg-primary: #14181c;
+  --bg-secondary: #1c2228;
+  --bg-card: #1c2228;
+  --bg-elevated: #242c34;
   --text-primary: #ffffff;
-  --text-secondary: #a3a3a3;
-  --text-muted: #737373;
-  --border-color: #262626;
+  --text-secondary: #99aabb;
+  --text-muted: #6b7a8a;
+  --border-color: #2c3440;
   --gradient-gold: linear-gradient(135deg, #f5c518 0%, #e4b400 50%, #d4a400 100%);
-  --glass-bg: rgba(20, 20, 20, 0.8);
-  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-bg: rgba(28, 34, 40, 0.85);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --tier-bronze: #cd7f32;
+  --tier-silver: #c0c0c0;
+  --tier-gold: #f5c518;
+  --tier-platinum: #e5e4e2;
 }
 
 * {
@@ -93,6 +100,12 @@ body {
 /* Subtle glow effect */
 .glow {
   box-shadow: 0 0 40px rgba(245, 197, 24, 0.15);
+}
+
+/* Feed card entrance — used by the Home feed for smooth Instagram-style item loading */
+@keyframes feed-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* Animation keyframes */
@@ -358,13 +371,38 @@ input[type="range"]::-moz-range-thumb {
   padding-top: env(safe-area-inset-top, 0);
 }
 
-/* Touch-friendly tap targets */
-@media (max-width: 768px) {
-  button, a, [role="button"] {
-    min-height: 44px;
-    min-width: 44px;
+/* Bottom padding for pages above the fixed mobile tab bar */
+.pb-nav {
+  padding-bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 1024px) {
+  .pb-nav {
+    padding-bottom: 2rem;
   }
-  
+}
+
+/* Sheet / modal footers above the home indicator */
+.pb-sheet {
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* Opt-in 44px tap targets — do NOT force on every link/button (breaks chips) */
+.tap-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Touch-friendly refinements (no blanket min-size on all buttons) */
+@media (max-width: 768px) {
   /* Reduce hover effects on touch devices */
   .card-hover:hover {
     transform: none;
@@ -374,11 +412,6 @@ input[type="range"]::-moz-range-thumb {
   .card-hover:active {
     transform: scale(0.98);
     opacity: 0.9;
-  }
-  
-  /* Faster transitions on mobile */
-  * {
-    transition-duration: 0.15s !important;
   }
   
   /* Better text readability on small screens */
@@ -394,19 +427,22 @@ input[type="range"]::-moz-range-thumb {
   }
 }
 
-/* Hide scrollbar on mobile */
+/* Hide scrollbar on mobile horizontal carousels only — keep vertical scrollbars usable on desktop */
 @media (max-width: 768px) {
-  ::-webkit-scrollbar {
-    display: none;
-  }
-  
-  * {
+  .scrollbar-hide,
+  .overflow-x-auto,
+  .overflow-x-scroll {
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+  .scrollbar-hide::-webkit-scrollbar,
+  .overflow-x-auto::-webkit-scrollbar,
+  .overflow-x-scroll::-webkit-scrollbar {
+    display: none;
+  }
 }
 
-/* Mobile modal styles */
+/* Mobile modal / bottom-sheet styles */
 @media (max-width: 640px) {
   .modal-mobile {
     margin: 0;
@@ -415,6 +451,12 @@ input[type="range"]::-moz-range-thumb {
     height: 100%;
     max-height: 100%;
     border-radius: 0;
+  }
+
+  .sheet-mobile {
+    max-height: min(92dvh, 92vh);
+    border-top-left-radius: 1.25rem;
+    border-top-right-radius: 1.25rem;
   }
 }
 
@@ -477,3 +519,160 @@ button:focus-visible, a:focus-visible, input:focus-visible {
   outline: 2px solid #f5c518;
   outline-offset: 2px;
 }
+
+/* --- Social feed & Letterboxd-style components --- */
+.surface-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+}
+
+.surface-elevated {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+}
+
+.feed-tab {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  border-bottom: 2px solid transparent;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.feed-tab:hover {
+  color: var(--text-primary);
+}
+
+.feed-tab-active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+.review-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+  transition: border-color 0.2s;
+}
+
+.review-card:hover {
+  border-color: rgba(245, 197, 24, 0.25);
+}
+
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+  text-align: center;
+}
+
+.stat-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.stat-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
+}
+
+.badge-tier-bronze { border-color: var(--tier-bronze); background: rgba(205, 127, 50, 0.12); }
+.badge-tier-silver { border-color: var(--tier-silver); background: rgba(192, 192, 192, 0.1); }
+.badge-tier-gold { border-color: var(--tier-gold); background: rgba(245, 197, 24, 0.12); }
+.badge-tier-platinum { border-color: var(--tier-platinum); background: rgba(229, 228, 226, 0.1); }
+
+.streak-flame {
+  color: #ff6b35;
+  filter: drop-shadow(0 0 6px rgba(255, 107, 53, 0.5));
+}
+
+.btn-accent-green {
+  background: var(--accent-green);
+  color: #0a0a0a;
+  font-weight: 600;
+  border-radius: 0.5rem;
+  padding: 0.5rem 1rem;
+  transition: opacity 0.2s;
+}
+
+.btn-accent-green:hover {
+  opacity: 0.9;
+}
+
+.taste-identity-card {
+  background: linear-gradient(135deg, var(--bg-elevated) 0%, var(--bg-card) 100%);
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--accent-green);
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+}
+
+/* --- Moctale-style search overlay --- */
+.search-overlay {
+  animation: searchFadeIn 0.2s ease-out;
+}
+
+@keyframes searchFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.search-input-bar {
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+.search-tab {
+  position: relative;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.search-tab-active {
+  border-bottom-color: #fff;
+}
+
+.search-recent-pill {
+  max-width: 100%;
+}
+
+/* Header: icon-only search → expands on hover / focus */
+.header-search-trigger .header-search-label {
+  max-width: 0;
+  opacity: 0;
+  margin-left: 0;
+  transition:
+    max-width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.25s ease 0.05s,
+    margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.header-search-trigger:hover .header-search-label,
+.header-search-trigger:focus-visible .header-search-label {
+  max-width: 10rem;
+  opacity: 1;
+  margin-left: 0.625rem;
+}
+
+.profile-menu {
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+}
+/* Rich text (blog editor + rendered blog content) */
+.rich-content h2 { font-size: 1.5rem; font-weight: 700; margin: 1.2em 0 0.4em; color: #fff; }
+.rich-content h3 { font-size: 1.2rem; font-weight: 600; margin: 1em 0 0.3em; color: #fff; }
+.rich-content p { margin: 0.6em 0; }
+.rich-content ul { list-style: disc; padding-left: 1.4em; margin: 0.6em 0; }
+.rich-content ol { list-style: decimal; padding-left: 1.4em; margin: 0.6em 0; }
+.rich-content li { margin: 0.2em 0; }
+.rich-content blockquote { border-left: 3px solid var(--primary); padding-left: 1em; margin: 0.8em 0; color: rgba(255,255,255,0.6); font-style: italic; }
+.rich-content a { color: var(--primary); text-decoration: underline; word-break: break-word; }
+.rich-content img { max-width: 100%; border-radius: 0.5rem; margin: 0.8em 0; }
+.rich-content b, .rich-content strong { font-weight: 700; }
+.rich-content u { text-decoration: underline; }

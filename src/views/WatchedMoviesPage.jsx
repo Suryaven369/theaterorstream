@@ -19,7 +19,8 @@ const WatchedMoviesPage = () => {
     const [itemToDelete, setItemToDelete] = useState(null);
 
     // Check if viewing own profile
-    const isOwnProfile = profile?.username === username;
+    const isOwnProfile = !username
+        || (!!profile?.username && profile.username.toLowerCase() === String(username).toLowerCase());
 
     useEffect(() => {
         const loadData = async () => {

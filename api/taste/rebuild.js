@@ -2,6 +2,10 @@ import { requireUser } from '../_lib/user-auth.js';
 import { verifyCronRequest } from '../_lib/cron-auth.js';
 import { rebuildUserTasteProfile } from '../_lib/taste-profile-server.js';
 import { isEmbeddingConfigured } from '../_lib/embedding-server.js';
+import { getSupabaseAdmin } from '../_lib/supabase-admin.js';
+
+// User-triggered rebuilds (e.g. rating bursts) collapse to one within this window.
+const REBUILD_DEBOUNCE_SECONDS = 60;
 
 export const config = {
     runtime: 'nodejs',
@@ -55,6 +59,24 @@ export default async function handler(req, res) {
         }
 
         const includeEmbedding = !!body.includeEmbedding && isEmbeddingConfigured();
+
+        // Debounce user-triggered rebuilds so rating several movies in a row
+        // doesn't fire a full embedding rebuild each time. Cron / force bypass it.
+        if (!cronAuth.ok && !body.force) {
+            const supabase = getSupabaseAdmin();
+            const { data: existing } = await supabase
+                .from('user_taste_profiles')
+                .select('last_computed_at')
+                .eq('user_id', userId)
+                .maybeSingle();
+
+            if (existing?.last_computed_at) {
+                const secsSince = (Date.now() - new Date(existing.last_computed_at).getTime()) / 1000;
+                if (secsSince < REBUILD_DEBOUNCE_SECONDS) {
+                    return res.status(200).json({ ok: true, skipped: true, debounced: true });
+                }
+            }
+        }
 
         const result = await rebuildUserTasteProfile(userId, {
             includeEmbedding,

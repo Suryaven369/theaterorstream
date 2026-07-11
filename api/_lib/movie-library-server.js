@@ -26,6 +26,7 @@ export function mapFullTmdbToLibraryRecord(movieData, mediaType) {
         last_air_date: movieData.last_air_date,
         number_of_seasons: movieData.number_of_seasons,
         number_of_episodes: movieData.number_of_episodes,
+        seasons: movieData.seasons || [],
         networks: movieData.networks,
         in_production: movieData.in_production,
         episode_run_time: movieData.episode_run_time,
@@ -78,7 +79,9 @@ export function shouldRefreshFull(existing, listItem) {
 import { upsertMoviesLibrary } from '../../src/lib/libraryDedupe.js';
 
 export async function upsertLibraryRecord(supabase, record) {
-    const { data, error } = await upsertMoviesLibrary(supabase, record, 'tmdb_id');
+    // upsertMoviesLibrary expects an array of records (it dedupes by iterating);
+    // passing a bare object throws "(records || []) is not iterable".
+    const { data, error } = await upsertMoviesLibrary(supabase, [record], 'tmdb_id');
 
     if (error) throw error;
     const row = Array.isArray(data) ? data[0] : data;

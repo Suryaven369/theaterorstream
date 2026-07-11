@@ -14,7 +14,8 @@ const ActivityFeedPage = () => {
     const [loading, setLoading] = useState(true);
     const [targetProfile, setTargetProfile] = useState(null);
 
-    const isOwnProfile = profile?.username === username;
+    const isOwnProfile = !username
+        || (!!profile?.username && profile.username.toLowerCase() === String(username).toLowerCase());
 
     useEffect(() => {
         const loadData = async () => {

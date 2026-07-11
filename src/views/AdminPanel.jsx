@@ -19,13 +19,6 @@ import {
     saveFullMovieToLibrary,
     checkMoviesInAdvancedLibrary,
     getAdvancedLibraryStats,
-    getHomepageSections,
-    createHomepageSection,
-    updateHomepageSection,
-    deleteHomepageSection,
-    toggleHomepageSectionActive,
-    addMovieToSection,
-    removeMovieFromSection,
     getGlobalUserStats,
     getSyncState,
     getSyncRuns,
@@ -34,6 +27,15 @@ import {
 import { convertImageToBase64 } from "../utils/imageHelper";
 import MovieDetailsModal from "../components/MovieDetailsModal";
 import AdminMovieEditorPage from "./admin/AdminMovieEditorPage";
+
+// Drop duplicate TMDB results by id, keeping the first occurrence
+const dedupeById = (movies) => {
+    const seen = new Map();
+    for (const m of movies) {
+        if (!seen.has(m.id)) seen.set(m.id, m);
+    }
+    return [...seen.values()];
+};
 
 // ========== COMPONENTS ==========
 
@@ -93,27 +95,29 @@ const MovieRow = ({ movie, onEdit, onDelete, onToggleFeatured, onToggleActive })
 );
 
 // TMDB Movie Card
-const TMDBCard = ({ movie, mediaType, onSave, onSaveFull, isSaved, isSaving }) => (
+const TMDBCard = ({ movie, mediaType, onSave, onSaveFull, onPreview, isSaved, isSaving }) => (
     <div className="bg-white/[0.02] rounded p-1.5 border border-white/5">
         <div className="flex gap-1.5">
             <img
                 src={movie.poster_path ? `https://image.tmdb.org/t/p/w92${movie.poster_path}` : '/placeholder.png'}
                 alt={movie.title || movie.name}
-                className="w-10 h-14 object-cover rounded"
+                className="w-10 h-14 object-cover rounded cursor-pointer"
+                onClick={() => onPreview(movie, mediaType)}
             />
             <div className="flex-1 min-w-0">
                 <div className="text-[10px] font-medium text-white truncate">{movie.title || movie.name}</div>
-                <div className="text-[9px] text-white/40">{movie.release_date || movie.first_air_date}</div>
+                <div className="text-[9px] text-white/40">
+                    {mediaType === 'tv' ? '📺' : '🎬'} {movie.release_date || movie.first_air_date}
+                </div>
                 <div className="text-[9px] text-white/40">⭐ {movie.vote_average?.toFixed(1)} • ID: {movie.id}</div>
             </div>
         </div>
         <div className="flex gap-1 mt-1">
             <button
-                onClick={() => onSave(movie, mediaType)}
-                disabled={isSaved || isSaving}
-                className={`flex-1 py-1 text-[10px] rounded ${isSaved ? 'bg-green-500/20 text-green-400' : 'bg-white/5 text-white/40 hover:bg-white/10'}`}
+                onClick={() => onPreview(movie, mediaType)}
+                className="flex-1 py-1 text-[10px] rounded bg-white/5 text-white/40 hover:bg-white/10"
             >
-                Quick
+                👁 Preview
             </button>
             <button
                 onClick={() => onSaveFull(movie, mediaType)}
@@ -352,6 +356,7 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
     const [tmdbMovies, setTmdbMovies] = useState([]);
     const [loadingTmdb, setLoadingTmdb] = useState(false);
     const [savedIds, setSavedIds] = useState(new Set());
+    const [tmdbSavedFilter, setTmdbSavedFilter] = useState('not_saved'); // 'all', 'saved', 'not_saved'
 
     // Advanced library state
     const [advancedSavedIds, setAdvancedSavedIds] = useState(new Set());
@@ -369,22 +374,19 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
     // Collection form
     const [newCollection, setNewCollection] = useState({ slug: '', name: '', description: '' });
 
-    // Homepage Sections state
-    const [homepageSections, setHomepageSections] = useState([]);
     const [syncState, setSyncState] = useState([]);
     const [recentSyncRuns, setRecentSyncRuns] = useState([]);
-    const [newSection, setNewSection] = useState({ name: '', icon: '🎬', section_type: 'manual', max_movies: 10 });
-    const [editingSection, setEditingSection] = useState(null);
-    const [sectionMovieSearch, setSectionMovieSearch] = useState('');
-    const [sectionSearchResults, setSectionSearchResults] = useState([]);
 
     // TMDB Search state
     const [tmdbSearch, setTmdbSearch] = useState('');
-    const [tmdbSearchType, setTmdbSearchType] = useState('movie');
     const [tmdbMediaType, setTmdbMediaType] = useState('movie'); // Global media type toggle
     const [tmdbYear, setTmdbYear] = useState(''); // Year filter
-    const [tmdbCountry, setTmdbCountry] = useState(''); // Country filter
-    const [tmdbRegion, setTmdbRegion] = useState('US'); // Region for Now Playing (matches frontend default)
+    const [tmdbCountry, setTmdbCountry] = useState(''); // Country filter (production/origin country)
+    const [tmdbLanguage, setTmdbLanguage] = useState(''); // Original language filter (e.g. hi, ta, te)
+    const [tmdbRegion, setTmdbRegion] = useState('US'); // Region for Now Playing + watch provider availability
+    const [tmdbPlatform, setTmdbPlatform] = useState(''); // OTT platform filter (TMDB watch provider id)
+    const [tmdbProviders, setTmdbProviders] = useState([]); // Watch providers available for current region/media type
+    const [loadingProviders, setLoadingProviders] = useState(false);
     const [tmdbPage, setTmdbPage] = useState(1); // Current page
     const [tmdbTotalPages, setTmdbTotalPages] = useState(0); // Total pages available
     const [tmdbResultsLimit, setTmdbResultsLimit] = useState(60); // Number of movies to fetch
@@ -434,7 +436,40 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                 fetchTmdb('popular');
             }
         }
-    }, [activeTab, tmdbYear, tmdbCountry, tmdbMediaType]);
+    }, [activeTab, tmdbYear, tmdbCountry, tmdbLanguage, tmdbPlatform, tmdbMediaType]);
+
+    // Load the list of OTT/streaming platforms (Netflix, Hotstar, Prime, etc.) available for the
+    // current region + media type, so the Platform dropdown always reflects real TMDB provider ids
+    // instead of hardcoded ones that can go stale or be wrong per-region.
+    useEffect(() => {
+        if (activeTab !== 'browse' && activeTab !== 'bulk') return;
+        let cancelled = false;
+        const loadProviders = async () => {
+            setLoadingProviders(true);
+            try {
+                const endpoint = tmdbMediaType === 'tv' ? '/watch/providers/tv' : '/watch/providers/movie';
+                const response = await tmdbApi.get(endpoint, { params: { watch_region: tmdbRegion || 'US' } });
+                if (cancelled) return;
+                const region = tmdbRegion || 'US';
+                const results = (response.data.results || []).slice().sort((a, b) => {
+                    const pa = a.display_priorities?.[region] ?? a.display_priority ?? 999;
+                    const pb = b.display_priorities?.[region] ?? b.display_priority ?? 999;
+                    return pa - pb;
+                });
+                setTmdbProviders(results);
+                // A platform selected for a previous region/content type may not exist in the
+                // refreshed list (provider ids and availability vary per region) — clear it rather
+                // than silently sending a stale/mismatched id to the discover API.
+                setTmdbPlatform(prev => (prev && !results.some(p => String(p.provider_id) === String(prev)) ? '' : prev));
+            } catch (error) {
+                console.error('Error fetching watch providers:', error);
+                if (!cancelled) setTmdbProviders([]);
+            }
+            if (!cancelled) setLoadingProviders(false);
+        };
+        loadProviders();
+        return () => { cancelled = true; };
+    }, [activeTab, tmdbMediaType, tmdbRegion]);
 
     // Check which movies are already in advanced library when TMDB movies change
     useEffect(() => {
@@ -450,12 +485,11 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
 
     const loadData = async () => {
         setLoading(true);
-        const [statsData, libraryData, collectionsData, advStatsData, sectionsData, userData, syncStateData, syncRunsData] = await Promise.all([
+        const [statsData, libraryData, collectionsData, advStatsData, userData, syncStateData, syncRunsData] = await Promise.all([
             getLibraryStats(),
             getMoviesLibrary({ limit: 200 }),
             getCollections(),
             getAdvancedLibraryStats(),
-            getHomepageSections(),
             getGlobalUserStats(),
             getSyncState(),
             getSyncRuns({ limit: 5 }),
@@ -468,7 +502,6 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
         setLibrary(libraryData);
         setCollections(collectionsData);
         setAdvancedStats(advStatsData);
-        setHomepageSections(sectionsData);
         setSyncState(syncStateData);
         setRecentSyncRuns(syncRunsData);
         setLoading(false);
@@ -579,8 +612,8 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
             const pagesToFetch = Math.ceil(effectiveLimit / 20);
             const requests = [];
 
-            // If year or country filter is active, OR if it's upcoming category, use discover endpoint
-            if ((tmdbYear || tmdbCountry || useDiscover) && source !== 'trending') {
+            // If year, country, language, or platform filter is active, OR if it's upcoming category, use discover endpoint
+            if ((tmdbYear || tmdbCountry || tmdbLanguage || tmdbPlatform || useDiscover) && source !== 'trending') {
                 for (let i = 0; i < pagesToFetch; i++) {
                     const params = { page: startPage + i };
 
@@ -588,6 +621,15 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                         endpoint = '/discover/movie';
                         if (tmdbYear) params.primary_release_year = tmdbYear;
                         if (tmdbCountry) params.with_origin_country = tmdbCountry;
+                        // with_original_language filters by the movie's actual spoken/original
+                        // language, which is what actually distinguishes Hindi/Tamil/Telugu titles —
+                        // with_origin_country alone also matches English-language Indian productions.
+                        if (tmdbLanguage) params.with_original_language = tmdbLanguage;
+                        // with_watch_providers requires watch_region to be set alongside it
+                        if (tmdbPlatform) {
+                            params.with_watch_providers = tmdbPlatform;
+                            params.watch_region = tmdbRegion || 'US';
+                        }
 
                         // Map source to appropriate sorting
                         switch (source) {
@@ -605,6 +647,17 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                                 params['primary_release_date.gte'] = new Date().toISOString().split('T')[0]; // Today or later
                                 params['primary_release_date.lte'] = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // Next 6 months
                                 break;
+                            case 'now_playing':
+                                // /movie/now_playing has no with_origin_country / with_original_language
+                                // support, so when those filters are active we reproduce its window
+                                // here instead — otherwise this fell through to the default case and
+                                // silently returned generic popular titles of any release date.
+                                params.sort_by = 'popularity.desc';
+                                params['with_release_type'] = '2|3'; // theatrical (limited + wide)
+                                params['primary_release_date.gte'] = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                                params['primary_release_date.lte'] = new Date().toISOString().split('T')[0];
+                                if (!tmdbYear) params.region = tmdbRegion || 'US';
+                                break;
                             default:
                                 params.sort_by = 'popularity.desc';
                         }
@@ -612,6 +665,11 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                         endpoint = '/discover/tv';
                         if (tmdbYear) params.first_air_date_year = tmdbYear;
                         if (tmdbCountry) params.with_origin_country = tmdbCountry;
+                        if (tmdbLanguage) params.with_original_language = tmdbLanguage;
+                        if (tmdbPlatform) {
+                            params.with_watch_providers = tmdbPlatform;
+                            params.watch_region = tmdbRegion || 'US';
+                        }
 
                         switch (source) {
                             case 'popular':
@@ -627,6 +685,13 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                                 params.sort_by = 'popularity.desc';
                                 params['first_air_date.gte'] = new Date().toISOString().split('T')[0];
                                 params['first_air_date.lte'] = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                                break;
+                            case 'now_playing':
+                                // Approximate "airing now" for TV: shows with an episode in the last
+                                // ~14 days, sorted by popularity.
+                                params.sort_by = 'popularity.desc';
+                                params['air_date.gte'] = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                                params['air_date.lte'] = new Date().toISOString().split('T')[0];
                                 break;
                             default:
                                 params.sort_by = 'popularity.desc';
@@ -651,19 +716,22 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
             }
 
             console.log(`🎬 TMDB Fetch - Category: ${source}, Type: ${tmdbMediaType}, Endpoint: ${endpoint}`);
-            console.log(`📊 Fetching ${pagesToFetch} pages (${startPage} to ${startPage + pagesToFetch - 1}) - Year: ${tmdbYear || 'All'}, Country: ${tmdbCountry || 'All'}`);
+            console.log(`📊 Fetching ${pagesToFetch} pages (${startPage} to ${startPage + pagesToFetch - 1}) - Year: ${tmdbYear || 'All'}, Country: ${tmdbCountry || 'All'}, Language: ${tmdbLanguage || 'All'}, Platform: ${tmdbPlatform || 'All'}`);
 
             const responses = await Promise.all(requests);
-            const allResults = responses.flatMap(r => r.data.results || []);
+            // TMDB pages can overlap (items shift between pages as popularity/sort data changes
+            // between requests, and discover/trending pagination isn't perfectly stable), so dedupe
+            // by id before displaying — otherwise the same movie can show up twice in the grid.
+            const allResults = dedupeById(responses.flatMap(r => r.data.results || []));
             const totalPages = responses[0]?.data.total_pages || 0;
 
-            console.log(`Received ${allResults.length} results total. Total pages available: ${totalPages}`);
+            console.log(`Received ${allResults.length} unique results. Total pages available: ${totalPages}`);
 
             setTmdbTotalPages(totalPages);
             setTmdbPage(startPage + pagesToFetch - 1); // Set to the last page fetched
 
             if (append) {
-                setTmdbMovies(prev => [...prev, ...allResults]);
+                setTmdbMovies(prev => dedupeById([...prev, ...allResults]));
             } else {
                 setTmdbMovies(allResults);
             }
@@ -707,47 +775,25 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
     };
 
     // Search TMDB for specific movies/TV shows
+    // Search is intentionally unfiltered — it's "find this exact title", not "browse
+    // by criteria", so none of the Browse tab's year/language/country filters apply
+    // here. Uses /search/multi so a single query seamlessly returns both movies and
+    // TV shows together (no need to pick a type before searching).
     const searchTmdb = async () => {
         if (!tmdbSearch.trim()) return;
         setLoadingTmdb(true);
         try {
-            const endpoint = tmdbSearchType === 'movie' ? '/search/movie' : '/search/tv';
-            const params = { query: tmdbSearch, page: 1 };
+            const response = await tmdbApi.get('/search/multi', { params: { query: tmdbSearch, page: 1 } });
+            const results = dedupeById(
+                (response.data.results || []).filter(r => r.media_type === 'movie' || r.media_type === 'tv'),
+            );
 
-            // Add year filter if specified
-            if (tmdbYear) {
-                if (tmdbSearchType === 'movie') {
-                    params.primary_release_year = tmdbYear;
-                } else {
-                    params.first_air_date_year = tmdbYear;
-                }
-            }
-
-            const response = await tmdbApi.get(endpoint, { params });
-            setTmdbMovies(response.data.results || []);
+            setTmdbMovies(results);
             setTmdbSource('search'); // Mark as search results
         } catch (error) {
             console.error('Error searching TMDB:', error);
         }
         setLoadingTmdb(false);
-    };
-
-    // Quick save (old behavior for movies_library table)
-    const handleSave = async (movie, mediaType) => {
-        const result = await saveMovieToLibrary(movie, mediaType);
-        if (result.success) {
-            const statsAfter = await getLibraryStats();
-            setBulkResult({
-                success: true,
-                savedCount: 1,
-                message: `✓ Saved ${movie.title || movie.name}. Library total: ${statsAfter?.total ?? '?'}.`,
-            });
-            await loadData();
-        } else {
-            const msg = result.error?.message || 'Could not save to library';
-            setBulkResult({ success: false, message: `✗ ${msg}` });
-            console.error('Quick save failed:', result.error);
-        }
     };
 
     // Full save with all TMDB data to new normalized tables
@@ -826,15 +872,19 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
             const results = await Promise.allSettled(
                 batch.map(async (movie) => {
                     try {
+                        // "Trending" mixes movies and TV in one list (TMDB tags each item with its
+                        // own media_type), so the per-item type must win over the global toggle —
+                        // otherwise TV ids get requested as /movie/{id} (or vice versa) and 404.
+                        const itemMediaType = movie.media_type || mediaType;
                         const appendTo = 'credits,videos,images,release_dates,keywords,reviews,similar,recommendations';
-                        const endpoint = mediaType === 'tv' ? `/tv/${movie.id}` : `/movie/${movie.id}`;
+                        const endpoint = itemMediaType === 'tv' ? `/tv/${movie.id}` : `/movie/${movie.id}`;
 
                         const response = await tmdbApi.get(endpoint, {
                             params: { append_to_response: appendTo }
                         });
 
                         const fullMovieData = response.data;
-                        const result = await saveFullMovieToLibrary(fullMovieData, { media_type: mediaType });
+                        const result = await saveFullMovieToLibrary(fullMovieData, { media_type: itemMediaType });
 
                         if (result.success) {
                             setAdvancedSavedIds(prev => new Set([...prev, movie.id]));
@@ -1113,8 +1163,7 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
     const handleBulkSave = async () => {
         setBulkSaving(true);
         setBulkResult(null);
-        const sourceConfig = tmdbSources.find(s => s.id === tmdbSource);
-        const result = await bulkSaveMoviesToLibrary(tmdbMovies, sourceConfig?.type || tmdbMediaType);
+        const result = await bulkSaveMoviesToLibrary(tmdbMovies, tmdbMediaType);
         const statsAfter = result.success ? await getLibraryStats() : null;
         if (result.success) {
             const dupNote = result.duplicatesSkipped > 0
@@ -1157,55 +1206,13 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
         }
     };
 
-    // ===== SECTION HANDLERS =====
-    const handleCreateSection = async () => {
-        if (newSection.name) {
-            const result = await createHomepageSection(newSection);
-            if (result.success) {
-                setNewSection({ name: '', icon: '🎬', section_type: 'manual', max_movies: 10 });
-                await loadData();
-            }
-        }
-    };
-
-    const handleDeleteSection = async (id) => {
-        if (confirm('Delete this section?')) {
-            await deleteHomepageSection(id);
-            await loadData();
-        }
-    };
-
-    const handleToggleSection = async (id) => {
-        await toggleHomepageSectionActive(id);
-        await loadData();
-    };
-
-    const searchMoviesForSection = async () => {
-        if (!sectionMovieSearch.trim()) return;
-        try {
-            const response = await tmdbApi.get('/search/multi', {
-                params: { query: sectionMovieSearch, page: 1 }
-            });
-            setSectionSearchResults(response.data.results?.filter(r => r.media_type === 'movie' || r.media_type === 'tv').slice(0, 10) || []);
-        } catch (error) {
-            console.error('Search error:', error);
-        }
-    };
-
-    const handleAddMovieToSection = async (sectionId, movie) => {
-        await addMovieToSection(sectionId, {
-            tmdb_id: movie.id,
-            title: movie.title || movie.name,
-            poster_path: movie.poster_path,
-            media_type: movie.media_type || 'movie'
-        });
-        await loadData();
-    };
-
-    const handleRemoveMovieFromSection = async (sectionId, tmdbId) => {
-        await removeMovieFromSection(sectionId, tmdbId);
-        await loadData();
-    };
+    // Filter fetched TMDB results by saved status (used in Browse + Bulk Import tabs)
+    const isTmdbMovieSaved = (m) => advancedSavedIds.has(m.id) || savedIds.has(m.id.toString());
+    const filteredTmdbMovies = tmdbMovies.filter(m => {
+        if (tmdbSavedFilter === 'saved') return isTmdbMovieSaved(m);
+        if (tmdbSavedFilter === 'not_saved') return !isTmdbMovieSaved(m);
+        return true;
+    });
 
     return (
         <div className="min-h-screen bg-[#0a0a0a] py-6">
@@ -1236,12 +1243,12 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                     >
                         🎬 Movie Editor
                     </button>
-                    <button
-                        onClick={() => setActiveTab('sections')}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'sections' ? 'bg-orange-500 text-white' : 'bg-white/10 text-white/70 hover:bg-white/20'}`}
+                    <Link
+                        to="/admin/sections"
+                        className="px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-white/10 text-white/70 hover:bg-white/20"
                     >
                         📐 Sections
-                    </button>
+                    </Link>
                     <button
                         onClick={() => setActiveTab('collections')}
                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'collections' ? 'bg-orange-500 text-white' : 'bg-white/10 text-white/70 hover:bg-white/20'}`}
@@ -1495,171 +1502,6 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                     </div>
                 )}
 
-                {/* Sections Tab */}
-                {activeTab === 'sections' && (
-                    <div>
-                        {/* Create Section Form */}
-                        <div className="bg-white/5 rounded p-3 mb-4">
-                            <h4 className="text-xs font-medium text-white mb-2">📐 Create New Section</h4>
-                            <div className="flex gap-2 flex-wrap">
-                                <input
-                                    type="text"
-                                    placeholder="Section name (e.g., Staff Picks)"
-                                    value={newSection.name}
-                                    onChange={(e) => setNewSection({ ...newSection, name: e.target.value })}
-                                    className="flex-1 min-w-[200px] bg-black/30 rounded p-2 text-xs text-white border border-white/10"
-                                />
-                                <input
-                                    type="text"
-                                    placeholder="Icon"
-                                    value={newSection.icon}
-                                    onChange={(e) => setNewSection({ ...newSection, icon: e.target.value })}
-                                    className="w-16 bg-black/30 rounded p-2 text-xs text-white border border-white/10 text-center"
-                                />
-                                <select
-                                    value={newSection.section_type}
-                                    onChange={(e) => setNewSection({ ...newSection, section_type: e.target.value })}
-                                    className="bg-black/30 rounded px-2 text-xs text-white border border-white/10"
-                                >
-                                    <option value="manual">Manual</option>
-                                    <option value="api">API (Auto)</option>
-                                </select>
-                                <input
-                                    type="number"
-                                    placeholder="Limit"
-                                    value={newSection.max_movies}
-                                    onChange={(e) => setNewSection({ ...newSection, max_movies: parseInt(e.target.value) || 10 })}
-                                    className="w-16 bg-black/30 rounded p-2 text-xs text-white border border-white/10"
-                                />
-                                <button onClick={handleCreateSection} className="px-4 py-2 text-xs bg-green-500 text-white rounded hover:bg-green-600">
-                                    Create
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Sections List */}
-                        <div className="space-y-3">
-                            {homepageSections.length === 0 ? (
-                                <div className="text-center py-8 text-white/40 text-sm">No sections yet. Create one above!</div>
-                            ) : (
-                                homepageSections.map((section) => (
-                                    <div key={section.id} className="bg-white/[0.02] rounded-lg border border-white/10 overflow-hidden">
-                                        {/* Section Header */}
-                                        <div className="flex items-center justify-between p-3 border-b border-white/5">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-lg">{section.icon}</span>
-                                                <div>
-                                                    <span className="text-sm font-medium text-white">{section.name}</span>
-                                                    <span className="text-[10px] text-white/40 ml-2">({section.slug})</span>
-                                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-white/50 ml-2">
-                                                        {section.section_type}
-                                                    </span>
-                                                    <span className="text-[10px] text-white/40 ml-2">
-                                                        Order: {section.display_order}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <button
-                                                    onClick={() => handleToggleSection(section.id)}
-                                                    className={`px-2 py-1 text-[10px] rounded ${section.is_active ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}
-                                                >
-                                                    {section.is_active ? 'Active' : 'Hidden'}
-                                                </button>
-                                                <button
-                                                    onClick={() => setEditingSection(editingSection === section.id ? null : section.id)}
-                                                    className="px-2 py-1 text-[10px] rounded bg-blue-500/20 text-blue-400"
-                                                >
-                                                    {editingSection === section.id ? 'Close' : 'Edit'}
-                                                </button>
-                                                <button
-                                                    onClick={() => handleDeleteSection(section.id)}
-                                                    className="px-2 py-1 text-[10px] rounded bg-red-500/20 text-red-400"
-                                                >
-                                                    Delete
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        {/* Section Movies Preview */}
-                                        <div className="p-3">
-                                            {section.movies && section.movies.length > 0 ? (
-                                                <div className="flex gap-2 overflow-x-auto pb-2">
-                                                    {section.movies.map((movie) => (
-                                                        <div key={movie.tmdb_id} className="relative flex-shrink-0 group">
-                                                            <img
-                                                                src={movie.poster_path ? `https://image.tmdb.org/t/p/w92${movie.poster_path}` : '/placeholder.png'}
-                                                                alt={movie.title}
-                                                                className="w-12 h-18 rounded"
-                                                            />
-                                                            {editingSection === section.id && (
-                                                                <button
-                                                                    onClick={() => handleRemoveMovieFromSection(section.id, movie.tmdb_id)}
-                                                                    className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
-                                                                >
-                                                                    ×
-                                                                </button>
-                                                            )}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            ) : (
-                                                <div className="text-xs text-white/30 py-2">No movies added yet</div>
-                                            )}
-                                        </div>
-
-                                        {/* Expanded Edit Section */}
-                                        {editingSection === section.id && (
-                                            <div className="p-3 border-t border-white/5 bg-black/20">
-                                                <h5 className="text-xs font-medium text-white/60 mb-2">Add Movies to Section</h5>
-                                                <div className="flex gap-2 mb-3">
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Search for movies..."
-                                                        value={sectionMovieSearch}
-                                                        onChange={(e) => setSectionMovieSearch(e.target.value)}
-                                                        onKeyDown={(e) => e.key === 'Enter' && searchMoviesForSection()}
-                                                        className="flex-1 bg-black/30 rounded p-2 text-xs text-white border border-white/10"
-                                                    />
-                                                    <button
-                                                        onClick={searchMoviesForSection}
-                                                        className="px-3 py-2 text-xs bg-orange-500 text-white rounded"
-                                                    >
-                                                        Search
-                                                    </button>
-                                                </div>
-                                                {sectionSearchResults.length > 0 && (
-                                                    <div className="flex gap-2 overflow-x-auto pb-2">
-                                                        {sectionSearchResults.map((movie) => {
-                                                            const alreadyAdded = section.movies?.some(m => m.tmdb_id === movie.id);
-                                                            return (
-                                                                <div key={movie.id} className="relative flex-shrink-0">
-                                                                    <img
-                                                                        src={movie.poster_path ? `https://image.tmdb.org/t/p/w92${movie.poster_path}` : '/placeholder.png'}
-                                                                        alt={movie.title || movie.name}
-                                                                        className="w-12 h-18 rounded"
-                                                                    />
-                                                                    <button
-                                                                        onClick={() => handleAddMovieToSection(section.id, movie)}
-                                                                        disabled={alreadyAdded}
-                                                                        className={`absolute inset-0 flex items-center justify-center bg-black/60 text-white text-lg rounded ${alreadyAdded ? 'opacity-50 cursor-not-allowed' : 'opacity-0 hover:opacity-100'} transition-opacity`}
-                                                                    >
-                                                                        {alreadyAdded ? '✓' : '+'}
-                                                                    </button>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </div>
-                )}
-
                 {/* Browse Tab */}
                 {activeTab === 'browse' && (
                     <div>
@@ -1693,37 +1535,28 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                         {/* TMDB Search */}
                         <div className="bg-white/5 rounded p-3 mb-4">
                             <h4 className="text-xs font-medium text-white mb-2">🔍 Search TMDB</h4>
-                            <div className="flex flex-col gap-2">
-                                <div className="flex gap-2">
-                                    <input
-                                        type="text"
-                                        placeholder="Search for a movie or TV show..."
-                                        value={tmdbSearch}
-                                        onChange={(e) => setTmdbSearch(e.target.value)}
-                                        onKeyDown={(e) => e.key === 'Enter' && searchTmdb()}
-                                        className="flex-1 bg-black/30 rounded p-2 text-xs text-white border border-white/10"
-                                    />
-                                    <select
-                                        value={tmdbSearchType}
-                                        onChange={(e) => setTmdbSearchType(e.target.value)}
-                                        className="bg-black/30 rounded px-2 text-xs text-white border border-white/10"
-                                    >
-                                        <option value="movie">Movie</option>
-                                        <option value="tv">TV Show</option>
-                                    </select>
-                                    <button
-                                        onClick={searchTmdb}
-                                        className="px-3 py-2 text-xs bg-orange-500 text-white rounded hover:bg-orange-600"
-                                    >
-                                        Search
-                                    </button>
-                                </div>
+                            <p className="text-[10px] text-white/40 mb-2">Searches movies and TV shows together — ignores the Browse filters below.</p>
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    placeholder="Search for a movie or TV show..."
+                                    value={tmdbSearch}
+                                    onChange={(e) => setTmdbSearch(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && searchTmdb()}
+                                    className="flex-1 bg-black/30 rounded p-2 text-xs text-white border border-white/10"
+                                />
+                                <button
+                                    onClick={searchTmdb}
+                                    className="px-3 py-2 text-xs bg-orange-500 text-white rounded hover:bg-orange-600"
+                                >
+                                    Search
+                                </button>
                             </div>
                         </div>
 
                         {/* Filters Row - Compact */}
                         <div className="bg-white/5 rounded p-3 mb-3">
-                            <div className="grid grid-cols-5 gap-3">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
                                 {/* Media Type Dropdown */}
                                 <div>
                                     <label className="text-xs text-white/60 mb-1 block">Content Type</label>
@@ -1912,6 +1745,93 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                                         </button>
                                     )}
                                 </div>
+
+                                {/* Language Filter - filters by original_language, unlike Country
+                                    which only matches production/origin country (e.g. an English-
+                                    language Indian co-production has origin_country=IN but
+                                    original_language=en). Use this for Hindi/Tamil/Telugu etc. */}
+                                <div>
+                                    <label className="text-xs text-white/60 mb-1 block">Language</label>
+                                    <select
+                                        value={tmdbLanguage}
+                                        onChange={(e) => {
+                                            setTmdbLanguage(e.target.value);
+                                            if (tmdbSource && tmdbSource !== 'search') {
+                                                fetchTmdb(tmdbSource);
+                                            }
+                                        }}
+                                        className="w-full bg-black/30 rounded px-3 py-1.5 text-xs text-white border border-white/10"
+                                    >
+                                        <option value="">All Languages</option>
+                                        <option value="hi">Hindi</option>
+                                        <option value="ta">Tamil</option>
+                                        <option value="te">Telugu</option>
+                                        <option value="ml">Malayalam</option>
+                                        <option value="kn">Kannada</option>
+                                        <option value="bn">Bengali</option>
+                                        <option value="mr">Marathi</option>
+                                        <option value="pa">Punjabi</option>
+                                        <option value="gu">Gujarati</option>
+                                        <option value="en">English</option>
+                                        <option value="ko">Korean</option>
+                                        <option value="ja">Japanese</option>
+                                        <option value="zh">Chinese</option>
+                                        <option value="es">Spanish</option>
+                                        <option value="fr">French</option>
+                                        <option value="de">German</option>
+                                    </select>
+                                    {tmdbLanguage && (
+                                        <button
+                                            onClick={() => {
+                                                setTmdbLanguage('');
+                                                if (tmdbSource && tmdbSource !== 'search') {
+                                                    fetchTmdb(tmdbSource);
+                                                }
+                                            }}
+                                            className="px-2 py-1 text-xs bg-red-500/20 text-red-400 rounded hover:bg-red-500/30"
+                                        >
+                                            ✕
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Platform Filter - OTT/streaming provider (Netflix, Hotstar, Prime,
+                                    etc). Options are fetched live from TMDB for the selected Region +
+                                    Content Type, so the list (and ids) are always accurate per-region.
+                                    Note: doesn't apply to text Search — TMDB's search endpoints don't
+                                    expose watch-provider data without a per-title lookup. */}
+                                <div>
+                                    <label className="text-xs text-white/60 mb-1 block">Platform</label>
+                                    <select
+                                        value={tmdbPlatform}
+                                        onChange={(e) => {
+                                            setTmdbPlatform(e.target.value);
+                                            if (tmdbSource && tmdbSource !== 'search') {
+                                                fetchTmdb(tmdbSource);
+                                            }
+                                        }}
+                                        disabled={loadingProviders}
+                                        className="w-full bg-black/30 rounded px-3 py-1.5 text-xs text-white border border-white/10 disabled:opacity-50"
+                                    >
+                                        <option value="">{loadingProviders ? 'Loading...' : 'All Platforms'}</option>
+                                        {tmdbProviders.map(p => (
+                                            <option key={p.provider_id} value={p.provider_id}>{p.provider_name}</option>
+                                        ))}
+                                    </select>
+                                    {tmdbPlatform && (
+                                        <button
+                                            onClick={() => {
+                                                setTmdbPlatform('');
+                                                if (tmdbSource && tmdbSource !== 'search') {
+                                                    fetchTmdb(tmdbSource);
+                                                }
+                                            }}
+                                            className="px-2 py-1 text-xs bg-red-500/20 text-red-400 rounded hover:bg-red-500/30"
+                                        >
+                                            ✕
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         </div>
 
@@ -1928,6 +1848,57 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                             ))}
                         </div>
 
+                        {/* Saved Status Filter */}
+                        <div className="flex items-center gap-1 mb-3">
+                            <span className="text-[10px] text-white/40 mr-1">Show:</span>
+                            {[
+                                { id: 'all', label: 'All' },
+                                { id: 'not_saved', label: 'Not Saved' },
+                                { id: 'saved', label: '✓ Saved' }
+                            ].map(opt => (
+                                <button
+                                    key={opt.id}
+                                    onClick={() => setTmdbSavedFilter(opt.id)}
+                                    className={`px-2 py-1 text-[10px] rounded transition-colors ${tmdbSavedFilter === opt.id
+                                        ? 'bg-orange-500/30 text-orange-300 border border-orange-500/50'
+                                        : 'bg-white/5 text-white/50 hover:bg-white/10 border border-white/10'}`}
+                                >
+                                    {opt.label}
+                                </button>
+                            ))}
+                            <span className="text-[10px] text-white/30 ml-2">Showing {filteredTmdbMovies.length} of {tmdbMovies.length}</span>
+                        </div>
+
+                        {/* Save All Full Data - same bulk action as the Bulk Import tab, so you
+                            don't have to switch tabs to save everything currently loaded here */}
+                        {(() => {
+                            const unsavedCount = tmdbMovies.filter(m => !advancedSavedIds.has(m.id) && !savedIds.has(m.id.toString())).length;
+                            return tmdbMovies.length > 0 && (
+                                <div className="flex items-center justify-end gap-2 mb-3">
+                                    <button
+                                        onClick={handleBulkSave}
+                                        disabled={bulkSaving || bulkFullSaving || unsavedCount === 0}
+                                        className="px-3 py-2 text-xs bg-white/10 text-white rounded disabled:opacity-50 hover:bg-white/20"
+                                    >
+                                        {bulkSaving ? 'Saving...' : 'Quick Save All'}
+                                    </button>
+                                    <button
+                                        onClick={handleBulkSaveFull}
+                                        disabled={bulkSaving || bulkFullSaving || unsavedCount === 0}
+                                        className="px-3 py-2 text-xs bg-orange-500 text-white rounded disabled:opacity-50 hover:bg-orange-600 flex items-center gap-2"
+                                    >
+                                        {bulkFullSaving && (
+                                            <svg className="animate-spin h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                        )}
+                                        {bulkFullSaving ? 'Saving...' : `⚡ Save Full Data (${unsavedCount})`}
+                                    </button>
+                                </div>
+                            );
+                        })()}
+
                         {/* Results info */}
                         {bulkResult && (activeTab === 'browse' || activeTab === 'bulk') && (
                             <div className={`mb-3 p-2 rounded text-xs ${bulkResult.success ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
@@ -1936,22 +1907,23 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                         )}
                         {tmdbSource === 'search' && tmdbSearch && (
                             <div className="text-xs text-white/50 mb-2">
-                                Search results for "{tmdbSearch}" ({tmdbSearchType === 'movie' ? 'Movies' : 'TV Shows'}) - {tmdbMovies.length} found
+                                Search results for "{tmdbSearch}" - {tmdbMovies.length} found
+                                {' '}({tmdbMovies.filter(m => m.media_type === 'movie').length} movies, {tmdbMovies.filter(m => m.media_type === 'tv').length} TV)
                             </div>
                         )}
 
                         {loadingTmdb ? (
                             <div className="text-center py-8 text-white/40 text-sm">Loading...</div>
-                        ) : tmdbMovies.length > 0 ? (
+                        ) : filteredTmdbMovies.length > 0 ? (
                             <>
                                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
-                                    {tmdbMovies.map(m => (
+                                    {filteredTmdbMovies.map(m => (
                                         <TMDBCard
                                             key={m.id}
                                             movie={m}
-                                            mediaType={tmdbSource === 'search' ? tmdbSearchType : tmdbSources.find(s => s.id === tmdbSource)?.type}
-                                            onSave={handleSave}
+                                            mediaType={m.media_type || tmdbMediaType}
                                             onSaveFull={handleSaveFull}
+                                            onPreview={openMovieModal}
                                             isSaved={advancedSavedIds.has(m.id) || savedIds.has(m.id.toString())}
                                             isSaving={savingIds.has(m.id)}
                                         />
@@ -1974,6 +1946,10 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                                     </div>
                                 )}
                             </>
+                        ) : tmdbMovies.length > 0 ? (
+                            <div className="text-center py-8 text-white/40 text-sm">
+                                No movies match this filter. {tmdbSavedFilter !== 'all' && 'Try switching to "All".'}
+                            </div>
                         ) : (
                             <div className="text-center py-8 text-white/40 text-sm">
                                 {tmdbSource === 'search' ? 'No results found. Try a different search.' : 'Select a source or search for movies.'}
@@ -2017,7 +1993,7 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
 
                             {/* Filters Row - Compact */}
                             <div className="bg-white/5 rounded p-3 mb-3">
-                                <div className="grid grid-cols-5 gap-3">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
                                     {/* Media Type Dropdown */}
                                     <div>
                                         <label className="text-xs text-white/60 mb-1 block">Content Type</label>
@@ -2164,6 +2140,68 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                                             </button>
                                         )}
                                     </div>
+
+                                    {/* Language Filter - use this for Hindi/Tamil/Telugu etc;
+                                        Country alone also matches English-language Indian titles */}
+                                    <div>
+                                        <label className="text-xs text-white/60 mb-1 block">Language</label>
+                                        <select
+                                            value={tmdbLanguage}
+                                            onChange={(e) => setTmdbLanguage(e.target.value)}
+                                            className="w-full bg-black/30 rounded px-3 py-1.5 text-xs text-white border border-white/10"
+                                        >
+                                            <option value="">All Languages</option>
+                                            <option value="hi">Hindi</option>
+                                            <option value="ta">Tamil</option>
+                                            <option value="te">Telugu</option>
+                                            <option value="ml">Malayalam</option>
+                                            <option value="kn">Kannada</option>
+                                            <option value="bn">Bengali</option>
+                                            <option value="mr">Marathi</option>
+                                            <option value="pa">Punjabi</option>
+                                            <option value="gu">Gujarati</option>
+                                            <option value="en">English</option>
+                                            <option value="ko">Korean</option>
+                                            <option value="ja">Japanese</option>
+                                            <option value="zh">Chinese</option>
+                                            <option value="es">Spanish</option>
+                                            <option value="fr">French</option>
+                                            <option value="de">German</option>
+                                        </select>
+                                        {tmdbLanguage && (
+                                            <button
+                                                onClick={() => setTmdbLanguage('')}
+                                                className="px-2 py-1 text-xs bg-red-500/20 text-red-400 rounded hover:bg-red-500/30"
+                                            >
+                                                ✕
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {/* Platform Filter - OTT/streaming provider (Netflix, Hotstar,
+                                        Prime, etc), fetched live from TMDB for Region + Content Type */}
+                                    <div>
+                                        <label className="text-xs text-white/60 mb-1 block">Platform</label>
+                                        <select
+                                            value={tmdbPlatform}
+                                            onChange={(e) => setTmdbPlatform(e.target.value)}
+                                            disabled={loadingProviders}
+                                            className="w-full bg-black/30 rounded px-3 py-1.5 text-xs text-white border border-white/10 disabled:opacity-50"
+                                        >
+                                            <option value="">{loadingProviders ? 'Loading...' : 'All Platforms'}</option>
+                                            {tmdbProviders.map(p => (
+                                                <option key={p.provider_id} value={p.provider_id}>{p.provider_name}</option>
+                                            ))}
+                                        </select>
+                                        {tmdbPlatform && (
+                                            <button
+                                                onClick={() => setTmdbPlatform('')}
+                                                className="px-2 py-1 text-xs bg-red-500/20 text-red-400 rounded hover:bg-red-500/30"
+                                            >
+                                                ✕
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                             <div className="mt-3 flex justify-end">
@@ -2184,6 +2222,27 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                                 ))}
                             </div>
 
+                            {/* Saved Status Filter */}
+                            <div className="flex items-center gap-1 mb-3">
+                                <span className="text-[10px] text-white/40 mr-1">Show:</span>
+                                {[
+                                    { id: 'all', label: 'All' },
+                                    { id: 'not_saved', label: 'Not Saved' },
+                                    { id: 'saved', label: '✓ Saved' }
+                                ].map(opt => (
+                                    <button
+                                        key={opt.id}
+                                        onClick={() => setTmdbSavedFilter(opt.id)}
+                                        className={`px-2 py-1 text-[10px] rounded transition-colors ${tmdbSavedFilter === opt.id
+                                            ? 'bg-orange-500/30 text-orange-300 border border-orange-500/50'
+                                            : 'bg-white/5 text-white/50 hover:bg-white/10 border border-white/10'}`}
+                                    >
+                                        {opt.label}
+                                    </button>
+                                ))}
+                                <span className="text-[10px] text-white/30 ml-2">Showing {filteredTmdbMovies.length} of {tmdbMovies.length}</span>
+                            </div>
+
                             {/* Bulk Save Section */}
                             {(() => {
                                 const unsavedCount = tmdbMovies.filter(m => !advancedSavedIds.has(m.id) && !savedIds.has(m.id.toString())).length;
@@ -2197,6 +2256,8 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                                                     From: {tmdbSources.find(s => s.id === tmdbSource)?.label} ({tmdbMediaType === 'movie' ? 'Movies' : 'TV'})
                                                     {tmdbYear && ` • Year: ${tmdbYear}`}
                                                     {tmdbCountry && ` • Country: ${tmdbCountry}`}
+                                                    {tmdbLanguage && ` • Language: ${tmdbLanguage}`}
+                                                    {tmdbPlatform && ` • Platform: ${tmdbProviders.find(p => String(p.provider_id) === String(tmdbPlatform))?.provider_name || tmdbPlatform}`}
                                                 </p>
                                             </div>
                                             <div className="flex gap-2">
@@ -2252,10 +2313,15 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                             )}
 
                             {/* Movie Grid */}
+                            {filteredTmdbMovies.length === 0 && tmdbMovies.length > 0 && (
+                                <div className="text-center py-8 text-white/40 text-sm">
+                                    No movies match this filter. {tmdbSavedFilter !== 'all' && 'Try switching to "All".'}
+                                </div>
+                            )}
                             <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 gap-1">
-                                {tmdbMovies.map(m => {
+                                {filteredTmdbMovies.map(m => {
                                     const isSaved = advancedSavedIds.has(m.id) || savedIds.has(m.id.toString());
-                                    const mediaType = tmdbSource === 'search' ? tmdbSearchType : tmdbMediaType;
+                                    const mediaType = m.media_type || tmdbMediaType;
                                     return (
                                         <div
                                             key={m.id}

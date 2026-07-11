@@ -1,58 +1,119 @@
 import React, { useState, useEffect } from "react";
 import { useSelector, useDispatch } from "react-redux";
-import Card from "../components/Card";
-import { FaGlobe, FaChevronDown, FaCalendarAlt } from "react-icons/fa";
-import { Link } from "react-router-dom";
-import { getHomepageSectionsFromEdge } from "../lib/contentEdgeApi";
-import { getAllUserRatings } from "../lib/supabase";
+import { FaFilm, FaHome, FaMagic } from "react-icons/fa";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import WatchPage from "./WatchPage";
+import FollowingFeed from "../components/discover/FollowingFeed";
+import FeedPostCard from "../components/social/FeedPostCard";
+import FeedTrailerCard from "../components/social/FeedTrailerCard";
+import FeedArticleCard from "../components/social/FeedArticleCard";
+import FeedActivityCard from "../components/social/FeedActivityCard";
+import FeedComposer from "../components/social/FeedComposer";
+import FeedCommentModal from "../components/social/FeedCommentModal";
+import FeedShareModal from "../components/social/FeedShareModal";
+import HomeSocialSidebar from "../components/home/HomeSocialSidebar";
+import HomeBrowseTab from "../components/home/HomeBrowseTab";
+import { getSavedRegion, persistRegion } from "../constants/regions";
+
+const VALID_TABS = ['home', 'my-feed', 'watch'];
+import { getTrailersFromEdge, getRssTrailersFromEdge, getArticlesFromEdge } from "../lib/contentEdgeApi";
+import { getAllUserRatings, getHomepageSections } from "../lib/supabase";
 import { computeOverallFromRatingRow } from "../lib/ratingUtils";
-import { generateSlugWithId } from "../lib/slugUtils";
-import { setHomepageSections, setUserRatedMovies } from "../store/movieSlice";
+import { setHomepageSections, setUserRatedMovies, invalidateHomepageSections } from "../store/movieSlice";
 import { useAuth } from "../context/AuthContext";
+import { likePost, unlikePost, savePost, unsavePost, getFeedPosts, updatePost, deletePost } from "../lib/socialFeedApi";
+import ConfirmationModal from "../components/ConfirmationModal";
 
 const SECTIONS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const SECTIONS_REV_KEY = 'homepage_sections_rev';
 
-// Available regions for content filtering
-const REGIONS = [
-  { code: "IN", name: "India", flag: "🇮🇳" },
-  { code: "US", name: "United States", flag: "🇺🇸" },
-  { code: "GB", name: "United Kingdom", flag: "🇬🇧" },
-  { code: "CA", name: "Canada", flag: "🇨🇦" },
-  { code: "AU", name: "Australia", flag: "🇦🇺" },
-  { code: "DE", name: "Germany", flag: "🇩🇪" },
-  { code: "FR", name: "France", flag: "🇫🇷" },
-  { code: "JP", name: "Japan", flag: "🇯🇵" },
-  { code: "KR", name: "South Korea", flag: "🇰🇷" },
-  { code: "BR", name: "Brazil", flag: "🇧🇷" },
-];
+const FeedSkeleton = ({ count = 5 }) => (
+  <div className="space-y-3" aria-hidden="true">
+    {Array.from({ length: count }, (_, i) => {
+      const thumb = i % 2 === 0;
+      const lines = thumb ? 2 : 3;
+      return (
+        <div
+          key={i}
+          className="bg-[#1a1d1f] rounded-lg border border-white/5 overflow-hidden"
+        >
+          <div className="flex items-center gap-2 p-3 pb-2">
+            <div className="w-8 h-8 rounded-full bg-white/[0.07] animate-pulse shrink-0" />
+            <div className="flex-1 space-y-1.5">
+              <div className="h-3 bg-white/[0.07] animate-pulse rounded w-28" />
+              <div className="h-2.5 bg-white/[0.04] animate-pulse rounded w-20" />
+            </div>
+          </div>
+          {thumb && <div className="aspect-video bg-white/[0.05] animate-pulse" />}
+          <div className="px-3 py-2.5 space-y-2">
+            {Array.from({ length: lines }, (_, j) => (
+              <div key={j} className={`h-3 bg-white/[0.06] animate-pulse rounded ${j === lines - 1 ? 'w-3/5' : 'w-full'}`} />
+            ))}
+          </div>
+          <div className="px-3 pb-2.5 flex gap-3">
+            <div className="h-4 w-12 bg-white/[0.05] animate-pulse rounded-full" />
+            <div className="h-4 w-12 bg-white/[0.05] animate-pulse rounded-full" />
+          </div>
+        </div>
+      );
+    })}
+  </div>
+);
 
 const Home = () => {
   const dispatch = useDispatch();
-  const { user } = useAuth();
+  const navigate = useNavigate();
+  const { user, profile, isAuthenticated, loading: authLoading } = useAuth();
   const cachedSections = useSelector((state) => state.movieData.homepageSections);
   const cachedTimestamp = useSelector((state) => state.movieData.homepageSectionsTimestamp);
 
-  // Load saved region from localStorage or default to India
-  const [selectedRegion, setSelectedRegion] = useState(() => {
-    const saved = localStorage.getItem('selectedRegion');
-    if (saved) {
-      const found = REGIONS.find(r => r.code === saved);
-      return found || REGIONS[0];
-    }
-    return REGIONS[0];
-  });
-  const [isRegionOpen, setIsRegionOpen] = useState(false);
+  const requireSignIn = () => {
+    navigate('/auth', { state: { from: '/' } });
+  };
+
+  // Main tab state — synced to the URL (?tab=) so browser back returns to the
+  // tab the user was on (e.g. opening a movie from Watch and hitting Back).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlTab = searchParams.get('tab');
+  const activeTab = VALID_TABS.includes(urlTab) ? urlTab : 'home';
+
+  const setActiveTab = (tab) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (tab === 'home') next.delete('tab');
+      else next.set('tab', tab);
+      return next;
+    }, { replace: true });
+  };
+
+  // Feed state for social interactions
+  const [feedItems, setFeedItems] = useState([]);
+  const [feedInitialLoading, setFeedInitialLoading] = useState(true);
+  // Track which item IDs have already entered the DOM so we only animate truly new items.
+  const appearedIds = React.useRef(new Set());
+  const [commentModalPost, setCommentModalPost] = useState(null);
+  const [shareModalPost, setShareModalPost] = useState(null);
+
+  // Per-post "..." menu + inline edit state
+  const [openMenuId, setOpenMenuId] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editText, setEditText] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [postToDelete, setPostToDelete] = useState(null);
+  const [deletingPost, setDeletingPost] = useState(false);
+
+  const [selectedRegion, setSelectedRegion] = useState(getSavedRegion);
   const [cmsSections, setCmsSections] = useState(cachedSections || []);
   const [loadingSections, setLoadingSections] = useState(!cachedSections);
 
-  // Keep local sections in sync when Redux cache is patched (e.g. after rating)
+  // Keep local sections in sync when Redux cache is patched
   useEffect(() => {
     if (cachedSections) {
       setCmsSections(cachedSections);
     }
   }, [cachedSections]);
 
-  // Load movies the signed-in user has rated (for TOS badge on cards)
+  // Load movies the signed-in user has rated
   useEffect(() => {
     const loadUserRatings = async () => {
       if (!user?.id) {
@@ -86,308 +147,554 @@ const Home = () => {
     };
   }, [user?.id, dispatch]);
 
-  // ============================================
-  // FETCH ALL SECTIONS FROM DATABASE ONCE
-  // Uses Redux cache to avoid re-fetching on navigation
-  // ============================================
+  // Fetch My Feed sections from Supabase (skip edge CDN so admin publishes show immediately)
   useEffect(() => {
-    const isCacheValid = cachedSections && cachedTimestamp && (Date.now() - cachedTimestamp < SECTIONS_CACHE_TTL);
+    const now = Date.now();
+    // My Feed: treat cache as stale after 15s so Save & Publish shows up without a full reload.
+    // Other tabs: keep the longer TTL.
+    const ttl = activeTab === 'my-feed' ? 15_000 : SECTIONS_CACHE_TTL;
+    const isCacheValid = cachedSections && cachedTimestamp && (now - cachedTimestamp < ttl);
 
     if (isCacheValid) {
-      console.log("⚡ Using cached homepage sections from Redux");
       setCmsSections(cachedSections);
       setLoadingSections(false);
       return;
     }
 
+    let cancelled = false;
     const fetchCmsSections = async () => {
       setLoadingSections(true);
-      console.log("📦 Fetching all sections from edge API...");
-
-      const sections = await getHomepageSectionsFromEdge(true);
-
-      // Count total movies across all regions
-      const totalMovies = sections?.reduce((acc, s) => {
-        const regionMovies = Object.values(s.movies_by_region || {}).flat();
-        return acc + regionMovies.length;
-      }, 0) || 0;
-
-      console.log(`✅ Loaded ${sections?.length || 0} sections with ${totalMovies} movies across all regions`);
-      setCmsSections(sections || []);
-      dispatch(setHomepageSections(sections || []));
-      setLoadingSections(false);
+      try {
+        const sections = await getHomepageSections(true);
+        if (cancelled) return;
+        setCmsSections(sections || []);
+        dispatch(setHomepageSections(sections || []));
+      } catch (err) {
+        console.error('Failed to load homepage sections', err);
+        if (!cancelled) setCmsSections(cachedSections || []);
+      } finally {
+        if (!cancelled) setLoadingSections(false);
+      }
     };
     fetchCmsSections();
-  }, []); // Only fetch once on mount, uses Redux cache on re-visit
+    return () => { cancelled = true; };
+  }, [cachedSections, cachedTimestamp, dispatch, activeTab]);
+
+  // After admin Save/Fetch in another tab, refresh when this window is focused
+  useEffect(() => {
+    const refreshIfStale = () => {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const rev = localStorage.getItem(SECTIONS_REV_KEY);
+        if (rev && rev !== window.__tosSectionsRev) {
+          window.__tosSectionsRev = rev;
+          dispatch(invalidateHomepageSections());
+        }
+      } catch { /* ignore */ }
+    };
+    refreshIfStale();
+    window.addEventListener('focus', refreshIfStale);
+    document.addEventListener('visibilitychange', refreshIfStale);
+    window.addEventListener('storage', refreshIfStale);
+    return () => {
+      window.removeEventListener('focus', refreshIfStale);
+      document.removeEventListener('visibilitychange', refreshIfStale);
+      window.removeEventListener('storage', refreshIfStale);
+    };
+  }, [dispatch]);
+
+  const getItemSortTime = (item) => {
+    const raw = item.createdAt || item.publishedAt;
+    return raw ? new Date(raw).getTime() : 0;
+  };
+
+  const sortByRecency = (items) =>
+    [...items].sort((a, b) => getItemSortTime(b) - getItemSortTime(a));
+
+  const mapTrailer = (m) => ({
+    id: `trailer-${m.tmdb_id ?? m.id}`,
+    type: 'trailer',
+    tmdb_id: m.tmdb_id ?? m.id,
+    title: m.title || m.name,
+    mediaType: m.media_type,
+    releaseDate: m.release_date || m.first_air_date,
+    thumbnail: m.featured_trailer.thumbnail,
+    thumbnailFallback: m.featured_trailer.thumbnailFallback,
+    trailerUrl: m.featured_trailer.url,
+    trailerName: m.featured_trailer.name,
+    publishedAt: m.featured_trailer.published_at,
+    sourceName: m.source_name || null,
+    sourceLogo: m.source_logo || null,
+  });
+
+  const mapArticle = (a) => ({
+    id: `article-${a.id}`,
+    type: 'article',
+    title: a.title,
+    sourceName: a.source_name,
+    sourceLogo: a.source_logo_url,
+    imageUrl: a.image_url,
+    summary: a.summary,
+    publishedAt: a.published_at,
+    link: a.link,
+  });
+
+  // Load real public posts and show them above the seed feed
+  const FEED_PAGE_SIZE = 30;
+  const [feedOffset, setFeedOffset] = useState(0);
+  const [hasMoreFeed, setHasMoreFeed] = useState(true);
+  const [loadingMoreFeed, setLoadingMoreFeed] = useState(false);
+  const loadMoreSentinelRef = React.useRef(null);
+  // 'all' = everyone (collections/lists stay globally public); 'following' = only
+  // people you follow (their posts, logs, reviews, ratings).
+  const [feedScope, setFeedScope] = useState('all');
+
+  // One paint: wait for auth, then load posts (+ trailers/articles) together.
+  // Avoids empty→posts→reshuffle flash from staggered loaders / auth race.
+  useEffect(() => {
+    if (authLoading) return undefined;
+
+    let cancelled = false;
+    setFeedInitialLoading(true);
+    setFeedOffset(0);
+    setHasMoreFeed(true);
+    appearedIds.current.clear();
+
+    const loadFeed = async () => {
+      try {
+        const postsPromise = getFeedPosts({
+          limit: FEED_PAGE_SIZE,
+          userId: user?.id,
+          mode: feedScope,
+        });
+
+        const extrasPromise = feedScope === 'all'
+          ? Promise.all([
+              getRssTrailersFromEdge({ daysBack: 21, limit: 15 }),
+              getTrailersFromEdge({ sortBy: 'recent', daysBack: 14, type: 'launch', limit: 15 }),
+              getArticlesFromEdge({ limit: 20 }),
+            ])
+          : Promise.resolve([null, null, []]);
+
+        const [postsRes, [rss, lib, articlesRaw]] = await Promise.all([postsPromise, extrasPromise]);
+        if (cancelled) return;
+
+        const posts = (postsRes.ok ? postsRes.items : [])
+          .filter((p) => p && p.id != null && p.user);
+
+        const byId = new Map();
+        if (feedScope === 'all') {
+          for (const m of (rss?.data || [])) {
+            if (m.featured_trailer?.key) byId.set(String(m.tmdb_id ?? m.id), mapTrailer(m));
+          }
+          for (const m of (lib?.data || [])) {
+            const key = String(m.tmdb_id ?? m.id);
+            if (m.featured_trailer?.key && !byId.has(key)) byId.set(key, mapTrailer(m));
+          }
+        }
+        const trailers = [...byId.values()];
+        const articles = (articlesRaw || []).map(mapArticle);
+
+        setFeedItems(sortByRecency([...posts, ...trailers, ...articles]));
+        setFeedOffset(posts.length);
+        setHasMoreFeed(posts.length >= FEED_PAGE_SIZE);
+      } catch (err) {
+        console.error('[Home] loadFeed failed:', err);
+        if (!cancelled) setFeedItems([]);
+      } finally {
+        if (!cancelled) setFeedInitialLoading(false);
+      }
+    };
+
+    loadFeed();
+    return () => { cancelled = true; };
+  }, [authLoading, user?.id, feedScope]);
+
+  // Instagram-style infinite scroll: fetch the next page of real posts as the
+  // sentinel below the feed scrolls into view, rather than a "Load More" button.
+  const loadMorePosts = React.useCallback(async () => {
+    if (feedInitialLoading || loadingMoreFeed || !hasMoreFeed) return;
+    setLoadingMoreFeed(true);
+    try {
+      const res = await getFeedPosts({ limit: FEED_PAGE_SIZE, offset: feedOffset, userId: user?.id, mode: feedScope });
+      if (!res.ok) {
+        setHasMoreFeed(false);
+        return;
+      }
+      setFeedOffset((prev) => prev + res.items.length);
+      if (res.items.length < FEED_PAGE_SIZE) setHasMoreFeed(false);
+
+      const safeItems = res.items.filter((p) => p && p.id != null && p.user);
+      if (safeItems.length) {
+        setFeedItems((prev) => {
+          const existingIds = new Set(prev.map((p) => p.id));
+          const fresh = safeItems.filter((p) => !existingIds.has(p.id));
+          return fresh.length ? [...prev, ...fresh] : prev;
+        });
+      }
+    } catch (err) {
+      console.error('[Home] loadMorePosts failed:', err);
+      setHasMoreFeed(false);
+    }
+    setLoadingMoreFeed(false);
+  }, [feedInitialLoading, loadingMoreFeed, hasMoreFeed, feedOffset, user?.id, feedScope]);
+
+  useEffect(() => {
+    const el = loadMoreSentinelRef.current;
+    if (!el || feedInitialLoading) return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) loadMorePosts();
+      },
+      { rootMargin: '600px' },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [loadMorePosts, feedInitialLoading]);
 
   const handleRegionSelect = (region) => {
     setSelectedRegion(region);
-    localStorage.setItem('selectedRegion', region.code); // Save preference
-    setIsRegionOpen(false);
+    persistRegion(region);
+  };
+
+  // ---- Edit / delete own posts ----
+  const startEditPost = (item) => {
+    setOpenMenuId(null);
+    setEditingId(item.id);
+    setEditText(item.content || '');
+  };
+
+  const cancelEditPost = () => {
+    setEditingId(null);
+    setEditText('');
+  };
+
+  const saveEditPost = async (item) => {
+    if (savingEdit) return;
+    if (!editText.trim()) return;
+    setSavingEdit(true);
+    const res = await updatePost(item.id, user?.id, { content: editText });
+    if (res.ok) {
+      setFeedItems((prev) => prev.map((p) => (p.id === item.id ? { ...p, content: editText.trim() } : p)));
+      cancelEditPost();
+    }
+    setSavingEdit(false);
+  };
+
+  const requestDeletePost = (item) => {
+    setOpenMenuId(null);
+    setPostToDelete(item);
+  };
+
+  const confirmDeletePost = async () => {
+    if (!postToDelete || deletingPost) return;
+    const item = postToDelete;
+    setDeletingPost(true);
+    const snapshot = feedItems;
+    setFeedItems((prev) => prev.filter((p) => p.id !== item.id));
+    setPostToDelete(null);
+    const res = await deletePost(item.id, user?.id);
+    if (!res.ok) {
+      setFeedItems(snapshot);
+    }
+    setDeletingPost(false);
+  };
+
+  // Handle like/unlike
+  const handleLike = async (postId) => {
+    if (!isAuthenticated) {
+      requireSignIn('Sign in to like posts.');
+      return;
+    }
+    const post = feedItems.find(p => p.id === postId);
+    if (!post) return;
+
+    // Optimistic update
+    setFeedItems(prev => prev.map(p => 
+      p.id === postId 
+        ? { ...p, isLiked: !p.isLiked, likes: p.isLiked ? p.likes - 1 : p.likes + 1 }
+        : p
+    ));
+
+    // API call (will be connected to backend)
+    try {
+      if (post.isLiked) {
+        await unlikePost(postId, user?.id);
+      } else {
+        await likePost(postId, user?.id);
+      }
+    } catch (error) {
+      // Revert on error
+      setFeedItems(prev => prev.map(p => 
+        p.id === postId 
+          ? { ...p, isLiked: post.isLiked, likes: post.likes }
+          : p
+      ));
+    }
+  };
+
+  // Handle save/unsave
+  const handleSave = async (postId) => {
+    if (!isAuthenticated) {
+      requireSignIn('Sign in to save posts.');
+      return;
+    }
+    const post = feedItems.find(p => p.id === postId);
+    if (!post) return;
+
+    // Optimistic update
+    setFeedItems(prev => prev.map(p => 
+      p.id === postId ? { ...p, isSaved: !p.isSaved } : p
+    ));
+
+    try {
+      if (post.isSaved) {
+        await unsavePost(postId, user?.id);
+      } else {
+        await savePost(postId, user?.id);
+      }
+    } catch (error) {
+      setFeedItems(prev => prev.map(p => 
+        p.id === postId ? { ...p, isSaved: post.isSaved } : p
+      ));
+    }
+  };
+
+  const handleShare = (post) => {
+    setShareModalPost(post);
+  };
+
+  const openComments = (post) => {
+    setCommentModalPost(post);
+  };
+
+  const handleComposerPostCreated = (newItem) => {
+    setFeedItems((prev) => [newItem, ...prev]);
+  };
+
+  const handleComposerFeedReload = (reloadItems) => {
+    setFeedItems((prev) => {
+      const realIds = new Set(reloadItems.map((p) => p.id));
+      const rest = prev.filter((p) => !realIds.has(p.id) && !String(p.id).startsWith('local-'));
+      return [...reloadItems, ...rest];
+    });
+  };
+
+  const handleCommentAdded = (postId) => {
+    setFeedItems((prev) =>
+      prev.map((p) => (p.id === postId ? { ...p, comments: p.comments + 1 } : p)),
+    );
+  };
+
+  const renderFeedItem = (item) => {
+    if (item.type === 'trailer') {
+      return <FeedTrailerCard key={item.id} item={item} />;
+    }
+    if (item.type === 'article') {
+      return <FeedArticleCard key={item.id} item={item} />;
+    }
+    if (item.type === 'activity') {
+      return (
+        <FeedActivityCard
+          key={item.id}
+          item={item}
+          onLike={handleLike}
+          onOpenComments={openComments}
+        />
+      );
+    }
+    return (
+      <FeedPostCard
+        key={item.id}
+        item={item}
+        currentUserId={user?.id}
+        openMenuId={openMenuId}
+        onToggleMenu={setOpenMenuId}
+        editingId={editingId}
+        editText={editText}
+        onEditTextChange={setEditText}
+        savingEdit={savingEdit}
+        onStartEdit={startEditPost}
+        onCancelEdit={cancelEditPost}
+        onSaveEdit={saveEditPost}
+        onDelete={requestDeletePost}
+        onLike={handleLike}
+        onSave={handleSave}
+        onShare={handleShare}
+        onOpenComments={openComments}
+      />
+    );
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] pb-20 lg:pb-0">
-      {/* Header Section with Region */}
-      <section className="pt-20 sm:pt-24 pb-6 sm:pb-8 px-4 sm:px-8 md:pl-12 lg:pl-16">
+    <div className="min-h-screen bg-[var(--bg-primary)]">
+      {/* Main Tabs - At the top */}
+      <section className="pt-[calc(4.5rem+env(safe-area-inset-top,0px))] sm:pt-24 px-3 sm:px-8 md:px-8 lg:pl-16">
         <div className="container mx-auto">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-            <div>
-              <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-1 sm:mb-2">
-                Discover <span className="text-gradient">What to Watch</span>
-              </h1>
-              <p className="text-sm sm:text-base text-white/50">Movies in theaters & trending on streaming</p>
-            </div>
-
-            {/* Region Selector */}
-            <div className="relative">
-              <button
-                onClick={() => setIsRegionOpen(!isRegionOpen)}
-                className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:border-yellow-500/30 transition-all"
-              >
-                <FaGlobe className="text-yellow-400 text-sm" />
-                <span className="text-xl">{selectedRegion.flag}</span>
-                <span className="text-white text-sm font-medium">{selectedRegion.name}</span>
-                <FaChevronDown className={`text-white/50 text-xs transition-transform ${isRegionOpen ? "rotate-180" : ""}`} />
-              </button>
-
-              {isRegionOpen && (
-                <div className="absolute top-full right-0 mt-2 w-52 py-2 rounded-xl bg-[#1a1a1a] border border-white/10 shadow-2xl z-50 animate-fadeIn">
-                  {REGIONS.map((region) => (
-                    <button
-                      key={region.code}
-                      onClick={() => handleRegionSelect(region)}
-                      className={`w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white/5 transition-colors text-sm ${selectedRegion.code === region.code ? "bg-yellow-500/10 text-yellow-400" : "text-white"
-                        }`}
-                    >
-                      <span className="text-lg">{region.flag}</span>
-                      <span className="font-medium">{region.name}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+          <div className="flex items-center gap-1 sm:gap-2 border-b border-white/10 overflow-x-auto scrollbar-hide -mx-1 px-1">
+            <button
+              onClick={() => setActiveTab('home')}
+              className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2.5 sm:py-3 text-sm font-medium border-b-2 transition-colors shrink-0 ${
+                activeTab === 'home'
+                  ? 'border-[var(--accent-green)] text-white'
+                  : 'border-transparent text-white/50 hover:text-white'
+              }`}
+            >
+              <FaHome className="text-sm" />
+              Home
+            </button>
+            <button
+              onClick={() => setActiveTab('my-feed')}
+              className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2.5 sm:py-3 text-sm font-medium border-b-2 transition-colors shrink-0 ${
+                activeTab === 'my-feed'
+                  ? 'border-[var(--accent-green)] text-white'
+                  : 'border-transparent text-white/50 hover:text-white'
+              }`}
+            >
+              <FaFilm className="text-sm" />
+              My Feed
+            </button>
+            <button
+              onClick={() => setActiveTab('watch')}
+              className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2.5 sm:py-3 text-sm font-medium border-b-2 transition-colors shrink-0 ${
+                activeTab === 'watch'
+                  ? 'border-[var(--accent-green)] text-white'
+                  : 'border-transparent text-white/50 hover:text-white'
+              }`}
+            >
+              <FaMagic className="text-sm" />
+              Watch
+            </button>
           </div>
         </div>
       </section>
 
-      {/* Main Content Grid */}
-      <section className="px-4 sm:px-8 md:pl-12 lg:pl-16 pb-8">
-        <div className="container mx-auto">
-          <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 sm:gap-8">
-            {/* Left Content - 3 columns */}
-            <div className="xl:col-span-3 space-y-8 sm:space-y-12">
+      {/* Tab Content */}
+      {activeTab === 'watch' ? (
+        /* ============================================ */
+        /* WATCH - Personalized recommendation engine  */
+        /* ============================================ */
+        <WatchPage embedded />
+      ) : activeTab === 'home' ? (
+        /* ============================================ */
+        /* HOME - Social Feed (Reddit/Instagram Style) */
+        /* ============================================ */
+        <section className="px-3 sm:px-8 py-4 sm:py-6">
+          <div className="max-w-7xl mx-auto">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* Left Spacer */}
+              <div className="hidden lg:block lg:col-span-2" />
+              
+              {/* Main Feed — phone/iPad centered column feels more app-like */}
+              <div className="lg:col-span-6 space-y-3 max-w-xl mx-auto lg:max-w-none w-full">
+                <FeedComposer
+                  isAuthenticated={isAuthenticated}
+                  user={user}
+                  profile={profile}
+                  feedScope={feedScope}
+                  onRequireSignIn={requireSignIn}
+                  onPostCreated={handleComposerPostCreated}
+                  onFeedReload={handleComposerFeedReload}
+                />
 
-              {/* Loading Skeleton */}
-              {loadingSections && (
-                <div className="space-y-8">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i}>
-                      <div className="flex items-center gap-3 mb-6">
-                        <div className="w-10 h-10 rounded-lg bg-white/5 animate-pulse" />
-                        <div className="w-32 h-6 rounded bg-white/5 animate-pulse" />
-                      </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                        {[1, 2, 3, 4, 5].map((j) => (
-                          <div key={j} className="aspect-[2/3] rounded-xl bg-white/5 animate-pulse" />
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* CMS Managed Sections - Filter to show only sections with movies for selected region */}
-              {/* Exclude 'coming-soon' from main grid - it shows in sidebar only */}
-              {!loadingSections && cmsSections
-                .filter(section => {
-                  // Exclude coming-soon section (shown in sidebar)
-                  if (section.slug === 'coming-soon') return false;
-                  // Only show sections that have movies for the selected region
-                  const regionMovies = section.movies_by_region?.[selectedRegion.code] || [];
-                  return regionMovies.length > 0;
-                })
-                .map((section) => (
-                  <div key={section.id}>
-                    <div className="flex items-center gap-3 mb-6 group">
-                      {/* Icon with shiny background */}
-                      <div className="relative p-2 rounded-xl bg-white/5 border border-white/10 overflow-hidden">
-                        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                        <span className="relative text-xl sm:text-2xl drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]">{section.icon}</span>
-                      </div>
-
-                      {/* Section Title with Gradient and Animation */}
-                      <div className="flex flex-col">
-                        <h2 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-white group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-yellow-200 group-hover:via-yellow-400 group-hover:to-orange-500 transition-all duration-300">
-                          {section.name}
-                        </h2>
-                        {section.description && (
-                          <span className="text-xs sm:text-sm text-white/40 font-medium tracking-wide">
-                            {section.description}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Get movies for the selected region */}
-                    {(() => {
-                      const regionMovies = section.movies_by_region?.[selectedRegion.code] || [];
-
-                      if (regionMovies.length > 0) {
-                        return (
-                          /* Grid Layout - 5 Columns for Desktop (Standard Size), 2 Rows (if limit is 10) */
-                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 sm:gap-6 px-1">
-                            {regionMovies.slice(0, section.max_movies || 10).map((movie, index) => (
-                              <div key={movie.tmdb_id} className="transform hover:scale-105 transition-transform duration-300">
-                                <Card
-                                  data={{
-                                    id: movie.tmdb_id,
-                                    title: movie.title,
-                                    poster_path: movie.poster_path,
-                                    backdrop_path: movie.backdrop_path,
-                                    media_type: movie.media_type,
-                                    vote_average: movie.vote_average,
-                                    release_date: movie.release_date,
-                                    overview: movie.overview,
-                                    genres: movie.genres,
-                                    runtime: movie.runtime,
-                                    tos_rating: movie.tos_rating,
-                                  }}
-                                  media_type={movie.media_type || "movie"}
-                                  index={index}
-                                // Removed mini={true} to restore standard poster sizing
-                                />
-                              </div>
-                            ))}
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()}
-                  </div>
-                )).filter(Boolean)}
-
-              {/* No sections message - check if ANY section has content for this region (excluding coming-soon) */}
-              {!loadingSections && !cmsSections.some(s => s.slug !== 'coming-soon' && (s.movies_by_region?.[selectedRegion.code] || []).length > 0) && (
-                <div className="text-center py-16 px-6">
-                  <div className="text-5xl mb-4">{selectedRegion.flag}</div>
-                  <h3 className="text-xl font-semibold text-white mb-2">No content for {selectedRegion.name}</h3>
-                  <p className="text-white/50 text-sm max-w-md mx-auto">
-                    There are no movie sections available for this region yet.
-                    Try selecting a different region or check back later.
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Right Sidebar - Coming Soon (Hidden on mobile) */}
-            <div className="xl:col-span-1 hidden xl:block">
-              <div className="sticky top-24">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 rounded-lg bg-green-500/10">
-                    <FaCalendarAlt className="text-green-400" />
-                  </div>
-                  <h2 className="text-lg font-semibold text-white">Coming Soon</h2>
-                </div>
-
-                {/* Coming Soon from Database - uses movies_by_region */}
-                {(() => {
-                  const comingSoonSection = cmsSections.find(s => s.slug === 'coming-soon');
-                  // Get movies for selected region from movies_by_region
-                  const comingSoonMovies = comingSoonSection?.movies_by_region?.[selectedRegion.code]?.slice(0, 5) || [];
-
-                  // Helper to format release date
-                  const formatReleaseDate = (dateStr) => {
-                    if (!dateStr) return 'TBA';
-                    const date = new Date(dateStr);
-                    const now = new Date();
-                    const diffDays = Math.ceil((date - now) / (1000 * 60 * 60 * 24));
-
-                    if (diffDays < 0) return 'Released';
-                    if (diffDays === 0) return 'Today!';
-                    if (diffDays === 1) return 'Tomorrow';
-                    if (diffDays <= 7) return `In ${diffDays} days`;
-
-                    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                  };
-
-                  return comingSoonMovies.length > 0 ? (
-                    <div className="space-y-3">
-                      {comingSoonMovies.map((movie, index) => {
-                        // Generate SEO-friendly URL
-                        const year = movie.release_date?.split('-')[0] || '';
-                        const slug = generateSlugWithId(movie.title, movie.tmdb_id, year);
-                        const movieUrl = movie.media_type === 'tv' ? `/tv/${slug}` : `/movies/${slug}`;
-
-                        return (
-                          <Link
-                            key={movie.tmdb_id}
-                            to={movieUrl}
-                            className="flex items-start gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-all group"
-                          >
-                            {/* Poster */}
-                            <div className="flex-shrink-0 w-12 h-16 rounded-lg overflow-hidden">
-                              {movie.poster_path ? (
-                                <img
-                                  src={`https://image.tmdb.org/t/p/w154${movie.poster_path}`}
-                                  alt={movie.title}
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                <div className="w-full h-full bg-white/10 flex items-center justify-center text-xl">🎬</div>
-                              )}
-                            </div>
-
-                            {/* Info */}
-                            <div className="flex-1 min-w-0">
-                              <h3 className="text-sm font-medium text-white group-hover:text-yellow-400 transition-colors line-clamp-2">
-                                {movie.title}
-                              </h3>
-                              {/* Release Date */}
-                              <div className="flex items-center gap-1.5 mt-1.5">
-                                <FaCalendarAlt className="text-green-400 text-[10px]" />
-                                <span className="text-xs text-green-400 font-medium">
-                                  {formatReleaseDate(movie.release_date)}
-                                </span>
-                              </div>
-                            </div>
-                          </Link>
-                        );
-                      })}
-
-                      {/* View All Link */}
-                      <Link
-                        to="/upcoming"
-                        className="block text-center py-2 text-sm text-yellow-400 hover:text-yellow-300 transition-colors"
+                {/* Scope toggle: Everyone vs the people you follow */}
+                {user?.id && (
+                  <div className="flex items-center gap-1.5 bg-[#1a1d1f] rounded-full border border-white/5 p-1 w-fit">
+                    {[['all', 'Everyone'], ['following', 'Following']].map(([s, label]) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setFeedScope(s)}
+                        className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-colors ${feedScope === s ? 'bg-[var(--accent-green)] text-[#14181c]' : 'text-white/60 hover:text-white'}`}
                       >
-                        View All Coming Soon →
-                      </Link>
-                    </div>
-                  ) : (
-                    <div className="text-center py-8 text-white/30 text-sm">
-                      <p>No coming soon movies for {selectedRegion.name}.</p>
-                      <p className="text-xs mt-2">Add from Admin → Sections.</p>
-                    </div>
-                  );
-                })()}
-
-                {/* Quick Nav */}
-                <div className="mt-8 p-4 rounded-xl bg-gradient-to-br from-yellow-500/10 to-orange-500/10 border border-yellow-500/20">
-                  <h3 className="text-sm font-semibold text-white mb-3">Quick Links</h3>
-                  <div className="space-y-2">
-                    <Link to="/upcoming" className="flex items-center gap-2 text-sm text-white/60 hover:text-yellow-400 transition-colors">
-                      🎬 Coming Soon
-                    </Link>
-                    <Link to="/search" className="flex items-center gap-2 text-sm text-white/60 hover:text-yellow-400 transition-colors">
-                      🔍 Search Movies
-                    </Link>
+                        {label}
+                      </button>
+                    ))}
                   </div>
-                </div>
+                )}
+
+                {/* Topics you follow (directors / genres / franchises) — new releases */}
+                {feedScope === 'following' && <FollowingFeed />}
+
+                {/* Feed Items — skeleton until the full first page is ready */}
+                {(authLoading || feedInitialLoading) ? (
+                  <FeedSkeleton count={6} />
+                ) : (
+                  <>
+                    {feedScope === 'following' && feedItems.length === 0 && !loadingMoreFeed && (
+                      <div className="text-center py-12 rounded-xl border border-dashed border-white/10 bg-[#1a1d1f]">
+                        <p className="text-sm text-white/60">Nothing from people or tags you follow yet.</p>
+                        <p className="text-xs text-white/40 mt-1">
+                          Follow users or{' '}
+                          <a href="/tags" className="text-orange-400 hover:underline">hashtags</a>
+                          {' '}to see matching posts here.
+                        </p>
+                      </div>
+                    )}
+                    {feedItems.map((item, index) => {
+                      const isNew = !appearedIds.current.has(item.id);
+                      if (isNew) appearedIds.current.add(item.id);
+                      return (
+                        <div
+                          key={item.id}
+                          style={isNew ? {
+                            animation: 'feed-in 0.38s ease both',
+                            animationDelay: `${Math.min(index, 8) * 65}ms`,
+                          } : undefined}
+                        >
+                          {renderFeedItem(item)}
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+
+                {/* Infinite scroll sentinel — loads the next page of posts as it scrolls into view */}
+                {!authLoading && !feedInitialLoading && hasMoreFeed ? (
+                  <div ref={loadMoreSentinelRef} className="py-2">
+                    {loadingMoreFeed && <FeedSkeleton count={2} />}
+                  </div>
+                ) : !authLoading && !feedInitialLoading && !hasMoreFeed && feedItems.length > 0 ? (
+                  <p className="text-center text-xs text-white/30 py-6">You're all caught up</p>
+                ) : null}
               </div>
+
+              <HomeSocialSidebar />
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      ) : (
+        <HomeBrowseTab
+          selectedRegion={selectedRegion}
+          onRegionSelect={handleRegionSelect}
+          cmsSections={cmsSections}
+          loadingSections={loadingSections}
+        />
+      )}
+
+      {commentModalPost && (
+        <FeedCommentModal
+          post={commentModalPost}
+          user={user}
+          isAuthenticated={isAuthenticated}
+          onRequireSignIn={requireSignIn}
+          onClose={() => setCommentModalPost(null)}
+          onCommentAdded={handleCommentAdded}
+        />
+      )}
+
+      {shareModalPost && (
+        <FeedShareModal post={shareModalPost} onClose={() => setShareModalPost(null)} />
+      )}
+
+      <ConfirmationModal
+        isOpen={!!postToDelete}
+        onClose={() => !deletingPost && setPostToDelete(null)}
+        onConfirm={confirmDeletePost}
+        title="Delete post"
+        message="Are you sure you want to delete this post? This cannot be undone."
+        confirmText={deletingPost ? 'Deleting…' : 'Delete'}
+      />
     </div>
   );
 };

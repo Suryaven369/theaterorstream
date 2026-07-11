@@ -1,14 +1,16 @@
-import { requireAdmin } from '../_lib/admin-auth.js';
+import { requireAdminWrite, logAction } from '../_lib/admin-auth.js';
 import { getSupabaseAdmin } from '../_lib/supabase-admin.js';
-import { runSyncJob, SYNC_JOBS } from '../_lib/tmdb-sync-server.js';
+import { runSyncJob, SYNC_JOBS, backfillTvSeasons } from '../_lib/tmdb-sync-server.js';
 import {
     rebuildUserTasteProfile,
     rebuildStaleTasteProfiles,
     backfillMovieEmbeddings,
 } from '../_lib/taste-profile-server.js';
 import { isEmbeddingConfigured } from '../_lib/embedding-server.js';
+import { refreshAllRssSources, refreshRssSourceById } from '../_lib/rss-server.js';
 import { readJsonBody } from '../_lib/read-body.js';
 import { dedupeLibraryRecords, upsertMoviesLibrary } from '../../src/lib/libraryDedupe.js';
+import { AUDIT_ACTIONS } from '../_lib/audit-log.js';
 
 export const config = {
     runtime: 'nodejs',
@@ -37,7 +39,7 @@ function sanitizeRecord(record) {
     return clean;
 }
 
-async function handleLibrary(req, res) {
+async function handleLibrary(req, res, auth) {
     const body = await readJsonBody(req);
     const rawRecords = body.records;
 
@@ -79,6 +81,13 @@ async function handleLibrary(req, res) {
         .from('movies_library')
         .select('*', { count: 'exact', head: true });
 
+    // Audit log the bulk import
+    logAction(auth, AUDIT_ACTIONS.LIBRARY_BULK_IMPORT, {
+        resourceType: 'library',
+        request: req,
+        metadata: { count: savedRows.length, libraryTotal },
+    });
+
     return res.status(200).json({
         success: true,
         data: savedRows,
@@ -87,7 +96,7 @@ async function handleLibrary(req, res) {
     });
 }
 
-async function handleSync(req, res) {
+async function handleSync(req, res, auth) {
     const body = await readJsonBody(req);
     const jobName = body.jobName;
 
@@ -98,11 +107,18 @@ async function handleSync(req, res) {
         });
     }
 
+    // Audit log the sync trigger
+    logAction(auth, AUDIT_ACTIONS.SYNC_TRIGGER, {
+        resourceType: 'sync',
+        resourceId: jobName,
+        request: req,
+    });
+
     const result = await runSyncJob(jobName);
     return res.status(200).json(result);
 }
 
-async function handleTaste(req, res) {
+async function handleTaste(req, res, auth) {
     const body = await readJsonBody(req);
     const job = body.job;
 
@@ -110,6 +126,13 @@ async function handleTaste(req, res) {
         if (!body.userId) {
             return res.status(400).json({ error: 'userId required for rebuild-user' });
         }
+        
+        logAction(auth, AUDIT_ACTIONS.TASTE_REBUILD, {
+            resourceType: 'taste',
+            resourceId: body.userId,
+            request: req,
+        });
+        
         const result = await rebuildUserTasteProfile(body.userId, {
             includeEmbedding: !!body.includeEmbedding && isEmbeddingConfigured(),
         });
@@ -117,6 +140,12 @@ async function handleTaste(req, res) {
     }
 
     if (job === 'rebuild-stale') {
+        logAction(auth, AUDIT_ACTIONS.TASTE_REBUILD, {
+            resourceType: 'taste',
+            request: req,
+            metadata: { job: 'rebuild-stale', limit: body.limit },
+        });
+        
         const result = await rebuildStaleTasteProfiles({
             limit: body.limit || 10,
             includeEmbedding: !!body.includeEmbedding && isEmbeddingConfigured(),
@@ -130,6 +159,13 @@ async function handleTaste(req, res) {
                 error: 'Set VOYAGE_API_KEY or OPENAI_API_KEY',
             });
         }
+        
+        logAction(auth, AUDIT_ACTIONS.EMBEDDING_BACKFILL, {
+            resourceType: 'embedding',
+            request: req,
+            metadata: { limit: body.limit },
+        });
+        
         const result = await backfillMovieEmbeddings({ limit: body.limit || 10 });
         return res.status(200).json({ ok: true, ...result });
     }
@@ -140,12 +176,64 @@ async function handleTaste(req, res) {
     });
 }
 
+async function handleRss(req, res, auth) {
+    const body = await readJsonBody(req);
+    const job = body.job;
+
+    logAction(auth, AUDIT_ACTIONS.SYNC_TRIGGER, {
+        resourceType: 'rss',
+        resourceId: body.sourceId || 'all',
+        request: req,
+        metadata: { job },
+    });
+
+    if (job === 'refresh-source') {
+        if (!body.sourceId) {
+            return res.status(400).json({ error: 'sourceId required for refresh-source' });
+        }
+        const result = await refreshRssSourceById(body.sourceId);
+        return res.status(200).json({ ok: true, result });
+    }
+
+    if (job === 'refresh-all') {
+        const result = await refreshAllRssSources();
+        return res.status(200).json({ ok: true, ...result });
+    }
+
+    return res.status(400).json({
+        error: 'Invalid job',
+        allowed: ['refresh-source', 'refresh-all'],
+    });
+}
+
+async function handleBackfill(req, res, auth) {
+    const body = await readJsonBody(req);
+    const job = body.job;
+
+    logAction(auth, AUDIT_ACTIONS.SYNC_TRIGGER, {
+        resourceType: 'backfill',
+        request: req,
+        metadata: { job, limit: body.limit },
+    });
+
+    if (job === 'tv-seasons') {
+        const result = await backfillTvSeasons({ limit: body.limit || 50 });
+        return res.status(200).json({ ok: true, ...result });
+    }
+
+    return res.status(400).json({
+        error: 'Invalid job',
+        allowed: ['tv-seasons'],
+    });
+}
+
 export default async function handler(req, res) {
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    const auth = await requireAdmin(req);
+    // Use write rate limiting for admin actions
+    const auth = await requireAdminWrite(req);
     if (!auth.ok) {
         return res.status(auth.status).json({ error: auth.message });
     }
@@ -153,13 +241,15 @@ export default async function handler(req, res) {
     const action = getAction(req);
 
     try {
-        if (action === 'library') return handleLibrary(req, res);
-        if (action === 'sync') return handleSync(req, res);
-        if (action === 'taste') return handleTaste(req, res);
+        if (action === 'library') return handleLibrary(req, res, auth);
+        if (action === 'sync') return handleSync(req, res, auth);
+        if (action === 'taste') return handleTaste(req, res, auth);
+        if (action === 'rss') return handleRss(req, res, auth);
+        if (action === 'backfill') return handleBackfill(req, res, auth);
 
         return res.status(404).json({
             error: 'Unknown admin action',
-            allowed: ['library', 'sync', 'taste'],
+            allowed: ['library', 'sync', 'taste', 'rss', 'backfill'],
         });
     } catch (error) {
         console.error('admin handler failed:', action, error);
