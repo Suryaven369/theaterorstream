@@ -8,6 +8,7 @@ import { addComment, getPostComments } from '../../lib/socialFeedApi';
 export default function FeedCommentModal({
   post,
   user,
+  profile,
   isAuthenticated,
   onRequireSignIn,
   onClose,
@@ -97,8 +98,12 @@ export default function FeedCommentModal({
             ) : postComments.length > 0 ? (
               postComments.map((comment) => (
                 <div key={comment.id} className="flex gap-3">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-sm shrink-0">
-                    {comment.user?.avatar || '👤'}
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-sm shrink-0 overflow-hidden">
+                    {comment.user?.avatarUrl ? (
+                      <img src={comment.user.avatarUrl} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      comment.user?.avatar || '👤'
+                    )}
                   </div>
                   <div>
                     <p className="text-sm">
@@ -120,12 +125,12 @@ export default function FeedCommentModal({
 
         <div className="p-4 border-t border-white/10 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--accent-green)] to-emerald-600 flex items-center justify-center text-sm shrink-0">
-              {user?.user_metadata?.avatar_url ? (
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--accent-green)] to-emerald-600 flex items-center justify-center text-sm shrink-0 overflow-hidden">
+              {profile?.avatar_url || user?.user_metadata?.avatar_url ? (
                 <img
-                  src={user.user_metadata.avatar_url}
+                  src={profile?.avatar_url || user.user_metadata.avatar_url}
                   alt=""
-                  className="w-full h-full rounded-full object-cover"
+                  className="w-full h-full object-cover"
                 />
               ) : (
                 '👤'

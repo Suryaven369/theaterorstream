@@ -9,7 +9,7 @@ const MobileNavigation = () => {
 
   const navItems = [
     { href: "/", icon: IoHome, label: "Home", match: "home" },
-    { href: "/?tab=my-feed", icon: IoFilm, label: "Feed", match: "my-feed" },
+    { href: "/?tab=explore", icon: IoFilm, label: "Explore", match: "explore" },
     { href: "/boards", icon: IoGrid, label: "Boards", match: "boards" },
     { href: "/search", icon: IoSearch, label: "Search", match: "search" },
   ];
@@ -39,8 +39,9 @@ const MobileNavigation = () => {
           {navItems.map((nav) => {
             const Icon = nav.icon;
             let isActive = false;
-            if (nav.match === "my-feed") {
-              isActive = location.search.includes("tab=my-feed");
+            if (nav.match === "explore") {
+              isActive = location.search.includes("tab=explore")
+                || location.search.includes("tab=my-feed");
             } else if (nav.match === "home") {
               isActive = location.pathname === "/" && !location.search.includes("tab=");
             } else if (nav.match === "boards") {

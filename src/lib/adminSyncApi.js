@@ -2,7 +2,10 @@ import { supabase } from './supabase';
 
 async function getAccessToken() {
     const { data: { session } } = await supabase.auth.getSession();
-    return session?.access_token || null;
+    if (session?.access_token) return session.access_token;
+
+    const { data: refreshed } = await supabase.auth.refreshSession();
+    return refreshed?.session?.access_token || null;
 }
 
 function resolveApiBase() {
@@ -99,4 +102,38 @@ export async function triggerBackfill(job, { limit } = {}) {
     }
 
     return payload;
+}
+
+/**
+ * Connect or disconnect the official TheaterOrStream profile.
+ * Uses a Supabase RPC (works in local Vite) — no /api/admin token required.
+ */
+export async function connectOfficialProfile({ username, userId, disconnect = false } = {}) {
+    const { data, error } = await supabase.rpc('admin_connect_official_profile', {
+        p_username: disconnect ? null : (username || null),
+        p_user_id: disconnect ? null : (userId || null),
+        p_disconnect: !!disconnect,
+    });
+
+    if (error) {
+        const msg = error.message || 'Request failed';
+        if (/Admin access required|42501/i.test(msg)) {
+            throw new Error('Admin access required. Sign in with an admin account.');
+        }
+        if (/Profile not found|P0002/i.test(msg)) {
+            throw new Error('Profile not found. Create the account first, then connect it.');
+        }
+        if (/Could not find the function|PGRST202|schema cache/i.test(msg)) {
+            throw new Error(
+                'Database function missing. Run supabase/migrations/20260720000000_admin_connect_official_profile.sql in Supabase SQL editor.',
+            );
+        }
+        throw new Error(msg);
+    }
+
+    if (!data?.ok) {
+        throw new Error(data?.error || 'Could not update official profile');
+    }
+
+    return data;
 }

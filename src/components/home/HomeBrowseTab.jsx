@@ -5,6 +5,39 @@ import HomeComingSoonSidebar from './HomeComingSoonSidebar';
 
 const FALLBACK_REGION_ORDER = ['IN', 'US', 'GB', 'CA', 'AU'];
 
+/** Classify a CMS row for My Feed filtering. */
+function browseSectionKind(section) {
+  const blob = `${section.slug || ''} ${section.name || ''} ${section.api_source || ''}`.toLowerCase();
+  const api = String(section.api_source || '').toLowerCase();
+
+  if (section.slug === 'coming-soon' || /coming|upcoming|soon/.test(blob)) return 'coming';
+  if (/airing.?today/.test(blob) || api === 'airing_today') return 'skip';
+
+  // OTT / streaming platform rows (Netflix, Hotstar, “Trending on OTTs”, etc.)
+  if (/^provider_/.test(api)) return 'ott';
+  if (
+    /hotstar|netflix|prime|amazon|disney|hulu|hbo|\bmax\b|apple|paramount|peacock|jiocinema|sonyliv|zee5/.test(blob)
+    || /trending on|on ott|\botts?\b|streaming/.test(blob)
+  ) {
+    return 'ott';
+  }
+
+  if (api === 'now_playing' || /theater|theatre|now.?play|cinema|in.?theater/.test(blob)) {
+    return 'theater';
+  }
+  if (/editor|editors.?pick|curat(ed)?|staff.?pick|tos.?pick/.test(blob)) {
+    return 'editors';
+  }
+  // Hot Right Now — avoid matching Hotstar (already handled as ott)
+  if (/\bhot\b|right.?now|trend/.test(blob) || api === 'trending' || api === 'popular') {
+    return 'hot';
+  }
+  return 'other';
+}
+
+/** My Feed keeps only these three rails. */
+const ALLOWED_BROWSE_KINDS = new Set(['hot', 'theater', 'editors']);
+
 /** Prefer selected region; if empty, use first region that has titles. */
 function getSectionMovies(section, regionCode) {
   const byRegion = section.movies_by_region || {};
@@ -65,9 +98,8 @@ export default function HomeBrowseTab({
   loadingSections,
 }) {
   const visibleSections = cmsSections.filter((section) => {
-    if (section.slug === 'coming-soon') return false;
-    const key = `${section.slug || ''} ${section.name || ''} ${section.api_source || ''}`.toLowerCase();
-    if (/airing.?today/.test(key) || section.api_source === 'airing_today') return false;
+    const kind = browseSectionKind(section);
+    if (!ALLOWED_BROWSE_KINDS.has(kind)) return false;
     const { movies } = getSectionMovies(section, selectedRegion.code);
     return movies.length > 0;
   });

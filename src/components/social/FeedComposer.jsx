@@ -98,6 +98,8 @@ export default function FeedComposer({
           name: profile?.display_name || profile?.username || 'You',
           username: profile?.username || 'you',
           avatar: '🎬',
+          avatarUrl: profile?.avatar_url || null,
+          isVerified: !!profile?.is_verified,
         },
         movie: null,
         rating: null,
@@ -136,12 +138,12 @@ export default function FeedComposer({
         </div>
       ) : (
         <div className="flex gap-3">
-          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[var(--accent-green)] to-emerald-600 flex items-center justify-center text-base shrink-0">
-            {user?.user_metadata?.avatar_url ? (
+          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[var(--accent-green)] to-emerald-600 flex items-center justify-center text-base shrink-0 overflow-hidden">
+            {profile?.avatar_url || user?.user_metadata?.avatar_url ? (
               <img
-                src={user.user_metadata.avatar_url}
+                src={profile?.avatar_url || user.user_metadata.avatar_url}
                 alt=""
-                className="w-full h-full rounded-full object-cover"
+                className="w-full h-full object-cover"
               />
             ) : (
               '🎬'

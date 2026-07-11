@@ -9,8 +9,11 @@ export {
     isProfileOnboarded,
     checkUsernameAvailable,
     updateUserProfile,
+    normalizeUsername,
+    getUsernameValidationError,
     getUserTasteProfile,
     ensureUserProfile,
+    ensureUsernameFromDisplayName,
 } from './db/profiles.js';
 
 export {
@@ -165,6 +168,9 @@ export {
     DEFAULT_APP_SETTINGS,
     getAppSettings,
     saveAppSettings,
+    DEFAULT_OFFICIAL_PROFILE,
+    getOfficialProfileSettings,
+    getOfficialProfile,
     getSyncState,
     getTvSeasonsBackfillRemaining,
     getSyncRuns,

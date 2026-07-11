@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { FaHeart, FaRegHeart, FaRegComment } from 'react-icons/fa';
+import VerifiedBadge from '../VerifiedBadge';
 
 /**
  * Compact activity row (watchlist add, rating, etc.).
@@ -9,16 +10,21 @@ export default function FeedActivityCard({ item, onLike, onOpenComments }) {
   return (
     <article className="bg-[#1a1d1f] rounded-lg border border-white/5 hover:border-white/10 transition-colors overflow-hidden">
       <div className="flex items-center gap-2 p-2.5">
-        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-xs shrink-0">
-          {item.user.avatar}
+        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-xs shrink-0 overflow-hidden">
+          {item.user.avatarUrl ? (
+            <img src={item.user.avatarUrl} alt="" className="w-full h-full object-cover" />
+          ) : (
+            item.user.avatar || '🎬'
+          )}
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-xs text-white/80">
             <Link
               to={`/${item.user.username}/profile`}
-              className="font-medium text-white hover:text-[var(--accent-green)]"
+              className="font-medium text-white hover:text-[var(--accent-green)] inline-flex items-center gap-1"
             >
               {item.user.name}
+              {item.user.isVerified && <VerifiedBadge size={12} />}
             </Link>
             {' '}
             <span className="text-white/50">{item.action}</span>{' '}

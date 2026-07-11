@@ -227,6 +227,107 @@ async function handleBackfill(req, res, auth) {
     });
 }
 
+/**
+ * Connect / disconnect the official TheaterOrStream profile.
+ * Body: { username } | { userId } | { disconnect: true }
+ * Sets is_verified via service role and stores linkage in app_settings.
+ */
+async function handleOfficialProfile(req, res, auth) {
+    const body = await readJsonBody(req);
+    const supabase = getSupabaseAdmin();
+
+    if (body?.disconnect) {
+        await supabase
+            .from('user_profiles')
+            .update({ is_verified: false })
+            .eq('is_verified', true);
+
+        await supabase.from('app_settings').upsert({
+            key: 'official_profile',
+            value: {
+                userId: null,
+                username: null,
+                displayName: null,
+                avatarUrl: null,
+                connectedAt: null,
+            },
+            updated_by: auth.user?.id || null,
+            updated_at: new Date().toISOString(),
+        }, { onConflict: 'key' });
+
+        logAction(auth, AUDIT_ACTIONS.SYNC_TRIGGER, {
+            resourceType: 'official_profile',
+            request: req,
+            metadata: { action: 'disconnect' },
+        });
+
+        return res.status(200).json({ ok: true, connected: false });
+    }
+
+    const username = String(body?.username || '').trim().replace(/^@/, '');
+    const userId = body?.userId ? String(body.userId) : null;
+
+    if (!username && !userId) {
+        return res.status(400).json({ error: 'username or userId is required' });
+    }
+
+    let query = supabase
+        .from('user_profiles')
+        .select('id, username, display_name, avatar_url, avatar_id, is_verified');
+
+    if (userId) query = query.eq('id', userId);
+    else query = query.ilike('username', username);
+
+    const { data: profile, error: findErr } = await query.limit(1).maybeSingle();
+    if (findErr) {
+        return res.status(500).json({ error: findErr.message });
+    }
+    if (!profile) {
+        return res.status(404).json({ error: 'Profile not found. Create the account first, then connect it.' });
+    }
+
+    // Clear any previous official verification
+    await supabase
+        .from('user_profiles')
+        .update({ is_verified: false })
+        .eq('is_verified', true)
+        .neq('id', profile.id);
+
+    const { error: verifyErr } = await supabase
+        .from('user_profiles')
+        .update({ is_verified: true })
+        .eq('id', profile.id);
+
+    if (verifyErr) {
+        return res.status(500).json({ error: verifyErr.message });
+    }
+
+    const connectedAt = new Date().toISOString();
+    const value = {
+        userId: profile.id,
+        username: profile.username,
+        displayName: profile.display_name || profile.username,
+        avatarUrl: profile.avatar_url || null,
+        connectedAt,
+    };
+
+    await supabase.from('app_settings').upsert({
+        key: 'official_profile',
+        value,
+        updated_by: auth.user?.id || null,
+        updated_at: connectedAt,
+    }, { onConflict: 'key' });
+
+    logAction(auth, AUDIT_ACTIONS.SYNC_TRIGGER, {
+        resourceType: 'official_profile',
+        resourceId: profile.id,
+        request: req,
+        metadata: { action: 'connect', username: profile.username },
+    });
+
+    return res.status(200).json({ ok: true, connected: true, profile: value });
+}
+
 export default async function handler(req, res) {
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method not allowed' });
@@ -246,10 +347,11 @@ export default async function handler(req, res) {
         if (action === 'taste') return handleTaste(req, res, auth);
         if (action === 'rss') return handleRss(req, res, auth);
         if (action === 'backfill') return handleBackfill(req, res, auth);
+        if (action === 'official-profile') return handleOfficialProfile(req, res, auth);
 
         return res.status(404).json({
             error: 'Unknown admin action',
-            allowed: ['library', 'sync', 'taste', 'rss', 'backfill'],
+            allowed: ['library', 'sync', 'taste', 'rss', 'backfill', 'official-profile'],
         });
     } catch (error) {
         console.error('admin handler failed:', action, error);

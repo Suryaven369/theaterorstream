@@ -11,6 +11,7 @@ import {
   FaPaperPlane,
 } from 'react-icons/fa';
 import MovieMentionText from '../MovieMentionText';
+import VerifiedBadge from '../VerifiedBadge';
 
 const createSlug = (text) =>
   (text || '')
@@ -54,15 +55,20 @@ export default function FeedPostCard({
     <article className="bg-[#1a1d1f] rounded-lg border border-white/5 overflow-hidden hover:border-white/10 transition-colors">
       <div className="flex items-center justify-between p-3 pb-2">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-sm">
-            {item.user.avatar}
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-sm overflow-hidden shrink-0">
+            {item.user.avatarUrl ? (
+              <img src={item.user.avatarUrl} alt="" className="w-full h-full object-cover" />
+            ) : (
+              item.user.avatar || '🎬'
+            )}
           </div>
           <div>
             <Link
               to={`/${item.user.username}/profile`}
-              className="text-sm font-medium text-white hover:text-[var(--accent-green)] transition-colors"
+              className="text-sm font-medium text-white hover:text-[var(--accent-green)] transition-colors inline-flex items-center gap-1"
             >
               {item.user.name}
+              {item.user.isVerified && <VerifiedBadge size={14} />}
             </Link>
             <p className="text-[11px] text-white/40">
               @{item.user.username} · {item.time}

@@ -14,6 +14,8 @@ import {
     getUserCollections,
     getUserWatchedMovies,
     getUserTasteProfile,
+    normalizeUsername,
+    getUsernameValidationError,
 } from '../lib/supabase';
 import {
     uploadAvatarImage,
@@ -37,6 +39,7 @@ import { getUserTopHashtags, getUserFollowedHashtags } from '../lib/hashtagApi';
 import { FaUserPlus, FaUserCheck, FaEllipsisH, FaSearch, FaTimes, FaCamera, FaStar, FaFlag, FaBan, FaShareAlt } from 'react-icons/fa';
 import SeoHead from '../components/SeoHead';
 import MovieMentionText from '../components/MovieMentionText';
+import VerifiedBadge from '../components/VerifiedBadge';
 
 // Avatar options
 const AVATARS = {
@@ -128,7 +131,8 @@ const ProfilePage = () => {
     const [success, setSuccess] = useState('');
 
     // Edit form state
-    const [displayName, setDisplayName] = useState('');
+    const [usernameInput, setUsernameInput] = useState('');
+    const [usernameError, setUsernameError] = useState('');
     const [selectedAvatar, setSelectedAvatar] = useState('avatar_1');
     const [bio, setBio] = useState('');
     const [editFavoriteFilms, setEditFavoriteFilms] = useState([]);
@@ -342,7 +346,12 @@ const ProfilePage = () => {
     useEffect(() => {
         const profile = isOwnProfile ? currentUserProfile : viewedProfile;
         if (profile) {
-            setDisplayName(profile.display_name || '');
+            setUsernameInput(
+                profile.username
+                    || normalizeUsername(profile.display_name)
+                    || ''
+            );
+            setUsernameError('');
             setSelectedAvatar(profile.avatar_id || 'avatar_1');
             setBio(profile.bio || '');
             setEditFavoriteFilms(profile.favorite_films || []);
@@ -419,9 +428,16 @@ const ProfilePage = () => {
         if (!file || !user?.id) return;
         setUploadingAvatar(true);
         const r = await uploadAvatarImage(file, user.id);
+        if (r.ok) {
+            setEditAvatarUrl(r.url);
+            // Persist immediately so home feed / composer pick it up without waiting for Save
+            const saved = await updateUserProfile(user.id, { avatar_url: r.url });
+            if (saved.success) await refreshProfile();
+            else setActionMsg(saved.error?.message || 'Could not save avatar');
+        } else {
+            setActionMsg(r.error || 'Upload failed');
+        }
         setUploadingAvatar(false);
-        if (r.ok) setEditAvatarUrl(r.url);
-        else setActionMsg(r.error || 'Upload failed');
         e.target.value = '';
     };
 
@@ -486,9 +502,18 @@ const ProfilePage = () => {
     const handleSave = async () => {
         if (!user?.id) return;
 
+        const formatError = getUsernameValidationError(usernameInput);
+        if (formatError) {
+            setUsernameError(formatError);
+            return;
+        }
+        const normalized = normalizeUsername(usernameInput);
+        setUsernameError('');
         setSaving(true);
+
         const result = await updateUserProfile(user.id, {
-            display_name: displayName,
+            username: normalized,
+            display_name: normalized,
             avatar_id: selectedAvatar,
             avatar_url: editAvatarUrl || null,
             profile_header_url: editBannerUrl || null,
@@ -505,6 +530,13 @@ const ProfilePage = () => {
             setMovieSearchQuery('');
             setMovieSearchResults([]);
             setTimeout(() => setSuccess(''), 3000);
+            if (normalized !== (currentUserProfile?.username || '').toLowerCase()) {
+                navigate(`/${normalized}/profile`, { replace: true });
+            }
+        } else {
+            const msg = result.error?.message || 'Could not save profile';
+            if (/username taken/i.test(msg)) setUsernameError('Username taken — choose a different one.');
+            else setUsernameError(msg);
         }
         setSaving(false);
     };
@@ -754,8 +786,9 @@ const ProfilePage = () => {
                         {/* Name + Actions */}
                         <div className="flex-1 min-w-0">
                             <div className="flex flex-wrap items-center gap-3 mb-1">
-                                <h1 className="text-xl sm:text-2xl font-bold text-white uppercase tracking-wide">
+                                <h1 className="text-xl sm:text-2xl font-bold text-white uppercase tracking-wide inline-flex items-center gap-2">
                                     {displayProfile?.display_name || displayProfile?.username || username || 'User'}
+                                    {displayProfile?.is_verified && <VerifiedBadge size={22} />}
                                 </h1>
 
                                 {isOwnProfile ? (
@@ -967,16 +1000,42 @@ const ProfilePage = () => {
                                     <input ref={avatarFileRef} type="file" accept="image/*" onChange={handleAvatarFile} className="hidden" />
                                 </div>
 
-                                {/* Display Name */}
+                                {/* Username (also used as display name) */}
                                 <div>
-                                    <label className="text-xs text-white/50 uppercase tracking-wide mb-2 block">Display Name</label>
-                                    <input
-                                        type="text"
-                                        value={displayName}
-                                        onChange={(e) => setDisplayName(e.target.value)}
-                                        placeholder="Your display name"
-                                        className="w-full bg-[#14181c] border border-white/10 rounded-lg px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-[var(--accent-green)]/50"
-                                    />
+                                    <label className="text-xs text-white/50 uppercase tracking-wide mb-2 block">Username</label>
+                                    <div className="relative">
+                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/35 text-sm">@</span>
+                                        <input
+                                            type="text"
+                                            value={usernameInput}
+                                            onChange={(e) => {
+                                                // Live filter: letters, numbers, underscore only
+                                                const next = e.target.value
+                                                    .replace(/[^a-zA-Z0-9_]/g, '')
+                                                    .toLowerCase()
+                                                    .slice(0, 30);
+                                                setUsernameInput(next);
+                                                if (usernameError) setUsernameError('');
+                                            }}
+                                            placeholder="yourname"
+                                            autoCapitalize="off"
+                                            autoCorrect="off"
+                                            spellCheck={false}
+                                            maxLength={30}
+                                            className={`w-full bg-[#14181c] border rounded-lg pl-8 pr-4 py-3 text-white placeholder-white/30 focus:outline-none ${
+                                                usernameError
+                                                    ? 'border-red-500/60 focus:border-red-500'
+                                                    : 'border-white/10 focus:border-[var(--accent-green)]/50'
+                                            }`}
+                                        />
+                                    </div>
+                                    {usernameError ? (
+                                        <p className="text-xs text-red-400 mt-1.5">{usernameError}</p>
+                                    ) : (
+                                        <p className="text-xs text-white/35 mt-1.5">
+                                            Required · letters, numbers, underscore only · no spaces or special characters
+                                        </p>
+                                    )}
                                 </div>
 
                                 {/* Bio */}

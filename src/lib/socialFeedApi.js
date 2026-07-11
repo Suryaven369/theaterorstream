@@ -231,7 +231,7 @@ export async function getPostComments(postId, { limit = 50, offset = 0 } = {}) {
     const authorIds = [...new Set(data.map((c) => c.user_id).filter(Boolean))];
     const { data: profiles } = await supabase
         .from('user_profiles')
-        .select('id, display_name, username')
+        .select('id, display_name, username, avatar_url')
         .in('id', authorIds);
     const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
 
@@ -248,6 +248,7 @@ export async function getPostComments(postId, { limit = 50, offset = 0 } = {}) {
                 name: author?.display_name || author?.username || 'User',
                 username: author?.username,
                 avatar: '🎬',
+                avatarUrl: author?.avatar_url || null,
             },
         };
     });
@@ -425,7 +426,7 @@ export async function getFeedPostById(postId, userId = null) {
     const [profileRes, likeRes, saveRes] = await Promise.all([
         supabase
             .from('user_profiles')
-            .select('id, display_name, username, avatar_id')
+            .select('id, display_name, username, avatar_id, avatar_url, is_verified')
             .eq('id', post.user_id)
             .maybeSingle(),
         userId
@@ -459,6 +460,8 @@ export async function getFeedPostById(postId, userId = null) {
                 name: author?.display_name || author?.username || 'User',
                 username: author?.username || 'user',
                 avatar: '🎬',
+                avatarUrl: author?.avatar_url || null,
+                isVerified: !!author?.is_verified,
             },
             movie: post.tmdb_id
                 ? {
@@ -559,7 +562,7 @@ export async function getFeedPosts({ limit = 20, offset = 0, userId = null, mode
     const authorIds = [...new Set(rows.map((p) => p.user_id).filter(Boolean))];
 
     const [profilesRes, likesRes, savesRes] = await Promise.all([
-        supabase.from('user_profiles').select('id, display_name, username, avatar_id').in('id', authorIds),
+        supabase.from('user_profiles').select('id, display_name, username, avatar_id, avatar_url, is_verified').in('id', authorIds),
         userId
             ? supabase.from('post_likes').select('post_id').eq('user_id', userId).in('post_id', postIds)
             : Promise.resolve({ data: [] }),
@@ -594,6 +597,8 @@ export async function getFeedPosts({ limit = 20, offset = 0, userId = null, mode
                 name: author?.display_name || author?.username || 'User',
                 username: author?.username || 'user',
                 avatar: '🎬',
+                avatarUrl: author?.avatar_url || null,
+                isVerified: !!author?.is_verified,
             },
             movie: post.tmdb_id ? {
                 title: post.movie_title,
@@ -646,7 +651,7 @@ export async function getFeedPostsByAuthor(authorId, { limit = 20, viewerId = nu
     const [profileRes, likesRes] = await Promise.all([
         supabase
             .from('user_profiles')
-            .select('id, display_name, username, avatar_id')
+            .select('id, display_name, username, avatar_id, avatar_url, is_verified')
             .eq('id', authorId)
             .maybeSingle(),
         viewerId
@@ -677,6 +682,8 @@ export async function getFeedPostsByAuthor(authorId, { limit = 20, viewerId = nu
                 name: author?.display_name || author?.username || 'User',
                 username: author?.username || null,
                 avatar: author?.avatar_id || 'avatar_1',
+                avatarUrl: author?.avatar_url || null,
+                isVerified: !!author?.is_verified,
             },
             movie: post.tmdb_id
                 ? {

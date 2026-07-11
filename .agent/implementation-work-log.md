@@ -2,7 +2,45 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 2026 · HEAD `d1ba0ab` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 2026 · HEAD `PENDING` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Jul 2026 — Official profile, usernames, Explore tab
+
+### Official Profile Connect + verified badge ✅
+
+**Problem:** Need an official TheaterOrStream account with blue verified badge for trailers/articles on home.
+
+**Files changed:**
+- `supabase/migrations/20260715000000_official_verified_profile.sql`
+- `supabase/migrations/20260720000000_admin_connect_official_profile.sql` — admin RPC (avoids local `/api/admin` 401)
+- `src/views/admin/AdminProfileConnectPage.jsx`, `VerifiedBadge.jsx`, feed trailer/article attribution
+- `src/lib/adminSyncApi.js` — connect via RPC
+
+**Requires:** Run `20260715000000` + `20260720000000` in Supabase.
+
+### Username = display name (required, a-z0-9_ only) ✅
+
+**Problem:** Creating an account set display name but not username; special chars / null allowed.
+
+**Files changed:**
+- `src/lib/db/profiles.js` — normalize, uniqueness, backfill, never null
+- Profile edit UI → Username field; avatar upload persists immediately
+- Migrations `20260716000000` … `20260719000000` (unique, signup, backfill, NOT NULL + format check)
+- Feed cards/composer show `avatar_url` immediately after profile refresh
+
+**Requires:** Run username migrations `20260716`–`20260719` in Supabase.
+
+### Explore tab (was My Feed) + trim OTT rails ✅
+
+**Problem:** My Feed showed many “Trending on OTT” rows; tab name should be Explore.
+
+**Files changed:**
+- `Home.jsx` / `MobileNavigation.jsx` — Explore tab (`?tab=explore`, legacy `my-feed` still works)
+- `HomeBrowseTab.jsx` — only Hot Right Now, In Theaters, Editor’s Pick
+
+**Next recommended:** Confirm Supabase migrations applied; connect official username in Admin → Profile Connect.
 
 ---
 
@@ -335,6 +373,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `PENDING` | Jul 2026 | Official profile connect, username rules, Explore tab, feed avatars |
 | `d1ba0ab` | Jul 2026 | Social phase, boards, guest public profiles, Cinema Feed people lists |
 | `ba262d9` | May 2026 | Consolidate 25 API routes → 8 functions (Vercel Hobby 12-fn limit) |
 | `5894c1d` | May 2026 | Agent docs HEAD sync |

@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from "react-router-dom";
-import { FiHome, FiFilm, FiGrid, FiTag, FiSettings, FiLogOut, FiLayout, FiActivity, FiSearch, FiList, FiVideo, FiRss } from "react-icons/fi";
+import { FiHome, FiFilm, FiGrid, FiTag, FiSettings, FiLogOut, FiLayout, FiActivity, FiSearch, FiList, FiVideo, FiRss, FiLink } from "react-icons/fi";
 
 const AdminLayout = () => {
     const location = useLocation();
@@ -13,12 +13,17 @@ const AdminLayout = () => {
         { path: "/admin/trailers", label: "Trailers", icon: FiVideo },
         { path: "/admin/articles", label: "Articles", icon: FiRss },
         { path: "/admin/collections", label: "Collections", icon: FiTag },
-        { path: "/admin/settings", label: "Settings", icon: FiSettings },
+        { path: "/admin/settings", label: "Settings", icon: FiSettings, exact: true },
+        { path: "/admin/settings/profile-connect", label: "Profile Connect", icon: FiLink },
         { path: "/admin/legacy", label: "Legacy Panel", icon: FiList },
     ];
 
     const isActive = (item) => {
         if (item.exact) return location.pathname === item.path;
+        // Don't highlight Settings when on Profile Connect
+        if (item.path === "/admin/settings" && location.pathname.startsWith("/admin/settings/")) {
+            return false;
+        }
         return location.pathname.startsWith(item.path);
     };
 

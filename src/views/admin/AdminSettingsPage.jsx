@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import {
     DEFAULT_APP_SETTINGS,
@@ -84,6 +85,21 @@ const AdminSettingsPage = () => {
                     </span>
                 </div>
             </div>
+
+            <Link
+                to="/admin/settings/profile-connect"
+                className="block bg-sky-500/10 hover:bg-sky-500/15 rounded-xl p-4 mb-6 border border-sky-500/30 transition-colors"
+            >
+                <div className="flex items-center justify-between gap-3">
+                    <div>
+                        <h3 className="text-sm font-medium text-white">Profile Connect</h3>
+                        <p className="text-xs text-white/50 mt-0.5">
+                            Link the official TheaterOrStream account — trailers &amp; articles post as that profile with a blue verified badge.
+                        </p>
+                    </div>
+                    <span className="text-sky-400 text-sm shrink-0">Open →</span>
+                </div>
+            </Link>
 
             <div className="bg-white/5 rounded-xl p-4 mb-6 border border-white/10">
                 <h3 className="text-sm font-medium text-white mb-4">Site Settings</h3>

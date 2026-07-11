@@ -41,6 +41,7 @@ import AdminTrailersPage from "../views/admin/AdminTrailersPage";
 import AdminArticlesPage from "../views/admin/AdminArticlesPage";
 import AdminCollectionsPage from "../views/admin/AdminCollectionsPage";
 import AdminSettingsPage from "../views/admin/AdminSettingsPage";
+import AdminProfileConnectPage from "../views/admin/AdminProfileConnectPage";
 import AdminControlTowerPage from "../views/admin/AdminControlTowerPage";
 import AdminDashboardPage from "../views/admin/AdminDashboardPage";
 import ResetPasswordPage from "../views/ResetPasswordPage";
@@ -99,7 +100,7 @@ const router = createBrowserRouter([
       },
       {
         path: "tv-series",
-        element: <Navigate to="/?tab=my-feed" replace />,
+        element: <Navigate to="/?tab=explore" replace />,
       },
       {
         path: "feed",
@@ -283,6 +284,10 @@ const router = createBrowserRouter([
           {
             path: "settings",
             element: <AdminSettingsPage />,
+          },
+          {
+            path: "settings/profile-connect",
+            element: <AdminProfileConnectPage />,
           },
         ],
       },

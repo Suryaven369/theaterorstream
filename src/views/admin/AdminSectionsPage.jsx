@@ -758,7 +758,7 @@ const AdminSectionsPage = () => {
                 localStorage.setItem('homepage_sections_rev', String(Date.now()));
             } catch { /* ignore */ }
             console.log('✅ All changes saved and published!');
-            toast.success('Changes saved and published to My Feed!');
+            toast.success('Changes saved and published to Explore!');
 
         } catch (error) {
             console.error('Error saving changes:', error);
@@ -803,9 +803,9 @@ const AdminSectionsPage = () => {
             <div className="mb-6 flex flex-col gap-4">
                 <div className="flex items-start justify-between">
                     <div>
-                        <h1 className="text-2xl font-bold text-white">My Feed Sections</h1>
+                        <h1 className="text-2xl font-bold text-white">Explore Sections</h1>
                         <p className="text-white/50 text-sm max-w-xl">
-                            Manage rows on My Feed. <span className="text-white/70">Fetch from API</span> pulls
+                            Manage rows on Explore. <span className="text-white/70">Fetch from API</span> pulls
                             movies and TV series together for the selected region. Fetch publishes that region immediately.
                         </p>
                     </div>

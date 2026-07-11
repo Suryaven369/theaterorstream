@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { supabase, getUserProfile, ensureUserProfile, isProfileOnboarded } from '../lib/supabase';
+import { supabase, getUserProfile, ensureUserProfile, ensureUsernameFromDisplayName, isProfileOnboarded } from '../lib/supabase';
 import { signOutUser } from '../lib/auth';
 
 const AuthContext = createContext({});
@@ -18,6 +18,9 @@ export const AuthProvider = ({ children }) => {
 
             if (!userProfile) {
                 userProfile = await ensureUserProfile(userId);
+            } else {
+                // Existing accounts: assign username from display_name when missing
+                userProfile = await ensureUsernameFromDisplayName(userProfile);
             }
 
             if (userProfile) {

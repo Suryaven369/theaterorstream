@@ -26,7 +26,10 @@ function getRequestHeader(request, name) {
         return request.headers.get(name) || request.headers.get(lower);
     }
     const headers = request?.headers || {};
-    return headers[lower] || headers[name];
+    const raw = headers[lower] || headers[name];
+    // Node may expose duplicate headers as an array
+    if (Array.isArray(raw)) return raw[0] || null;
+    return raw || null;
 }
 
 /**

@@ -88,7 +88,7 @@ export const searchProfiles = async (query, limit = 10) => {
     if (!query || query.length < 2) return [];
     const { data } = await supabase
         .from('user_profiles')
-        .select('id, username, display_name, avatar_id')
+        .select('id, username, display_name, avatar_id, avatar_url, is_verified')
         .or(`username.ilike.%${query}%,display_name.ilike.%${query}%`)
         .limit(limit);
     return data || [];

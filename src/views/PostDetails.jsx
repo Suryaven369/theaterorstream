@@ -14,7 +14,7 @@ import { getFeedPostById, likePost, unlikePost, savePost, unsavePost } from '../
  */
 export default function PostDetails() {
   const { id } = useParams();
-  const { user, isAuthenticated } = useAuth();
+  const { user, profile, isAuthenticated } = useAuth();
   const [item, setItem] = useState(null);
   const [loading, setLoading] = useState(true);
   const [commentPost, setCommentPost] = useState(null);
@@ -162,6 +162,7 @@ export default function PostDetails() {
         <FeedCommentModal
           post={commentPost}
           user={user}
+          profile={profile}
           isAuthenticated={isAuthenticated}
           onRequireSignIn={requireSignIn}
           onClose={() => setCommentPost(null)}

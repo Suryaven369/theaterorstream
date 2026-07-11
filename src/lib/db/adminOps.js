@@ -66,6 +66,48 @@ export const saveAppSettings = async (settings, key = 'site') => {
     return { success: true, data: data?.value };
 };
 
+export const DEFAULT_OFFICIAL_PROFILE = {
+    userId: null,
+    username: null,
+    displayName: null,
+    avatarUrl: null,
+    connectedAt: null,
+};
+
+/** Admin-only settings blob for the connected official account. */
+export const getOfficialProfileSettings = async () => {
+    const { data, error } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'official_profile')
+        .maybeSingle();
+
+    if (error) {
+        console.error('Error fetching official profile settings:', error);
+        return { ...DEFAULT_OFFICIAL_PROFILE };
+    }
+    return { ...DEFAULT_OFFICIAL_PROFILE, ...(data?.value || {}) };
+};
+
+/**
+ * Public: load the verified official profile (for feed attribution + badges).
+ * Returns null when nothing is connected yet.
+ */
+export const getOfficialProfile = async () => {
+    const { data, error } = await supabase
+        .from('user_profiles')
+        .select('id, username, display_name, avatar_id, avatar_url, is_verified')
+        .eq('is_verified', true)
+        .limit(1)
+        .maybeSingle();
+
+    if (error) {
+        console.error('Error fetching official profile:', error);
+        return null;
+    }
+    return data || null;
+};
+
 export const getSyncState = async () => {
     const { data, error } = await supabase
         .from('tmdb_sync_state')

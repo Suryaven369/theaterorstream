@@ -14,15 +14,21 @@ import FeedShareModal from "../components/social/FeedShareModal";
 import HomeSocialSidebar from "../components/home/HomeSocialSidebar";
 import HomeBrowseTab from "../components/home/HomeBrowseTab";
 import { getSavedRegion, persistRegion } from "../constants/regions";
-
-const VALID_TABS = ['home', 'my-feed', 'watch'];
 import { getTrailersFromEdge, getRssTrailersFromEdge, getArticlesFromEdge } from "../lib/contentEdgeApi";
-import { getAllUserRatings, getHomepageSections } from "../lib/supabase";
+import { getAllUserRatings, getHomepageSections, getOfficialProfile } from "../lib/supabase";
 import { computeOverallFromRatingRow } from "../lib/ratingUtils";
 import { setHomepageSections, setUserRatedMovies, invalidateHomepageSections } from "../store/movieSlice";
 import { useAuth } from "../context/AuthContext";
 import { likePost, unlikePost, savePost, unsavePost, getFeedPosts, updatePost, deletePost } from "../lib/socialFeedApi";
 import ConfirmationModal from "../components/ConfirmationModal";
+
+const VALID_TABS = ['home', 'explore', 'watch'];
+
+/** Legacy ?tab=my-feed → explore */
+function normalizeHomeTab(tab) {
+  if (tab === 'my-feed') return 'explore';
+  return VALID_TABS.includes(tab) ? tab : 'home';
+}
 
 const SECTIONS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const SECTIONS_REV_KEY = 'homepage_sections_rev';
@@ -75,13 +81,14 @@ const Home = () => {
   // tab the user was on (e.g. opening a movie from Watch and hitting Back).
   const [searchParams, setSearchParams] = useSearchParams();
   const urlTab = searchParams.get('tab');
-  const activeTab = VALID_TABS.includes(urlTab) ? urlTab : 'home';
+  const activeTab = normalizeHomeTab(urlTab);
 
   const setActiveTab = (tab) => {
+    const nextTab = normalizeHomeTab(tab);
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
-      if (tab === 'home') next.delete('tab');
-      else next.set('tab', tab);
+      if (nextTab === 'home') next.delete('tab');
+      else next.set('tab', nextTab);
       return next;
     }, { replace: true });
   };
@@ -152,7 +159,7 @@ const Home = () => {
     const now = Date.now();
     // My Feed: treat cache as stale after 15s so Save & Publish shows up without a full reload.
     // Other tabs: keep the longer TTL.
-    const ttl = activeTab === 'my-feed' ? 15_000 : SECTIONS_CACHE_TTL;
+    const ttl = activeTab === 'explore' ? 15_000 : SECTIONS_CACHE_TTL;
     const isCacheValid = cachedSections && cachedTimestamp && (now - cachedTimestamp < ttl);
 
     if (isCacheValid) {
@@ -211,7 +218,7 @@ const Home = () => {
   const sortByRecency = (items) =>
     [...items].sort((a, b) => getItemSortTime(b) - getItemSortTime(a));
 
-  const mapTrailer = (m) => ({
+  const mapTrailer = (m, officialUser = null) => ({
     id: `trailer-${m.tmdb_id ?? m.id}`,
     type: 'trailer',
     tmdb_id: m.tmdb_id ?? m.id,
@@ -225,9 +232,10 @@ const Home = () => {
     publishedAt: m.featured_trailer.published_at,
     sourceName: m.source_name || null,
     sourceLogo: m.source_logo || null,
+    user: officialUser,
   });
 
-  const mapArticle = (a) => ({
+  const mapArticle = (a, officialUser = null) => ({
     id: `article-${a.id}`,
     type: 'article',
     title: a.title,
@@ -237,6 +245,7 @@ const Home = () => {
     summary: a.summary,
     publishedAt: a.published_at,
     link: a.link,
+    user: officialUser,
   });
 
   // Load real public posts and show them above the seed feed
@@ -248,6 +257,35 @@ const Home = () => {
   // 'all' = everyone (collections/lists stay globally public); 'following' = only
   // people you follow (their posts, logs, reviews, ratings).
   const [feedScope, setFeedScope] = useState('all');
+
+  // When the user updates their avatar (or username), patch their cards in-place
+  // so home feed / composer stay in sync without a full reload.
+  useEffect(() => {
+    if (!user?.id || !profile) return;
+    setFeedItems((prev) => {
+      let changed = false;
+      const next = prev.map((item) => {
+        if (item.user?.id !== user.id) return item;
+        const nextUser = {
+          ...item.user,
+          avatarUrl: profile.avatar_url || item.user.avatarUrl || null,
+          name: profile.display_name || profile.username || item.user.name,
+          username: profile.username || item.user.username,
+          isVerified: !!profile.is_verified,
+        };
+        if (
+          nextUser.avatarUrl === item.user.avatarUrl
+          && nextUser.name === item.user.name
+          && nextUser.username === item.user.username
+        ) {
+          return item;
+        }
+        changed = true;
+        return { ...item, user: nextUser };
+      });
+      return changed ? next : prev;
+    });
+  }, [user?.id, profile?.avatar_url, profile?.username, profile?.display_name, profile?.is_verified]);
 
   // One paint: wait for auth, then load posts (+ trailers/articles) together.
   // Avoids empty→posts→reshuffle flash from staggered loaders / auth race.
@@ -273,11 +311,22 @@ const Home = () => {
               getRssTrailersFromEdge({ daysBack: 21, limit: 15 }),
               getTrailersFromEdge({ sortBy: 'recent', daysBack: 14, type: 'launch', limit: 15 }),
               getArticlesFromEdge({ limit: 20 }),
+              getOfficialProfile(),
             ])
-          : Promise.resolve([null, null, []]);
+          : Promise.resolve([null, null, [], null]);
 
-        const [postsRes, [rss, lib, articlesRaw]] = await Promise.all([postsPromise, extrasPromise]);
+        const [postsRes, [rss, lib, articlesRaw, officialProfile]] = await Promise.all([postsPromise, extrasPromise]);
         if (cancelled) return;
+
+        const officialUser = officialProfile
+          ? {
+              id: officialProfile.id,
+              name: officialProfile.display_name || officialProfile.username || 'TheaterOrStream',
+              username: officialProfile.username,
+              avatarUrl: officialProfile.avatar_url || null,
+              isVerified: !!officialProfile.is_verified,
+            }
+          : null;
 
         const posts = (postsRes.ok ? postsRes.items : [])
           .filter((p) => p && p.id != null && p.user);
@@ -285,15 +334,15 @@ const Home = () => {
         const byId = new Map();
         if (feedScope === 'all') {
           for (const m of (rss?.data || [])) {
-            if (m.featured_trailer?.key) byId.set(String(m.tmdb_id ?? m.id), mapTrailer(m));
+            if (m.featured_trailer?.key) byId.set(String(m.tmdb_id ?? m.id), mapTrailer(m, officialUser));
           }
           for (const m of (lib?.data || [])) {
             const key = String(m.tmdb_id ?? m.id);
-            if (m.featured_trailer?.key && !byId.has(key)) byId.set(key, mapTrailer(m));
+            if (m.featured_trailer?.key && !byId.has(key)) byId.set(key, mapTrailer(m, officialUser));
           }
         }
         const trailers = [...byId.values()];
-        const articles = (articlesRaw || []).map(mapArticle);
+        const articles = (articlesRaw || []).map((a) => mapArticle(a, officialUser));
 
         setFeedItems(sortByRecency([...posts, ...trailers, ...articles]));
         setFeedOffset(posts.length);
@@ -544,15 +593,15 @@ const Home = () => {
               Home
             </button>
             <button
-              onClick={() => setActiveTab('my-feed')}
+              onClick={() => setActiveTab('explore')}
               className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2.5 sm:py-3 text-sm font-medium border-b-2 transition-colors shrink-0 ${
-                activeTab === 'my-feed'
+                activeTab === 'explore'
                   ? 'border-[var(--accent-green)] text-white'
                   : 'border-transparent text-white/50 hover:text-white'
               }`}
             >
               <FaFilm className="text-sm" />
-              My Feed
+              Explore
             </button>
             <button
               onClick={() => setActiveTab('watch')}
@@ -676,6 +725,7 @@ const Home = () => {
         <FeedCommentModal
           post={commentModalPost}
           user={user}
+          profile={profile}
           isAuthenticated={isAuthenticated}
           onRequireSignIn={requireSignIn}
           onClose={() => setCommentModalPost(null)}
