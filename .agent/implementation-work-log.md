@@ -2,7 +2,7 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 2026 · HEAD `PENDING` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 2026 · HEAD `e5a2d32` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
 
 ---
 
@@ -394,6 +394,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `e5a2d32` | Jul 2026 | Explore in-page Collections/Boards/Blogs, Coming Soon Feed-only, mobile/iPad |
 | `dd05fdb` | Jul 2026 | Official profile connect, username rules, Explore tab, feed avatars |
 | `d1ba0ab` | Jul 2026 | Social phase, boards, guest public profiles, Cinema Feed people lists |
 | `ba262d9` | May 2026 | Consolidate 25 API routes → 8 functions (Vercel Hobby 12-fn limit) |
