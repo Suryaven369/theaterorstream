@@ -18,23 +18,23 @@ export default function HomeRegionPicker({ selectedRegion, onSelect }) {
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:border-yellow-500/30 transition-all"
+        className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-white/5 border border-white/10 hover:border-yellow-500/30 transition-all min-h-[40px]"
       >
-        <FaGlobe className="text-yellow-400 text-sm" />
-        <span className="text-xl">{selectedRegion.flag}</span>
-        <span className="text-white text-sm font-medium">{selectedRegion.name}</span>
+        <FaGlobe className="text-yellow-400 text-sm shrink-0" />
+        <span className="text-lg sm:text-xl">{selectedRegion.flag}</span>
+        <span className="text-white text-xs sm:text-sm font-medium">{selectedRegion.name}</span>
         <FaChevronDown
           className={`text-white/50 text-xs transition-transform ${isOpen ? 'rotate-180' : ''}`}
         />
       </button>
       {isOpen && (
-        <div className="absolute top-full right-0 mt-2 w-52 py-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border-color)] shadow-2xl z-50">
+        <div className="absolute top-full left-0 sm:left-auto sm:right-0 mt-2 w-[min(13rem,calc(100vw-1.5rem))] py-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border-color)] shadow-2xl z-50 max-h-[60vh] overflow-y-auto">
           {REGIONS.map((region) => (
             <button
               key={region.code}
               type="button"
               onClick={() => handleSelect(region)}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white/5 text-sm ${
+              className={`w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white/5 text-sm min-h-[44px] ${
                 selectedRegion.code === region.code
                   ? 'bg-yellow-500/10 text-yellow-400'
                   : 'text-white'

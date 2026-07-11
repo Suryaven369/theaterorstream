@@ -25,6 +25,7 @@ const STATUS_TABS = [
 ];
 
 const DAYS_BACK_OPTIONS = [
+    { value: 1, label: "Last 24 hours" },
     { value: 3, label: "Last 3 days" },
     { value: 7, label: "Last 7 days" },
     { value: 14, label: "Last 14 days" },
@@ -289,13 +290,19 @@ const GlobalFiltersModal = ({ open, onClose }) => {
     );
 };
 
-const ArticleRow = ({ article, status, selected, onSelectToggle, onApprove, onReject, onToggle, onDelete }) => (
-    <div className={`flex items-center gap-3 p-3 rounded-xl bg-[#1a1a1a] border transition-colors ${selected ? "border-orange-500/50" : "border-white/10"}`}>
+const ArticleRow = ({ article, status, selected, onSelectToggle, onApprove, onReject, onToggle, onDelete, acting }) => (
+    <div className={`relative flex items-center gap-3 p-3 rounded-xl bg-[#1a1a1a] border transition-colors ${selected ? "border-orange-500/50" : "border-white/10"} ${acting ? "opacity-70" : ""}`}>
+        {acting && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-black/40 backdrop-blur-[1px]">
+                <FaSync className="text-orange-400 text-sm animate-spin" />
+            </div>
+        )}
         <input
             type="checkbox"
             checked={selected}
             onChange={() => onSelectToggle(article.id)}
-            className="shrink-0 w-4 h-4 accent-orange-500 cursor-pointer"
+            disabled={acting}
+            className="shrink-0 w-4 h-4 accent-orange-500 cursor-pointer disabled:opacity-40"
         />
         {article.image_url ? (
             <img
@@ -322,24 +329,26 @@ const ArticleRow = ({ article, status, selected, onSelectToggle, onApprove, onRe
             <>
                 <button
                     onClick={() => onApprove(article)}
-                    className="text-xs px-3 py-1.5 rounded-md bg-green-500/20 text-green-400 hover:bg-green-500/30 shrink-0 flex items-center gap-1.5"
+                    disabled={acting}
+                    className="text-xs px-3 py-1.5 rounded-md bg-green-500/20 text-green-400 hover:bg-green-500/30 shrink-0 flex items-center gap-1.5 disabled:opacity-50"
                 >
                     <FaCheck /> Approve
                 </button>
                 <button
                     onClick={() => onReject(article)}
-                    className="text-xs px-3 py-1.5 rounded-md bg-white/5 text-white/50 hover:bg-white/10 shrink-0 flex items-center gap-1.5"
+                    disabled={acting}
+                    className="text-xs px-3 py-1.5 rounded-md bg-white/5 text-white/50 hover:bg-white/10 shrink-0 flex items-center gap-1.5 disabled:opacity-50"
                 >
                     <FaTimes /> Reject
                 </button>
             </>
         )}
         {status === "approved" && (
-            <button onClick={() => onToggle(article)} className="text-white/50 hover:text-white shrink-0">
+            <button onClick={() => onToggle(article)} disabled={acting} className="text-white/50 hover:text-white shrink-0 disabled:opacity-50">
                 {article.is_active ? <FaToggleOn className="text-xl text-green-400" /> : <FaToggleOff className="text-xl" />}
             </button>
         )}
-        <button onClick={() => onDelete(article)} className="text-white/40 hover:text-red-400 shrink-0">
+        <button onClick={() => onDelete(article)} disabled={acting} className="text-white/40 hover:text-red-400 shrink-0 disabled:opacity-50">
             <FaTrash />
         </button>
     </div>
@@ -358,7 +367,7 @@ const AdminArticlesPage = () => {
     const [refreshingId, setRefreshingId] = useState(null);
     const [refreshingAll, setRefreshingAll] = useState(false);
     const [statusTab, setStatusTab] = useState("pending");
-    const [daysBack, setDaysBack] = useState(0);
+    const [daysBack, setDaysBack] = useState(1);
     const [sortOrder, setSortOrder] = useState("desc"); // 'desc' = latest first, 'asc' = oldest first
     const [articles, setArticles] = useState([]);
     const [loadingArticles, setLoadingArticles] = useState(true);
@@ -367,19 +376,20 @@ const AdminArticlesPage = () => {
     const [selectedIds, setSelectedIds] = useState(new Set());
     const [bulkActing, setBulkActing] = useState(false);
     const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+    const [actingId, setActingId] = useState(null);
 
-    const loadSources = useCallback(async () => {
-        setLoadingSources(true);
+    const loadSources = useCallback(async ({ silent = false } = {}) => {
+        if (!silent) setLoadingSources(true);
         const [sourceList, countMap] = await Promise.all([getRssSources(), getFeedArticleCountsBySource()]);
         setSources(sourceList);
         setCounts(countMap);
-        setLoadingSources(false);
+        if (!silent) setLoadingSources(false);
     }, []);
 
-    const loadArticles = useCallback(async (status, sourceId, days, sort) => {
-        setLoadingArticles(true);
+    const loadArticles = useCallback(async (status, sourceId, days, sort, { silent = false } = {}) => {
+        if (!silent) setLoadingArticles(true);
         setArticles(await getFeedArticles(status, 50, sourceId, days, sort));
-        setLoadingArticles(false);
+        if (!silent) setLoadingArticles(false);
     }, []);
 
     // Sources of the currently-selected kind (Articles vs Trailers).
@@ -389,11 +399,15 @@ const AdminArticlesPage = () => {
     const articleSourceFilter = selectedSourceId || kindSourceIds;
 
     useEffect(() => { loadSources(); }, [loadSources]);
+
+    // Don't depend on `sources` object identity — refreshing counts after approve
+    // was retriggering a full loading skeleton (blank blink).
+    const kindSourceIdsKey = kindSourceIds.slice().sort().join(",");
     useEffect(() => {
         loadArticles(statusTab, articleSourceFilter, daysBack, sortOrder);
         setSelectedIds(new Set());
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [statusTab, selectedSourceId, daysBack, sortOrder, activeKind, sources, loadArticles]);
+    }, [statusTab, selectedSourceId, daysBack, sortOrder, activeKind, kindSourceIdsKey, loadArticles]);
 
     const switchKind = (k) => { setActiveKind(k); setSelectedSourceId(null); };
 
@@ -458,33 +472,65 @@ const AdminArticlesPage = () => {
         setRefreshingAll(false);
     };
 
+    const refreshCounts = useCallback(async () => {
+        setCounts(await getFeedArticleCountsBySource());
+    }, []);
+
+    const removeArticleFromList = (id) => {
+        setArticles((prev) => prev.filter((a) => a.id !== id));
+        setSelectedIds((prev) => {
+            if (!prev.has(id)) return prev;
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+        });
+    };
+
     const handleApprove = async (article) => {
-        await updateFeedArticleStatus(article.id, "approved");
-        loadArticles(statusTab, articleSourceFilter, daysBack, sortOrder);
-        loadSources();
+        setActingId(article.id);
+        const result = await updateFeedArticleStatus(article.id, "approved");
+        if (result.success) {
+            removeArticleFromList(article.id);
+            refreshCounts();
+        } else {
+            toast.error(result.error?.message || "Approve failed");
+        }
+        setActingId(null);
     };
 
     const handleReject = async (article) => {
-        await updateFeedArticleStatus(article.id, "rejected");
-        loadArticles(statusTab, articleSourceFilter, daysBack, sortOrder);
-        loadSources();
+        setActingId(article.id);
+        const result = await updateFeedArticleStatus(article.id, "rejected");
+        if (result.success) {
+            removeArticleFromList(article.id);
+            refreshCounts();
+        } else {
+            toast.error(result.error?.message || "Reject failed");
+        }
+        setActingId(null);
     };
 
     const handleToggleArticle = async (article) => {
+        setActingId(article.id);
         await toggleFeedArticleActive(article.id);
-        loadArticles(statusTab, articleSourceFilter, daysBack, sortOrder);
+        setArticles((prev) =>
+            prev.map((a) => (a.id === article.id ? { ...a, is_active: !a.is_active } : a)),
+        );
+        setActingId(null);
     };
 
     const handleDeleteArticle = async (article) => {
         if (!confirm(`Delete "${article.title}"?`)) return;
+        setActingId(article.id);
         const result = await deleteFeedArticle(article.id);
         if (result.success) {
             toast.success(`Deleted "${article.title}".`);
+            removeArticleFromList(article.id);
+            refreshCounts();
         } else {
             toast.error(`Failed to delete article: ${result.error?.message || "Unknown error"}`);
         }
-        loadArticles(statusTab, articleSourceFilter, daysBack, sortOrder);
-        loadSources();
+        setActingId(null);
     };
 
     const toggleSelect = (id) => {
@@ -512,9 +558,10 @@ const AdminArticlesPage = () => {
                 ? `Approved ${ids.length - failed}, failed on ${failed} article(s).`
                 : `Approved ${ids.length} article(s).`,
         );
+        const failedIds = new Set(ids.filter((_, i) => !results[i]?.success));
         setSelectedIds(new Set());
-        loadArticles(statusTab, articleSourceFilter, daysBack, sortOrder);
-        loadSources();
+        setArticles((prev) => prev.filter((a) => failedIds.has(a.id) || !ids.includes(a.id)));
+        refreshCounts();
         setBulkActing(false);
     };
 
@@ -530,9 +577,10 @@ const AdminArticlesPage = () => {
                 ? `Deleted ${ids.length - failed}, failed on ${failed} article(s).`
                 : `Deleted ${ids.length} article(s).`,
         );
+        const failedIds = new Set(ids.filter((_, i) => !results[i]?.success));
         setSelectedIds(new Set());
-        loadArticles(statusTab, articleSourceFilter, daysBack, sortOrder);
-        loadSources();
+        setArticles((prev) => prev.filter((a) => failedIds.has(a.id) || !ids.includes(a.id)));
+        refreshCounts();
         setBulkActing(false);
     };
 
@@ -776,6 +824,7 @@ const AdminArticlesPage = () => {
                                         onReject={handleReject}
                                         onToggle={handleToggleArticle}
                                         onDelete={handleDeleteArticle}
+                                        acting={actingId === article.id || (bulkActing && selectedIds.has(article.id))}
                                     />
                                 ))}
                             </div>

@@ -103,6 +103,34 @@ export const getUserBlogPosts = async (userId) => {
     return data || [];
 };
 
+/** Recent public blogs for Explore browse rail. */
+export const getRecentPublicBlogs = async (limit = 5) => {
+    const { data, error } = await supabase
+        .from('blog_posts')
+        .select('id, title, cover_image, user_id, created_at')
+        .eq('visibility', 'public')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+    if (error) {
+        console.error('getRecentPublicBlogs:', error);
+        return [];
+    }
+    if (!data?.length) return [];
+
+    const userIds = [...new Set(data.map((b) => b.user_id).filter(Boolean))];
+    const { data: profiles } = await supabase
+        .from('user_profiles')
+        .select('id, username, display_name')
+        .in('id', userIds);
+    const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
+
+    return data.map((b) => ({
+        ...b,
+        user_profiles: profileMap.get(b.user_id) || null,
+    }));
+};
+
 export const updateBlogPost = async (blogId, { title, content, isPublic }) => {
     const patch = {};
     if (title != null) patch.title = title.trim().slice(0, BLOG_TITLE_MAX);

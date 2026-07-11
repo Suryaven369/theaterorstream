@@ -149,8 +149,8 @@ export const getFeedArticles = async (status = 'pending', limit = 50, sourceId =
     }
 
     if (daysBack > 0) {
-        const since = new Date();
-        since.setDate(since.getDate() - daysBack);
+        // Exact rolling window (1 = last 24 hours, 3 = last 72 hours, …)
+        const since = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000);
         query = query.gte('published_at', since.toISOString());
     }
 

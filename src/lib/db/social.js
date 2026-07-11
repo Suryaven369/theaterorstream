@@ -125,6 +125,114 @@ export const searchPublicCollections = async (query, limit = 20) => {
     }));
 };
 
+/** Recent public user lists for Explore browse rail. */
+export const getRecentPublicCollections = async (limit = 6) => {
+    // Prefer posters via embed; fall back to a plain list if the embed 400s
+    // (schema/RLS/PostgREST), so the Explore panel never goes empty.
+    let data = null;
+    let usedEmbed = false;
+
+    {
+        const nested = await supabase
+            .from('user_collections')
+            .select('id, name, slug, description, user_id, is_public, created_at, collection_movies(movie_id, poster_path, movie_title, added_at)')
+            .eq('is_public', true)
+            .order('created_at', { ascending: false })
+            .order('added_at', { foreignTable: 'collection_movies', ascending: false })
+            .limit(limit);
+
+        if (!nested.error && nested.data) {
+            data = nested.data;
+            usedEmbed = true;
+        } else if (nested.error) {
+            console.warn('getRecentPublicCollections embed:', nested.error.message);
+        }
+    }
+
+    if (!data) {
+        const plain = await supabase
+            .from('user_collections')
+            .select('id, name, slug, description, user_id, is_public, created_at')
+            .eq('is_public', true)
+            .order('created_at', { ascending: false })
+            .limit(limit);
+
+        if (plain.error) {
+            console.error('getRecentPublicCollections:', plain.error);
+            return [];
+        }
+        data = plain.data || [];
+    }
+
+    if (!data.length) return [];
+
+    const ids = data.map((c) => c.id);
+    const userIds = [...new Set(data.map((c) => c.user_id))];
+
+    const [profilesRes, coversRes, moviesRes] = await Promise.all([
+        supabase
+            .from('user_profiles')
+            .select('id, username, display_name')
+            .in('id', userIds),
+        supabase
+            .from('user_collections')
+            .select('id, cover_image')
+            .in('id', ids),
+        usedEmbed
+            ? Promise.resolve({ data: null, error: null })
+            : supabase
+                .from('collection_movies')
+                .select('collection_id, movie_id, poster_path, movie_title, added_at')
+                .in('collection_id', ids)
+                .order('added_at', { ascending: false }),
+    ]);
+
+    if (coversRes.error) {
+        console.warn('getRecentPublicCollections covers:', coversRes.error.message);
+    }
+    if (moviesRes.error) {
+        console.warn('getRecentPublicCollections movies:', moviesRes.error.message);
+    }
+
+    const profileMap = new Map((profilesRes.data || []).map((p) => [p.id, p]));
+    const coverMap = new Map((coversRes.data || []).map((c) => [c.id, c.cover_image || null]));
+    const moviesByCollection = new Map();
+    const countByCollection = new Map();
+
+    if (!usedEmbed) {
+        for (const row of moviesRes.data || []) {
+            countByCollection.set(row.collection_id, (countByCollection.get(row.collection_id) || 0) + 1);
+            const list = moviesByCollection.get(row.collection_id) || [];
+            if (list.length < 4) list.push(row);
+            moviesByCollection.set(row.collection_id, list);
+        }
+    }
+
+    return data.map((c) => {
+        const embedded = usedEmbed ? (c.collection_movies || []) : null;
+        const movies = embedded
+            ? [...embedded].slice(0, 4)
+            : (moviesByCollection.get(c.id) || []);
+        const movieCount = embedded
+            ? embedded.length
+            : (countByCollection.get(c.id) || 0);
+
+        return {
+            id: c.id,
+            name: c.name,
+            slug: c.slug,
+            description: c.description,
+            user_id: c.user_id,
+            is_public: c.is_public,
+            created_at: c.created_at,
+            cover_image: coverMap.get(c.id) || null,
+            collection_movies: movies,
+            movie_count: movieCount,
+            owner: profileMap.get(c.user_id) || null,
+        };
+    });
+};
+
 // Get profile by username (case-insensitive — URLs / search casing may differ)
 export const getProfileByUsername = async (username) => {
     if (!username) return null;

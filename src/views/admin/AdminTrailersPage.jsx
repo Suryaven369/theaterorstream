@@ -20,6 +20,7 @@ const SORT_TABS = [
 ];
 
 const DAYS_BACK_OPTIONS = [
+    { value: 1, label: "Last 24 hours" },
     { value: 3, label: "Last 3 days" },
     { value: 7, label: "Last 7 days" },
     { value: 14, label: "Last 14 days" },

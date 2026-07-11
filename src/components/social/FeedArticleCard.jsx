@@ -3,71 +3,76 @@ import { Link } from 'react-router-dom';
 import VerifiedBadge from '../VerifiedBadge';
 
 /**
- * News article feed card — opens publisher URL in a new tab (no in-app article page).
- * When `item.user` is set (official account), header shows that profile + verified badge.
+ * News article feed card — small author row, large title (Reddit-style hierarchy).
  */
 export default function FeedArticleCard({ item }) {
   const externalUrl = item.link || null;
   const official = item.user;
+  const when = item.publishedAt ? new Date(item.publishedAt).toLocaleDateString() : 'News';
 
-  const cardBody = (
+  const media = item.imageUrl ? (
+    <div className="relative aspect-video overflow-hidden bg-black">
+      <img
+        src={item.imageUrl}
+        alt={item.title}
+        className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform"
+        loading="lazy"
+        onError={(e) => {
+          e.currentTarget.closest('.aspect-video').style.display = 'none';
+        }}
+      />
+    </div>
+  ) : null;
+
+  const body = (
     <>
-      {item.imageUrl && (
-        <div className="relative aspect-video overflow-hidden bg-black">
-          <img
-            src={item.imageUrl}
-            alt={item.title}
-            className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform"
-            loading="lazy"
-            onError={(e) => {
-              e.currentTarget.closest('.aspect-video').style.display = 'none';
-            }}
-          />
+      {media}
+      {item.summary && (
+        <div className="px-3 py-2">
+          <p className="text-xs text-white/50 line-clamp-2">{item.summary}</p>
         </div>
       )}
-      <div className="px-3 py-2">
-        <h3 className="text-sm font-bold text-white">{item.title}</h3>
-        {item.summary && (
-          <p className="text-xs text-white/50 mt-1 line-clamp-2">{item.summary}</p>
-        )}
-      </div>
     </>
   );
 
   return (
     <article className="bg-[#1a1d1f] rounded-lg border border-white/5 overflow-hidden hover:border-white/10 transition-colors">
-      <div className="flex items-center gap-2 p-3 pb-2">
+      {/* Author row — small */}
+      <div className="flex items-center gap-2 px-3 pt-3 pb-1.5">
         {official ? (
           <>
-            {official.avatarUrl ? (
-              <img
-                src={official.avatarUrl}
-                alt=""
-                className="w-8 h-8 rounded-full object-cover shrink-0 border border-white/10"
-              />
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center text-sm shrink-0">
-                📰
-              </div>
-            )}
-            <div>
+            <Link to={`/${official.username}/profile`} className="shrink-0">
+              {official.avatarUrl ? (
+                <img
+                  src={official.avatarUrl}
+                  alt=""
+                  className="w-7 h-7 rounded-full object-cover border border-white/10"
+                />
+              ) : (
+                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center text-xs">
+                  📰
+                </div>
+              )}
+            </Link>
+            <div className="min-w-0 flex items-center gap-1.5">
               <Link
                 to={`/${official.username}/profile`}
-                className="inline-flex items-center gap-1 text-sm font-medium text-white hover:text-[var(--accent-green)]"
+                className="text-[12px] font-medium text-white/80 hover:text-white truncate inline-flex items-center gap-1"
               >
-                {official.name}
-                {official.isVerified && <VerifiedBadge size={14} />}
+                {official.username || official.name}
+                {official.isVerified && <VerifiedBadge size={12} />}
               </Link>
-              <p className="text-[11px] text-white/40">
-                {item.publishedAt ? new Date(item.publishedAt).toLocaleDateString() : 'News'}
+              <span className="text-white/25 text-[10px]">·</span>
+              <span className="text-[11px] text-white/40 truncate">
+                {when}
                 {item.sourceName ? ` · ${item.sourceName}` : ''}
-              </p>
+              </span>
             </div>
           </>
         ) : (
           <>
             <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm overflow-hidden shrink-0 ${item.sourceLogo ? 'bg-white' : 'bg-gradient-to-br from-orange-500 to-amber-500'}`}
+              className={`w-7 h-7 rounded-full flex items-center justify-center text-xs overflow-hidden shrink-0 ${item.sourceLogo ? 'bg-white' : 'bg-gradient-to-br from-orange-500 to-amber-500'}`}
             >
               {item.sourceLogo ? (
                 <img
@@ -89,22 +94,39 @@ export default function FeedArticleCard({ item }) {
               ) : null}
               <span className={item.sourceLogo ? 'hidden' : ''}>📰</span>
             </div>
-            <div>
-              <p className="text-sm font-medium text-white">{item.sourceName}</p>
-              <p className="text-[11px] text-white/40">
-                {item.publishedAt ? new Date(item.publishedAt).toLocaleDateString() : 'News'}
-              </p>
+            <div className="min-w-0 flex items-center gap-1.5 text-[11px] text-white/45">
+              <span className="text-[12px] font-medium text-white/80 truncate">
+                {item.sourceName || 'News'}
+              </span>
+              <span className="text-white/25">·</span>
+              <span className="truncate">{when}</span>
             </div>
           </>
         )}
       </div>
 
+      {/* Title — large primary */}
+      <div className="px-3 pb-2">
+        {externalUrl ? (
+          <a
+            href={externalUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block text-[15px] sm:text-base font-semibold text-white leading-snug hover:text-[var(--accent-green)] transition-colors"
+          >
+            {item.title}
+          </a>
+        ) : (
+          <h3 className="text-[15px] sm:text-base font-semibold text-white leading-snug">{item.title}</h3>
+        )}
+      </div>
+
       {externalUrl ? (
         <a href={externalUrl} target="_blank" rel="noopener noreferrer" className="block group">
-          {cardBody}
+          {body}
         </a>
       ) : (
-        <div className="block group">{cardBody}</div>
+        <div className="block group">{body}</div>
       )}
 
       {externalUrl && (

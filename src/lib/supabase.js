@@ -159,6 +159,7 @@ export {
     isFollowing,
     searchProfiles,
     searchPublicCollections,
+    getRecentPublicCollections,
     getProfileByUsername,
     getUserRatingsCount,
 } from './db/social.js';

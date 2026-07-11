@@ -2,7 +2,28 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 2026 · HEAD `dd05fdb` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 2026 · HEAD `PENDING` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Jul 2026 — Explore in-page panels + mobile
+
+### Explore left nav → in-page Collections / Boards / Blogs ✅
+
+**Problem:** Collections / Boards / Blogs left-nav links left Explore for other routes; Coming Soon only showed 5 titles and appeared on every panel; Collections panel was a plain list and broke after thumbnail query change.
+
+**Files changed:**
+- `src/components/home/HomeBrowseTab.jsx` — `?view=` panels, Coming Soon Feed-only, mobile/iPad layout
+- `src/components/home/HomeExploreBrowseSidebar.jsx` — sticky segmented tabs (mobile) + sticky rail (`lg+`)
+- `src/components/home/ExplorePanels.jsx` — collection/board/blog card grids
+- `src/components/home/HomeComingSoonSidebar.jsx` — top 6 + mobile strip + desktop rail
+- `src/components/home/HomeRegionPicker.jsx` — compact mobile picker
+- `src/lib/db/social.js` — resilient `getRecentPublicCollections` (posters without emptying panel)
+- Feed trailer/article cards + Admin Articles (24h filter / approve UX) + RSS tweaks
+
+**Behavior:** Explore stays on one page; left nav switches main column; Coming Soon on Feed only; Collections show poster cards; phone/iPad get denser grids + sticky tabs + Coming Soon carousel.
+
+**Next recommended:** Confirm username + official-profile migrations applied; smoke-test Explore panels on phone.
 
 ---
 

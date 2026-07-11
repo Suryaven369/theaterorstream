@@ -15,45 +15,48 @@ function formatAgo(publishedAt) {
 }
 
 /**
- * Trailer feed card — thumbnail + title; playback stays on YouTube / details page.
- * When `item.user` is set (official account), the header shows that profile + verified badge.
+ * Trailer feed card — small author row, large title, then media (Reddit-style hierarchy).
  */
 export default function FeedTrailerCard({ item }) {
   const year = item.releaseDate?.split('-')[0] || '';
   const slug = generateSlugWithId(item.title, item.tmdb_id, year);
   const movieUrl = item.mediaType === 'tv' ? `/tv/${slug}` : `/movies/${slug}`;
   const ago = formatAgo(item.publishedAt);
-  const kind = item.trailerName?.toLowerCase().includes('teaser') ? 'Teaser' : 'Trailer';
+  const isTeaser = item.trailerName?.toLowerCase().includes('teaser');
   const official = item.user;
+  const displayTitle = `${item.title}${year ? ` (${year})` : ''} · Official ${isTeaser ? 'Teaser' : 'Trailer'}`;
 
   return (
     <article className="bg-[#1a1d1f] rounded-lg border border-white/5 overflow-hidden hover:border-white/10 transition-colors">
-      <div className="flex items-center gap-2 p-3 pb-2">
+      {/* Author row — small */}
+      <div className="flex items-center gap-2 px-3 pt-3 pb-1.5">
         {official ? (
           <>
-            {official.avatarUrl ? (
-              <img
-                src={official.avatarUrl}
-                alt=""
-                className="w-8 h-8 rounded-full object-cover shrink-0 bg-black border border-white/10"
-              />
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center text-sm shrink-0">
-                🎬
+            <Link to={`/${official.username}/profile`} className="shrink-0">
+              {official.avatarUrl ? (
+                <img
+                  src={official.avatarUrl}
+                  alt=""
+                  className="w-7 h-7 rounded-full object-cover bg-black border border-white/10"
+                />
+              ) : (
+                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center text-xs">
+                  🎬
+                </div>
+              )}
+            </Link>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <Link
+                  to={`/${official.username}/profile`}
+                  className="text-[12px] font-medium text-white/80 hover:text-white truncate inline-flex items-center gap-1"
+                >
+                  {official.username || official.name}
+                  {official.isVerified && <VerifiedBadge size={12} />}
+                </Link>
+                <span className="text-white/25 text-[10px]">·</span>
+                <span className="text-[11px] text-white/40 truncate">{ago}</span>
               </div>
-            )}
-            <div className="min-w-0">
-              <Link
-                to={`/${official.username}/profile`}
-                className="inline-flex items-center gap-1 text-sm font-semibold text-white hover:text-[var(--accent-green)]"
-              >
-                {official.name}
-                {official.isVerified && <VerifiedBadge size={14} />}
-              </Link>
-              <p className="text-[11px] text-white/40">
-                New {kind} · {ago}
-                {item.sourceName ? ` · via ${item.sourceName}` : ''}
-              </p>
             </div>
           </>
         ) : (
@@ -62,8 +65,7 @@ export default function FeedTrailerCard({ item }) {
               <img
                 src={item.sourceLogo}
                 alt={item.sourceName || 'channel'}
-                title={item.sourceName || ''}
-                className="w-8 h-8 rounded-full object-cover shrink-0 bg-black border border-white/10"
+                className="w-7 h-7 rounded-full object-cover shrink-0 bg-black border border-white/10"
                 onError={(e) => {
                   e.currentTarget.style.display = 'none';
                   e.currentTarget.nextSibling?.classList.remove('hidden');
@@ -71,25 +73,28 @@ export default function FeedTrailerCard({ item }) {
               />
             ) : null}
             <div
-              className={`w-8 h-8 rounded-full bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center text-sm shrink-0 ${item.sourceLogo ? 'hidden' : ''}`}
+              className={`w-7 h-7 rounded-full bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center text-xs shrink-0 ${item.sourceLogo ? 'hidden' : ''}`}
             >
               🎬
             </div>
-            <div className="min-w-0">
-              <Link
-                to={movieUrl}
-                className="block text-sm font-semibold text-white truncate hover:text-[var(--accent-green)]"
-              >
-                {item.title}
-                {year ? ` (${year})` : ''}
-              </Link>
-              <p className="text-[11px] text-white/40">
-                New {kind} · {ago}
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] text-white/45 truncate">
+                {ago}
                 {item.sourceName ? ` · via ${item.sourceName}` : ''}
               </p>
             </div>
           </>
         )}
+      </div>
+
+      {/* Title — movie + Official Trailer only */}
+      <div className="px-3 pb-2">
+        <Link
+          to={movieUrl}
+          className="block text-[15px] sm:text-base font-semibold text-white leading-snug hover:text-[var(--accent-green)] transition-colors"
+        >
+          {displayTitle}
+        </Link>
       </div>
 
       <Link to={movieUrl} className="relative block group">
@@ -105,20 +110,11 @@ export default function FeedTrailerCard({ item }) {
               }
             }}
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
+          <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors" />
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="w-14 h-14 rounded-full bg-black/50 border border-white/30 flex items-center justify-center group-hover:bg-[var(--accent-green)]/80 group-hover:border-transparent transition-colors">
               <FaPlay className="text-white text-lg ml-0.5" />
             </div>
-          </div>
-          <div className="absolute bottom-0 left-0 right-0 p-3">
-            <p className="text-sm font-semibold text-white line-clamp-1">
-              {item.title}
-              {year ? ` (${year})` : ''}
-            </p>
-            {item.trailerName && (
-              <p className="text-[11px] text-white/60 line-clamp-1">{item.trailerName}</p>
-            )}
           </div>
         </div>
       </Link>
