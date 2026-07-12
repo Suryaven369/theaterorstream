@@ -2,7 +2,7 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 2026 · HEAD `e5a2d32` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 2026 · HEAD `138b5a9` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
 
 ---
 
@@ -415,7 +415,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
-| `PENDING` | Jul 2026 | Fix profile avatar/banner URLs saved via Vite supabase-proxy |
+| `138b5a9` | Jul 2026 | Fix profile avatar/banner URLs saved via Vite supabase-proxy |
 | `e5a2d32` | Jul 2026 | Explore in-page Collections/Boards/Blogs, Coming Soon Feed-only, mobile/iPad |
 | `dd05fdb` | Jul 2026 | Official profile connect, username rules, Explore tab, feed avatars |
 | `d1ba0ab` | Jul 2026 | Social phase, boards, guest public profiles, Cinema Feed people lists |
