@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { publicUrlForStorageObject, toPublicStorageUrl } from './storagePublicUrl.js';
 
 async function getAccessToken() {
     const { data: { session } } = await supabase.auth.getSession();
@@ -248,7 +249,7 @@ export async function getPostComments(postId, { limit = 50, offset = 0 } = {}) {
                 name: author?.display_name || author?.username || 'User',
                 username: author?.username,
                 avatar: '🎬',
-                avatarUrl: author?.avatar_url || null,
+                avatarUrl: toPublicStorageUrl(author?.avatar_url) || null,
             },
         };
     });
@@ -299,8 +300,9 @@ export async function uploadPostImage(file, userId) {
         return { ok: false, error: error.message };
     }
 
-    const { data } = supabase.storage.from('post-images').getPublicUrl(path);
-    return { ok: true, url: data.publicUrl };
+    const url = publicUrlForStorageObject('post-images', path);
+    if (!url) return { ok: false, error: 'Could not build public image URL' };
+    return { ok: true, url };
 }
 
 // ---------------------------------------------------------------------------
@@ -446,7 +448,7 @@ export async function getFeedPostById(postId, userId = null) {
             postType: post.post_type || 'post',
             content: post.content,
             movieTitle: post.movie_title || null,
-            image: post.image_url || null,
+            image: toPublicStorageUrl(post.image_url) || null,
             likes: post.likes_count || 0,
             comments: post.comments_count || 0,
             shares: post.shares_count || 0,
@@ -460,7 +462,7 @@ export async function getFeedPostById(postId, userId = null) {
                 name: author?.display_name || author?.username || 'User',
                 username: author?.username || 'user',
                 avatar: '🎬',
-                avatarUrl: author?.avatar_url || null,
+                avatarUrl: toPublicStorageUrl(author?.avatar_url) || null,
                 isVerified: !!author?.is_verified,
             },
             movie: post.tmdb_id
@@ -583,7 +585,7 @@ export async function getFeedPosts({ limit = 20, offset = 0, userId = null, mode
             postType: post.post_type || 'post',
             content: post.content,
             movieTitle: post.movie_title || null,
-            image: post.image_url || null,
+            image: toPublicStorageUrl(post.image_url) || null,
             likes: post.likes_count || 0,
             comments: post.comments_count || 0,
             shares: post.shares_count || 0,
@@ -597,7 +599,7 @@ export async function getFeedPosts({ limit = 20, offset = 0, userId = null, mode
                 name: author?.display_name || author?.username || 'User',
                 username: author?.username || 'user',
                 avatar: '🎬',
-                avatarUrl: author?.avatar_url || null,
+                avatarUrl: toPublicStorageUrl(author?.avatar_url) || null,
                 isVerified: !!author?.is_verified,
             },
             movie: post.tmdb_id ? {
@@ -670,7 +672,7 @@ export async function getFeedPostsByAuthor(authorId, { limit = 20, viewerId = nu
             postType: post.post_type || 'post',
             content: post.content,
             movieTitle: post.movie_title || null,
-            image: post.image_url || null,
+            image: toPublicStorageUrl(post.image_url) || null,
             likes: post.likes_count || 0,
             comments: post.comments_count || 0,
             time: formatTimeAgo(post.created_at),
@@ -682,7 +684,7 @@ export async function getFeedPostsByAuthor(authorId, { limit = 20, viewerId = nu
                 name: author?.display_name || author?.username || 'User',
                 username: author?.username || null,
                 avatar: author?.avatar_id || 'avatar_1',
-                avatarUrl: author?.avatar_url || null,
+                avatarUrl: toPublicStorageUrl(author?.avatar_url) || null,
                 isVerified: !!author?.is_verified,
             },
             movie: post.tmdb_id

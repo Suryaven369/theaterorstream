@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient.js';
+import { normalizeProfileMediaUrls } from '../storagePublicUrl.js';
 
 // =============================================
 // USER FOLLOWS
@@ -42,7 +43,7 @@ const hydrateFollowProfiles = async (ids) => {
         .from('user_profiles')
         .select('id, username, display_name, avatar_id, avatar_url')
         .in('id', unique);
-    const map = new Map((data || []).map((p) => [p.id, p]));
+    const map = new Map((data || []).map((p) => [p.id, normalizeProfileMediaUrls(p)]));
     // Preserve follow order, drop any profiles that no longer exist
     return unique.map((id) => map.get(id)).filter(Boolean);
 };
@@ -91,7 +92,7 @@ export const searchProfiles = async (query, limit = 10) => {
         .select('id, username, display_name, avatar_id, avatar_url, is_verified')
         .or(`username.ilike.%${query}%,display_name.ilike.%${query}%`)
         .limit(limit);
-    return data || [];
+    return (data || []).map(normalizeProfileMediaUrls);
 };
 
 // Search public collections by name or description
@@ -247,7 +248,7 @@ export const getProfileByUsername = async (username) => {
         .maybeSingle();
 
     if (error) return null;
-    return data;
+    return normalizeProfileMediaUrls(data);
 };
 
 // Get user's rating count

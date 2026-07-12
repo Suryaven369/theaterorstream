@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient.js';
+import { normalizeProfileMediaUrls, toPublicStorageUrl } from '../storagePublicUrl.js';
 
 // =============================================
 // AUTHENTICATION — use src/lib/auth.js
@@ -36,7 +37,7 @@ export const getUserProfile = async (userId) => {
             return null;
         }
 
-        return data;
+        return normalizeProfileMediaUrls(data);
     } catch (err) {
         console.error('Error fetching user profile:', err);
         return null;
@@ -144,6 +145,9 @@ export const updateUserProfile = async (userId, updates) => {
         patch.display_name = normalized;
     }
 
+    if (patch.avatar_url) patch.avatar_url = toPublicStorageUrl(patch.avatar_url);
+    if (patch.profile_header_url) patch.profile_header_url = toPublicStorageUrl(patch.profile_header_url);
+
     const { data, error } = await supabase
         .from('user_profiles')
         .update(patch)
@@ -164,7 +168,8 @@ export const updateUserProfile = async (userId, updates) => {
         }
         return { success: false, error };
     }
-    return { success: true, data };
+    const rows = Array.isArray(data) ? data.map(normalizeProfileMediaUrls) : data;
+    return { success: true, data: rows };
 };
 
 export const getUserTasteProfile = async (userId) => {
@@ -250,7 +255,7 @@ export async function ensureUsernameFromDisplayName(profile) {
 
     const current = normalizeUsername(profile.username || '');
     if (current.length >= 3 && /^[a-z0-9_]{3,30}$/.test(current) && current === String(profile.username || '').toLowerCase()) {
-        return profile;
+        return normalizeProfileMediaUrls(profile);
     }
 
     const username = await allocateUsername(profile.display_name || profile.username || '', profile.id);
@@ -268,8 +273,8 @@ export async function ensureUsernameFromDisplayName(profile) {
 
     if (error) {
         console.error('Error backfilling username:', error);
-        return profile;
+        return normalizeProfileMediaUrls(profile);
     }
 
-    return data || (await getUserProfile(profile.id)) || profile;
+    return normalizeProfileMediaUrls(data) || (normalizeProfileMediaUrls(await getUserProfile(profile.id)) || profile);
 }

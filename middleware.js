@@ -47,6 +47,20 @@ const CRAWLER_USER_AGENTS = [
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
 
+/** Rewrite localhost/Vite-proxy storage URLs saved during local uploads. */
+function toPublicStorageUrl(url) {
+    if (!url || typeof url !== 'string') return url || null;
+    const remote = String(supabaseUrl || '').replace(/\/$/, '');
+    if (!remote) return url;
+    const storagePath = url.match(/(\/storage\/v1\/object\/public\/.+)$/i);
+    const isProxy =
+        /\/supabase-proxy\/storage\//i.test(url)
+        || (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//i.test(url)
+            && /\/storage\/v1\/object\/public\//i.test(url));
+    if (storagePath && isProxy) return `${remote}${storagePath[1]}`;
+    return url;
+}
+
 function escapeHtml(text) {
     if (!text) return '';
     return String(text)
@@ -197,7 +211,7 @@ async function handleProfile(supabase, pathname, pageUrl) {
     const description =
         (profile.bio || '').trim().slice(0, 180) ||
         `Film taste, lists, and diary from @${profile.username} on TheaterOrStream.`;
-    const image = profile.avatar_url || DEFAULT_OG_IMAGE;
+    const image = toPublicStorageUrl(profile.avatar_url) || DEFAULT_OG_IMAGE;
 
     return ogHtml({ title, description, image, url: pageUrl, type: 'profile' });
 }
@@ -235,7 +249,7 @@ async function handlePost(supabase, pathname, pageUrl) {
         : `Post by @${username}`;
     const description = plain.slice(0, 180) || `See this post from @${username} on TheaterOrStream.`;
     const image =
-        post.image_url ||
+        toPublicStorageUrl(post.image_url) ||
         tmdbImage(post.movie_backdrop, 'w1280') ||
         tmdbImage(post.movie_poster, 'w780') ||
         DEFAULT_OG_IMAGE;
@@ -262,7 +276,7 @@ async function handleBlog(supabase, pathname, pageUrl) {
         .replace(/\s+/g, ' ')
         .trim()
         .slice(0, 180);
-    const img = blog.cover_image || DEFAULT_OG_IMAGE;
+    const img = toPublicStorageUrl(blog.cover_image) || DEFAULT_OG_IMAGE;
 
     return ogHtml({
         title: blog.title,
@@ -326,7 +340,8 @@ async function handleCollection(supabase, pathname, pageUrl) {
         }
 
         const items = board.board_items || [];
-        const img = board.banner_image || board.cover_image
+        const img = toPublicStorageUrl(board.banner_image)
+            || toPublicStorageUrl(board.cover_image)
             || (items[0]?.image_path ? tmdbImage(items[0].image_path, 'w780') : null)
             || DEFAULT_OG_IMAGE;
 
@@ -376,8 +391,8 @@ async function handleCollection(supabase, pathname, pageUrl) {
         .map((m) => m.poster_path);
 
     const ogImage =
-        collection.banner_image ||
-        collection.cover_image ||
+        toPublicStorageUrl(collection.banner_image) ||
+        toPublicStorageUrl(collection.cover_image) ||
         (posterPaths.length > 0 ? tmdbImage(posterPaths[0], 'w780') : null) ||
         DEFAULT_OG_IMAGE;
 

@@ -6,6 +6,27 @@ Session log for production architecture Phase 1 work (DB-first performance + Ver
 
 ---
 
+## Session: Jul 2026 — Fix broken profile avatars on live
+
+### Localhost `/supabase-proxy` URLs broke production avatars ✅
+
+**Problem:** Live profile/feed avatars showed broken images (e.g. `@lord`). DB stored `http://localhost:5173/supabase-proxy/storage/...` from DEV uploads; files themselves were fine on Supabase Storage.
+
+**Files changed:**
+- `src/lib/storagePublicUrl.js` — rewrite proxy/localhost public URLs; mint upload URLs from `VITE_SUPABASE_URL`
+- `src/lib/profileSystem.js`, `src/lib/socialFeedApi.js` — uploads no longer save proxy URLs
+- `src/lib/db/profiles.js`, `src/lib/db/social.js` — normalize avatar/banner on read
+- `middleware.js` — OG images rewrite proxy URLs
+- `supabase/migrations/20260721000000_fix_dev_proxy_storage_urls.sql` — permanent DB cleanup
+
+**Behavior:** Avatars/banners display on production after deploy; new uploads always save real Supabase public URLs.
+
+**Requires:** Run `20260721000000_fix_dev_proxy_storage_urls.sql` in Supabase (optional if client rewrite is enough; recommended for permanent DB fix).
+
+**Next recommended:** Run the storage-URL migration in Supabase; hard-refresh a profile page to confirm avatar + banner load.
+
+---
+
 ## Session: Jul 2026 — Explore in-page panels + mobile
 
 ### Explore left nav → in-page Collections / Boards / Blogs ✅
@@ -394,6 +415,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `PENDING` | Jul 2026 | Fix profile avatar/banner URLs saved via Vite supabase-proxy |
 | `e5a2d32` | Jul 2026 | Explore in-page Collections/Boards/Blogs, Coming Soon Feed-only, mobile/iPad |
 | `dd05fdb` | Jul 2026 | Official profile connect, username rules, Explore tab, feed avatars |
 | `d1ba0ab` | Jul 2026 | Social phase, boards, guest public profiles, Cinema Feed people lists |

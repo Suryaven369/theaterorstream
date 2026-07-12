@@ -2,6 +2,7 @@
 // reporting, and privacy helpers. Built on the schema in
 // 20260628000000_profile_system_v2.sql.
 import { supabase } from './supabase';
+import { publicUrlForStorageObject } from './storagePublicUrl.js';
 
 // ===========================================================================
 // Image upload (avatars + banners) — public buckets, files under <uid>/...
@@ -37,8 +38,10 @@ async function uploadProfileImage(bucket, file, userId, maxBytes) {
     const body = type !== file.type ? new File([file], file.name || `upload.${ext}`, { type }) : file;
     const { error } = await supabase.storage.from(bucket).upload(path, body, { contentType: type, upsert: false });
     if (error) return { ok: false, error: error.message };
-    const { data } = supabase.storage.from(bucket).getPublicUrl(path);
-    return { ok: true, url: data.publicUrl };
+    // Always mint against VITE_SUPABASE_URL — never the DEV /supabase-proxy client base.
+    const url = publicUrlForStorageObject(bucket, path);
+    if (!url) return { ok: false, error: 'Could not build public image URL' };
+    return { ok: true, url };
 }
 
 export const uploadAvatarImage = (file, userId) => uploadProfileImage('profile-avatars', file, userId, AVATAR_MAX_BYTES);
