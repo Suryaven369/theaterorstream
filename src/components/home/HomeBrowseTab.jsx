@@ -230,9 +230,9 @@ export default function HomeBrowseTab({
                             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-white/5 animate-pulse" />
                             <div className="w-28 sm:w-32 h-5 sm:h-6 rounded bg-white/5 animate-pulse" />
                           </div>
-                          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 sm:gap-4">
-                            {[1, 2, 3, 4, 5, 6].map((j) => (
-                              <div key={j} className="aspect-[2/3] rounded-xl bg-white/5 animate-pulse" />
+                          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-x-3.5 gap-y-5 sm:gap-x-5 sm:gap-y-6 md:gap-x-6 md:gap-y-7 justify-items-center">
+                            {[1, 2, 3, 4, 5].map((j) => (
+                              <div key={j} className="w-full max-w-[7.25rem] sm:max-w-[8rem] md:max-w-[8.75rem] xl:max-w-[9.25rem] aspect-[2/3] rounded-xl bg-white/5 animate-pulse" />
                             ))}
                           </div>
                         </div>
@@ -272,11 +272,11 @@ export default function HomeBrowseTab({
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 sm:gap-4 md:gap-5">
+                          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-x-3.5 gap-y-5 sm:gap-x-5 sm:gap-y-6 md:gap-x-6 md:gap-y-7 justify-items-center">
                             {regionMovies.slice(0, section.max_movies || 14).map((movie, index) => (
                               <div
                                 key={`${movie.media_type || 'movie'}-${movie.tmdb_id}`}
-                                className="sm:transform sm:hover:scale-105 sm:transition-transform sm:duration-300"
+                                className="w-full max-w-[7.25rem] sm:max-w-[8rem] md:max-w-[8.75rem] xl:max-w-[9.25rem] sm:transform sm:hover:scale-105 sm:transition-transform sm:duration-300"
                               >
                                 <Card
                                   data={{

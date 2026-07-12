@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { FaPlay } from 'react-icons/fa';
 import { generateSlugWithId } from '../../lib/slugUtils';
 import VerifiedBadge from '../VerifiedBadge';
+import RedditActionBar from './RedditActionBar';
+import RedditMediaFrame from './RedditMediaFrame';
 
 function formatAgo(publishedAt) {
   if (!publishedAt) return 'Just released';
@@ -17,7 +19,7 @@ function formatAgo(publishedAt) {
 /**
  * Trailer feed card — small author row, large title, then media (Reddit-style hierarchy).
  */
-export default function FeedTrailerCard({ item }) {
+export default function FeedTrailerCard({ item, onOpenThread, onShare, onLike, variant = 'feed' }) {
   const year = item.releaseDate?.split('-')[0] || '';
   const slug = generateSlugWithId(item.title, item.tmdb_id, year);
   const movieUrl = item.mediaType === 'tv' ? `/tv/${slug}` : `/movies/${slug}`;
@@ -25,9 +27,22 @@ export default function FeedTrailerCard({ item }) {
   const isTeaser = item.trailerName?.toLowerCase().includes('teaser');
   const official = item.user;
   const displayTitle = `${item.title}${year ? ` (${year})` : ''} · Official ${isTeaser ? 'Teaser' : 'Trailer'}`;
+  const isThread = variant === 'thread';
+  const mediaSrc = item.thumbnail || item.thumbnailFallback;
+
+  const openThread = (e) => {
+    if (!onOpenThread) return;
+    const tag = e.target?.closest?.('a, button, [data-no-thread]');
+    if (tag) return;
+    onOpenThread(item);
+  };
 
   return (
-    <article className="bg-[#1a1d1f] rounded-lg border border-white/5 overflow-hidden hover:border-white/10 transition-colors">
+    <article
+      className={`bg-[#1a1d1f] ${isThread ? 'rounded-none sm:rounded-t-xl border-0' : 'rounded-lg border border-white/5'} overflow-hidden hover:border-white/10 transition-colors ${onOpenThread ? 'cursor-pointer' : ''}`}
+      onClick={onOpenThread ? openThread : undefined}
+      role={onOpenThread ? 'link' : undefined}
+    >
       {/* Author row — small */}
       <div className="flex items-center gap-2 px-3 pt-3 pb-1.5">
         {official ? (
@@ -87,37 +102,69 @@ export default function FeedTrailerCard({ item }) {
         )}
       </div>
 
-      {/* Title — movie + Official Trailer only */}
+      {/* Title — opens thread when available; otherwise movie page */}
       <div className="px-3 pb-2">
-        <Link
-          to={movieUrl}
-          className="block text-[15px] sm:text-base font-semibold text-white leading-snug hover:text-[var(--accent-green)] transition-colors"
-        >
-          {displayTitle}
-        </Link>
+        {onOpenThread ? (
+          <h3 className={`${isThread ? 'text-[22px] sm:text-[28px] font-bold tracking-tight' : 'text-[15px] sm:text-base font-semibold'} text-white leading-snug hover:text-[var(--accent-green)] transition-colors`}>
+            {displayTitle}
+          </h3>
+        ) : (
+          <Link
+            to={movieUrl}
+            className={`block ${isThread ? 'text-[22px] sm:text-[28px] font-bold tracking-tight' : 'text-[15px] sm:text-base font-semibold'} text-white leading-snug hover:text-[var(--accent-green)] transition-colors`}
+          >
+            {displayTitle}
+          </Link>
+        )}
       </div>
 
-      <Link to={movieUrl} className="relative block group">
-        <div className="relative aspect-video overflow-hidden bg-black">
-          <img
-            src={item.thumbnail}
-            alt={item.title}
-            className="w-full h-full object-cover"
-            loading="lazy"
-            onError={(e) => {
-              if (item.thumbnailFallback && e.currentTarget.src !== item.thumbnailFallback) {
-                e.currentTarget.src = item.thumbnailFallback;
-              }
-            }}
-          />
-          <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors" />
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-14 h-14 rounded-full bg-black/50 border border-white/30 flex items-center justify-center group-hover:bg-[var(--accent-green)]/80 group-hover:border-transparent transition-colors">
-              <FaPlay className="text-white text-lg ml-0.5" />
+      <div className="px-3 pb-3" data-no-thread onClick={(e) => e.stopPropagation()}>
+        {isThread && mediaSrc ? (
+          <Link to={movieUrl} className="relative block group">
+            <RedditMediaFrame src={mediaSrc} alt={item.title} />
+            <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+              <div className="w-16 h-16 rounded-full bg-black/55 border border-white/30 flex items-center justify-center group-hover:bg-[var(--accent-green)]/80 group-hover:border-transparent transition-colors">
+                <FaPlay className="text-white text-xl ml-0.5" />
+              </div>
             </div>
-          </div>
-        </div>
-      </Link>
+          </Link>
+        ) : (
+          <Link to={movieUrl} className="relative block group">
+            <div className="relative aspect-video overflow-hidden bg-black rounded-xl">
+              <img
+                src={item.thumbnail}
+                alt={item.title}
+                className="w-full h-full object-cover"
+                loading="lazy"
+                onError={(e) => {
+                  if (item.thumbnailFallback && e.currentTarget.src !== item.thumbnailFallback) {
+                    e.currentTarget.src = item.thumbnailFallback;
+                  }
+                }}
+              />
+              <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors" />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-14 h-14 rounded-full bg-black/50 border border-white/30 flex items-center justify-center group-hover:bg-[var(--accent-green)]/80 group-hover:border-transparent transition-colors">
+                  <FaPlay className="text-white text-lg ml-0.5" />
+                </div>
+              </div>
+            </div>
+          </Link>
+        )}
+      </div>
+
+      <div className="px-3 py-2.5" data-no-thread onClick={(e) => e.stopPropagation()}>
+        <RedditActionBar
+          score={item.likes || 0}
+          comments={item.comments || 0}
+          isUpvoted={!!item.isLiked}
+          onUpvote={() => onLike?.(item)}
+          onComment={() => onOpenThread?.(item)}
+          onShare={() => onShare?.(item)}
+          showShare={!!onShare}
+          item={item}
+        />
+      </div>
     </article>
   );
 }

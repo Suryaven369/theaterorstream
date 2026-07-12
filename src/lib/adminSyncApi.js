@@ -74,6 +74,51 @@ export async function triggerRssRefresh(sourceId = null) {
     return payload;
 }
 
+/** Approve (or regenerate) with full-page body fetch so listicles get real titles. */
+export async function approveFeedArticleViaApi(articleIdOrCandidate, { regenerateOnly = false } = {}) {
+    const token = await getAccessToken();
+    if (!token) {
+        throw new Error('You must be signed in as admin to approve articles.');
+    }
+
+    const isCandidate = articleIdOrCandidate && typeof articleIdOrCandidate === 'object';
+    const url = `${resolveApiBase()}/api/admin/rss`;
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(
+            isCandidate
+                ? { job: 'approve-article', candidate: articleIdOrCandidate }
+                : {
+                    job: regenerateOnly ? 'regenerate-summary' : 'approve-article',
+                    articleId: articleIdOrCandidate,
+                },
+        ),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+        if (response.status === 404 && import.meta.env.DEV) {
+            throw new Error(
+                'RSS API is unavailable in Vite-only mode. Run `npm run dev:api` (vercel dev) or test on your Vercel deployment.',
+            );
+        }
+        throw new Error(payload.error || `Article approve failed (${response.status})`);
+    }
+
+    return {
+        success: true,
+        summary: payload.summary || null,
+        summaryItems: payload.summaryItems || null,
+        enriched: !!payload.enriched,
+        articleId: payload.articleId || null,
+    };
+}
+
 export async function triggerBackfill(job, { limit } = {}) {
     const token = await getAccessToken();
     if (!token) {

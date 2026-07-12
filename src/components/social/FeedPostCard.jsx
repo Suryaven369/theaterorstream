@@ -1,17 +1,15 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import {
-  FaHeart,
-  FaRegHeart,
-  FaRegComment,
   FaBookmark,
   FaRegBookmark,
   FaEllipsisH,
   FaStar,
-  FaPaperPlane,
 } from 'react-icons/fa';
 import MovieMentionText from '../MovieMentionText';
 import VerifiedBadge from '../VerifiedBadge';
+import RedditActionBar from './RedditActionBar';
+import RedditMediaFrame from './RedditMediaFrame';
 
 const createSlug = (text) =>
   (text || '')
@@ -20,12 +18,6 @@ const createSlug = (text) =>
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')
     .trim();
-
-function formatCount(num) {
-  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
-  if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
-  return num;
-}
 
 /**
  * Full social post card (text / image / movie attach / log / list).
@@ -47,12 +39,28 @@ export default function FeedPostCard({
   onSave,
   onShare,
   onOpenComments,
+  onOpenThread,
+  variant = 'feed',
 }) {
   const isOwner = item.user?.id && currentUserId === item.user.id;
   const isEditing = editingId === item.id;
+  const isThread = variant === 'thread';
+
+  const openThread = (e) => {
+    if (e) {
+      // Ignore clicks on buttons/links inside the card
+      const tag = e.target?.closest?.('button, a, textarea, input, [data-no-thread]');
+      if (tag) return;
+    }
+    onOpenThread?.(item);
+  };
 
   return (
-    <article className="bg-[#1a1d1f] rounded-lg border border-white/5 overflow-hidden hover:border-white/10 transition-colors">
+    <article
+      className={`bg-[#1a1d1f] ${isThread ? 'rounded-none sm:rounded-t-xl border-0' : 'rounded-lg border border-white/5'} overflow-hidden hover:border-white/10 transition-colors ${onOpenThread ? 'cursor-pointer' : ''}`}
+      onClick={onOpenThread ? openThread : undefined}
+      role={onOpenThread ? 'link' : undefined}
+    >
       <div className="flex items-center justify-between p-3 pb-2">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-sm overflow-hidden shrink-0">
@@ -155,33 +163,70 @@ export default function FeedPostCard({
         </div>
       ) : (
         item.content && (
-          <div className="px-3 pb-2">
-            <MovieMentionText content={item.content} className="text-[13px] text-white leading-relaxed" />
+          <div className={`px-3 ${isThread ? 'pb-3' : 'pb-2'}`}>
+            <MovieMentionText
+              content={item.content}
+              className={`${isThread ? 'text-[16px] sm:text-[17px]' : 'text-[13px]'} text-white leading-relaxed`}
+            />
           </div>
         )
       )}
 
       {item.image && (
-        <div className="relative">
-          <img
-            src={item.image}
-            alt=""
-            className="w-full max-h-[520px] object-cover"
-            loading="lazy"
-            onDoubleClick={() => onLike(item.id)}
-          />
-        </div>
+        isThread ? (
+          <div className="px-3 pb-3">
+            <RedditMediaFrame src={item.image} alt="" onDoubleClick={() => onLike(item)} />
+          </div>
+        ) : (
+          <div className="relative">
+            <img
+              src={item.image}
+              alt=""
+              className="w-full max-h-[520px] object-cover"
+              loading="lazy"
+              onDoubleClick={() => onLike(item)}
+            />
+          </div>
+        )
       )}
 
       {item.movie && item.hasImage && (
         <div className="relative">
           {item.movie.backdrop ? (
+            isThread ? (
+              <div className="px-3 pb-3">
+                <RedditMediaFrame
+                  src={`https://image.tmdb.org/t/p/w1280${item.movie.backdrop}`}
+                  alt={item.movie.title}
+                  onDoubleClick={() => onLike(item)}
+                />
+                <div className="mt-3 flex items-center gap-3">
+                  <div className="w-14 h-[84px] rounded-lg overflow-hidden shadow-xl shrink-0 border border-white/15">
+                    <img
+                      src={`https://image.tmdb.org/t/p/w185${item.movie.poster}`}
+                      alt={item.movie.title}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white">{item.movie.title}</h3>
+                    <p className="text-sm text-white/55">{item.movie.year}</p>
+                    {item.rating && (
+                      <div className="flex items-center gap-1 mt-1">
+                        <FaStar className="text-yellow-400 text-sm" />
+                        <span className="text-sm font-bold text-white">{item.rating}/10</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
             <div className="relative aspect-[16/10] overflow-hidden">
               <img
                 src={`https://image.tmdb.org/t/p/w780${item.movie.backdrop}`}
                 alt={item.movie.title}
                 className="w-full h-full object-cover"
-                onDoubleClick={() => onLike(item.id)}
+                onDoubleClick={() => onLike(item)}
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
               <div className="absolute bottom-0 left-0 right-0 p-3 flex items-end gap-2">
@@ -204,6 +249,7 @@ export default function FeedPostCard({
                 </div>
               </div>
             </div>
+            )
           ) : (
             <div className="px-3 pb-2">
               <div className="flex items-center gap-2 p-2 rounded-lg bg-white/5">
@@ -230,44 +276,25 @@ export default function FeedPostCard({
         </div>
       )}
 
-      <div className="px-3 py-2 border-t border-white/5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1 -ml-1.5">
-            <button
-              onClick={() => onLike(item.id)}
-              className={`p-1.5 -m-0 rounded-full hover:bg-white/5 transition-colors ${item.isLiked ? 'text-red-500' : 'text-white/60 hover:text-white'}`}
-            >
-              {item.isLiked ? <FaHeart className="text-lg" /> : <FaRegHeart className="text-lg" />}
-            </button>
-            <button
-              onClick={() => onOpenComments(item)}
-              className="p-1.5 rounded-full hover:bg-white/5 text-white/60 hover:text-white transition-colors"
-            >
-              <FaRegComment className="text-lg" />
-            </button>
-            <button
-              onClick={() => onShare(item)}
-              className="p-1.5 rounded-full hover:bg-white/5 text-white/60 hover:text-white transition-colors"
-            >
-              <FaPaperPlane className="text-[15px]" />
-            </button>
-          </div>
+      <div className="px-3 py-2.5" data-no-thread onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between gap-2">
+          <RedditActionBar
+            score={item.likes || 0}
+            comments={item.comments || 0}
+            isUpvoted={!!item.isLiked}
+            onUpvote={() => onLike(item)}
+            onComment={() => (onOpenThread ? onOpenThread(item) : onOpenComments?.(item))}
+            onShare={() => onShare(item)}
+            item={item}
+          />
           <button
             onClick={() => onSave(item.id)}
-            className={`p-1.5 -mr-1.5 rounded-full hover:bg-white/5 transition-colors ${item.isSaved ? 'text-yellow-400' : 'text-white/60 hover:text-white'}`}
+            className={`p-2 rounded-full hover:bg-white/5 transition-colors shrink-0 ${item.isSaved ? 'text-yellow-400' : 'text-white/45 hover:text-white'}`}
+            aria-label="Save"
           >
-            {item.isSaved ? <FaBookmark className="text-lg" /> : <FaRegBookmark className="text-lg" />}
+            {item.isSaved ? <FaBookmark className="text-sm" /> : <FaRegBookmark className="text-sm" />}
           </button>
         </div>
-        <p className="text-xs font-semibold text-white mt-1.5">{formatCount(item.likes)} likes</p>
-        {item.comments > 0 && (
-          <button
-            onClick={() => onOpenComments(item)}
-            className="text-xs text-white/50 hover:text-white/70 mt-0.5 transition-colors"
-          >
-            View all {formatCount(item.comments)} comments
-          </button>
-        )}
       </div>
     </article>
   );

@@ -1,14 +1,25 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { FaHeart, FaRegHeart, FaRegComment } from 'react-icons/fa';
 import VerifiedBadge from '../VerifiedBadge';
+import RedditActionBar from './RedditActionBar';
 
 /**
  * Compact activity row (watchlist add, rating, etc.).
  */
-export default function FeedActivityCard({ item, onLike, onOpenComments }) {
+export default function FeedActivityCard({ item, onLike, onOpenComments, onOpenThread, onShare }) {
+  const openThread = (e) => {
+    if (!onOpenThread) return;
+    const tag = e.target?.closest?.('a, button, [data-no-thread]');
+    if (tag) return;
+    onOpenThread(item);
+  };
+
   return (
-    <article className="bg-[#1a1d1f] rounded-lg border border-white/5 hover:border-white/10 transition-colors overflow-hidden">
+    <article
+      className={`bg-[#1a1d1f] rounded-lg border border-white/5 hover:border-white/10 transition-colors overflow-hidden ${onOpenThread ? 'cursor-pointer' : ''}`}
+      onClick={onOpenThread ? openThread : undefined}
+      role={onOpenThread ? 'link' : undefined}
+    >
       <div className="flex items-center gap-2 p-2.5">
         <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-xs shrink-0 overflow-hidden">
           {item.user.avatarUrl ? (
@@ -22,6 +33,7 @@ export default function FeedActivityCard({ item, onLike, onOpenComments }) {
             <Link
               to={`/${item.user.username}/profile`}
               className="font-medium text-white hover:text-[var(--accent-green)] inline-flex items-center gap-1"
+              onClick={(e) => e.stopPropagation()}
             >
               {item.user.name}
               {item.user.isVerified && <VerifiedBadge size={12} />}
@@ -41,23 +53,17 @@ export default function FeedActivityCard({ item, onLike, onOpenComments }) {
           />
         </div>
       </div>
-      <div className="flex items-center gap-2 px-1.5 py-1 border-t border-white/5">
-        <button
-          onClick={() => onLike(item.id)}
-          className={`flex items-center gap-1 text-xs px-1.5 py-1.5 rounded-full hover:bg-white/5 transition-colors ${item.isLiked ? 'text-red-500' : 'text-white/50 hover:text-white'}`}
-        >
-          {item.isLiked ? <FaHeart className="text-xs" /> : <FaRegHeart className="text-xs" />}
-          <span>{item.likes}</span>
-        </button>
-        {item.comments > 0 && (
-          <button
-            onClick={() => onOpenComments(item)}
-            className="flex items-center gap-1 text-xs px-1.5 py-1.5 rounded-full hover:bg-white/5 text-white/50 hover:text-white transition-colors"
-          >
-            <FaRegComment className="text-xs" />
-            <span>{item.comments}</span>
-          </button>
-        )}
+      <div className="px-2.5 pb-2.5" data-no-thread onClick={(e) => e.stopPropagation()}>
+        <RedditActionBar
+          score={item.likes || 0}
+          comments={item.comments || 0}
+          isUpvoted={!!item.isLiked}
+          onUpvote={() => onLike?.(item)}
+          onComment={() => (onOpenThread ? onOpenThread(item) : onOpenComments?.(item))}
+          onShare={() => onShare?.(item)}
+          showShare={!!onShare}
+          item={item}
+        />
       </div>
     </article>
   );

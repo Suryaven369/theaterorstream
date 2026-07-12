@@ -7,7 +7,7 @@ import {
     backfillMovieEmbeddings,
 } from '../_lib/taste-profile-server.js';
 import { isEmbeddingConfigured } from '../_lib/embedding-server.js';
-import { refreshAllRssSources, refreshRssSourceById } from '../_lib/rss-server.js';
+import { refreshAllRssSources, refreshRssSourceById, approveFeedArticleWithSummary, approveFeedArticleCandidate } from '../_lib/rss-server.js';
 import { readJsonBody } from '../_lib/read-body.js';
 import { dedupeLibraryRecords, upsertMoviesLibrary } from '../../src/lib/libraryDedupe.js';
 import { AUDIT_ACTIONS } from '../_lib/audit-log.js';
@@ -200,9 +200,29 @@ async function handleRss(req, res, auth) {
         return res.status(200).json({ ok: true, ...result });
     }
 
+    if (job === 'approve-article' || job === 'regenerate-summary') {
+        if (job === 'approve-article' && body.candidate) {
+            const result = await approveFeedArticleCandidate(body.candidate);
+            if (!result.success) {
+                return res.status(400).json({ error: result.error || 'Approve failed' });
+            }
+            return res.status(200).json({ ok: true, ...result });
+        }
+        if (!body.articleId) {
+            return res.status(400).json({ error: 'articleId required' });
+        }
+        const result = await approveFeedArticleWithSummary(body.articleId, {
+            regenerateOnly: job === 'regenerate-summary',
+        });
+        if (!result.success) {
+            return res.status(400).json({ error: result.error || 'Approve failed' });
+        }
+        return res.status(200).json({ ok: true, ...result });
+    }
+
     return res.status(400).json({
         error: 'Invalid job',
-        allowed: ['refresh-source', 'refresh-all'],
+        allowed: ['refresh-source', 'refresh-all', 'approve-article', 'regenerate-summary'],
     });
 }
 

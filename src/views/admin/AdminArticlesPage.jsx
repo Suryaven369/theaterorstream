@@ -11,6 +11,7 @@ import {
     getFeedArticles,
     getFeedArticleCountsBySource,
     updateFeedArticleStatus,
+    regenerateFeedArticleSummary,
     toggleFeedArticleActive,
     deleteFeedArticle,
 } from "../../lib/supabase";
@@ -32,6 +33,53 @@ const DAYS_BACK_OPTIONS = [
     { value: 30, label: "Last 30 days" },
     { value: 0, label: "All time" },
 ];
+
+/** News RSS candidates live in the browser until approve (never pending in DB). */
+const ARTICLE_INBOX_KEY = "tos:rss-article-inbox";
+
+function readArticleInbox() {
+    try {
+        const raw = sessionStorage.getItem(ARTICLE_INBOX_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+function writeArticleInbox(items) {
+    try {
+        sessionStorage.setItem(ARTICLE_INBOX_KEY, JSON.stringify(items));
+    } catch {
+        /* ignore quota */
+    }
+}
+
+function mergeArticleCandidates(existing, incoming) {
+    const map = new Map();
+    for (const item of existing || []) {
+        if (item?.id) map.set(item.id, item);
+    }
+    for (const item of incoming || []) {
+        if (item?.id) map.set(item.id, { ...item, _candidate: true });
+    }
+    return [...map.values()].sort((a, b) => {
+        const ta = new Date(a.published_at || 0).getTime();
+        const tb = new Date(b.published_at || 0).getTime();
+        return tb - ta;
+    });
+}
+
+function collectCandidatesFromRefresh(payload) {
+    const out = [];
+    if (Array.isArray(payload?.result?.candidates)) out.push(...payload.result.candidates);
+    if (Array.isArray(payload?.results)) {
+        for (const r of payload.results) {
+            if (Array.isArray(r?.candidates)) out.push(...r.candidates);
+        }
+    }
+    return out;
+}
 
 const SourceListItem = ({ source, active, pendingCount, onSelect, onToggle, onRefresh, onDelete, onEdit, refreshing }) => (
     <div
@@ -290,7 +338,99 @@ const GlobalFiltersModal = ({ open, onClose }) => {
     );
 };
 
-const ArticleRow = ({ article, status, selected, onSelectToggle, onApprove, onReject, onToggle, onDelete, acting }) => (
+const ArticleDetailModal = ({ article, onClose, onRegenerate, regenerating }) => {
+    if (!article) return null;
+
+    const published = article.published_at
+        ? new Date(article.published_at).toLocaleString()
+        : "—";
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
+            <div
+                onClick={(e) => e.stopPropagation()}
+                className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#1a1a1a] p-5 space-y-4 max-h-[90vh] overflow-y-auto"
+            >
+                <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                        <p className="text-[11px] uppercase tracking-wide text-orange-400/80 mb-1">Article</p>
+                        <h3 className="text-base font-semibold text-white leading-snug">{article.title}</h3>
+                        <p className="text-[11px] text-white/40 mt-1.5">
+                            {article.source_name || "Unknown source"} &middot; {published}
+                            {article.status === "approved" && (
+                                <span className="ml-1.5 text-green-400/80">· Live</span>
+                            )}
+                        </p>
+                    </div>
+                    <button type="button" onClick={onClose} className="text-white/40 hover:text-white shrink-0">
+                        <FaTimes />
+                    </button>
+                </div>
+
+                {article.image_url && (
+                    <img
+                        src={article.image_url}
+                        alt=""
+                        className="w-full max-h-48 object-cover rounded-xl bg-black border border-white/5"
+                        onError={(e) => { e.currentTarget.style.display = "none"; }}
+                    />
+                )}
+
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3.5">
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <p className="text-[10px] uppercase tracking-wider text-white/35">Summary</p>
+                        {article.status === "approved" && onRegenerate && (
+                            <button
+                                type="button"
+                                onClick={() => onRegenerate(article)}
+                                disabled={regenerating}
+                                className="text-[11px] text-orange-400 hover:text-orange-300 disabled:opacity-50"
+                            >
+                                {regenerating ? "Refreshing…" : "Regenerate from page"}
+                            </button>
+                        )}
+                    </div>
+                    {article.summary ? (
+                        <pre className="text-sm text-white/80 leading-relaxed whitespace-pre-wrap font-sans">
+                            {article.summary}
+                        </pre>
+                    ) : (
+                        <p className="text-sm text-white/35 italic">No summary saved yet. Approve the article to generate one.</p>
+                    )}
+                    {Array.isArray(article.summary_items) && article.summary_items.length > 0 && (
+                        <div className="mt-3 flex gap-2 overflow-x-auto scrollbar-hide pb-1">
+                            {article.summary_items.map((it, i) => (
+                                <div key={`${it.title}-${i}`} className="shrink-0 w-16">
+                                    <div className="aspect-[2/3] rounded-md overflow-hidden bg-black/40 border border-white/10">
+                                        {it.imageUrl ? (
+                                            <img src={it.imageUrl} alt="" className="w-full h-full object-cover" />
+                                        ) : (
+                                            <div className="w-full h-full flex items-center justify-center text-[10px] text-white/30">No img</div>
+                                        )}
+                                    </div>
+                                    <p className="text-[9px] text-white/50 mt-1 line-clamp-2">{i + 1}. {it.title}</p>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {article.link && (
+                    <a
+                        href={article.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-sm text-orange-400 hover:text-orange-300"
+                    >
+                        Open original ↗
+                    </a>
+                )}
+            </div>
+        </div>
+    );
+};
+
+const ArticleRow = ({ article, status, selected, onSelectToggle, onApprove, onReject, onToggle, onDelete, onOpen, acting }) => (
     <div className={`relative flex items-center gap-3 p-3 rounded-xl bg-[#1a1a1a] border transition-colors ${selected ? "border-orange-500/50" : "border-white/10"} ${acting ? "opacity-70" : ""}`}>
         {acting && (
             <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-black/40 backdrop-blur-[1px]">
@@ -304,27 +444,37 @@ const ArticleRow = ({ article, status, selected, onSelectToggle, onApprove, onRe
             disabled={acting}
             className="shrink-0 w-4 h-4 accent-orange-500 cursor-pointer disabled:opacity-40"
         />
-        {article.image_url ? (
-            <img
-                src={article.image_url}
-                alt={article.title}
-                loading="lazy"
-                className="w-20 h-12 object-cover rounded-lg bg-black shrink-0"
-                onError={(e) => {
-                    e.currentTarget.style.display = "none";
-                    e.currentTarget.nextSibling?.classList.remove("hidden");
-                }}
-            />
-        ) : null}
-        <div className={`w-20 h-12 rounded-lg bg-white/5 shrink-0 flex items-center justify-center text-white/20 text-[10px] ${article.image_url ? "hidden" : ""}`}>
-            No image
-        </div>
-        <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-white truncate">{article.title}</p>
-            <p className="text-[11px] text-white/40 truncate">
-                {article.source_name} &middot; {article.published_at ? new Date(article.published_at).toLocaleDateString() : "—"}
-            </p>
-        </div>
+        <button
+            type="button"
+            onClick={() => onOpen?.(article)}
+            className="flex flex-1 min-w-0 items-center gap-3 text-left rounded-lg hover:bg-white/[0.03] transition-colors -my-1 py-1"
+            title="View summary"
+        >
+            {article.image_url ? (
+                <img
+                    src={article.image_url}
+                    alt={article.title}
+                    loading="lazy"
+                    className="w-20 h-12 object-cover rounded-lg bg-black shrink-0"
+                    onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                        e.currentTarget.nextSibling?.classList.remove("hidden");
+                    }}
+                />
+            ) : null}
+            <div className={`w-20 h-12 rounded-lg bg-white/5 shrink-0 flex items-center justify-center text-white/20 text-[10px] ${article.image_url ? "hidden" : ""}`}>
+                No image
+            </div>
+            <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-white truncate">{article.title}</p>
+                <p className="text-[11px] text-white/40 truncate">
+                    {article.source_name} &middot; {article.published_at ? new Date(article.published_at).toLocaleDateString() : "—"}
+                </p>
+                {status === "approved" && article.summary && (
+                    <p className="text-[11px] text-white/55 line-clamp-2 mt-0.5">{article.summary}</p>
+                )}
+            </div>
+        </button>
         {status === "pending" && (
             <>
                 <button
@@ -377,6 +527,23 @@ const AdminArticlesPage = () => {
     const [bulkActing, setBulkActing] = useState(false);
     const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
     const [actingId, setActingId] = useState(null);
+    const [detailArticle, setDetailArticle] = useState(null);
+    const [regeneratingId, setRegeneratingId] = useState(null);
+    const [articleInbox, setArticleInbox] = useState(() => readArticleInbox());
+
+    const persistInbox = useCallback((items) => {
+        setArticleInbox(items);
+        writeArticleInbox(items);
+    }, []);
+
+    const removeFromInbox = useCallback((ids) => {
+        const idSet = new Set(Array.isArray(ids) ? ids : [ids]);
+        setArticleInbox((prev) => {
+            const next = prev.filter((a) => !idSet.has(a.id));
+            writeArticleInbox(next);
+            return next;
+        });
+    }, []);
 
     const loadSources = useCallback(async ({ silent = false } = {}) => {
         if (!silent) setLoadingSources(true);
@@ -386,11 +553,44 @@ const AdminArticlesPage = () => {
         if (!silent) setLoadingSources(false);
     }, []);
 
-    const loadArticles = useCallback(async (status, sourceId, days, sort, { silent = false } = {}) => {
-        if (!silent) setLoadingArticles(true);
-        setArticles(await getFeedArticles(status, 50, sourceId, days, sort));
-        if (!silent) setLoadingArticles(false);
+    const filterInbox = useCallback((sourceId, days, sort) => {
+        let list = readArticleInbox();
+        if (Array.isArray(sourceId)) {
+            const allowed = new Set(sourceId);
+            list = list.filter((a) => allowed.has(a.source_id));
+        } else if (sourceId) {
+            list = list.filter((a) => a.source_id === sourceId);
+        }
+        if (days > 0) {
+            const since = Date.now() - days * 24 * 60 * 60 * 1000;
+            list = list.filter((a) => {
+                const t = new Date(a.published_at || 0).getTime();
+                return Number.isFinite(t) && t >= since;
+            });
+        }
+        list = [...list].sort((a, b) => {
+            const ta = new Date(a.published_at || 0).getTime();
+            const tb = new Date(b.published_at || 0).getTime();
+            return sort === "asc" ? ta - tb : tb - ta;
+        });
+        return list.slice(0, 50);
     }, []);
+
+    const loadArticles = useCallback(async (status, sourceId, days, sort, kind, { silent = false } = {}) => {
+        if (!silent) setLoadingArticles(true);
+        // News pending queue is primarily the local inbox (fetch no longer writes DB).
+        // Still merge any legacy pending DB rows so older items remain reviewable.
+        if (kind === "article" && status === "pending") {
+            const inbox = filterInbox(sourceId, days, sort);
+            const fromDb = await getFeedArticles(status, 50, sourceId, days, sort);
+            const seen = new Set(inbox.map((a) => a.guid || a.id));
+            const legacy = (fromDb || []).filter((a) => !seen.has(a.guid) && !seen.has(a.id));
+            setArticles([...inbox, ...legacy].slice(0, 50));
+        } else {
+            setArticles(await getFeedArticles(status, 50, sourceId, days, sort));
+        }
+        if (!silent) setLoadingArticles(false);
+    }, [filterInbox]);
 
     // Sources of the currently-selected kind (Articles vs Trailers).
     const kindSources = sources.filter((s) => (s.source_kind || "article") === activeKind);
@@ -398,22 +598,38 @@ const AdminArticlesPage = () => {
     // Articles to show: a specific source, or all sources of the active kind.
     const articleSourceFilter = selectedSourceId || kindSourceIds;
 
+    // Sidebar pending badges: DB counts for trailers; inbox (+ legacy DB) for news.
+    const countsView = (() => {
+        const merged = { ...counts };
+        for (const s of sources) {
+            if ((s.source_kind || "article") !== "article") continue;
+            const base = merged[s.id] || { pending: 0, approved: 0, rejected: 0 };
+            const inboxPending = articleInbox.filter((a) => a.source_id === s.id).length;
+            merged[s.id] = {
+                ...base,
+                // Inbox is the new queue; keep any legacy DB pending in the badge too.
+                pending: inboxPending + (base.pending || 0),
+            };
+        }
+        return merged;
+    })();
+
     useEffect(() => { loadSources(); }, [loadSources]);
 
     // Don't depend on `sources` object identity — refreshing counts after approve
     // was retriggering a full loading skeleton (blank blink).
     const kindSourceIdsKey = kindSourceIds.slice().sort().join(",");
     useEffect(() => {
-        loadArticles(statusTab, articleSourceFilter, daysBack, sortOrder);
+        loadArticles(statusTab, articleSourceFilter, daysBack, sortOrder, activeKind);
         setSelectedIds(new Set());
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [statusTab, selectedSourceId, daysBack, sortOrder, activeKind, kindSourceIdsKey, loadArticles]);
+    }, [statusTab, selectedSourceId, daysBack, sortOrder, activeKind, kindSourceIdsKey, loadArticles, articleInbox]);
 
     const switchKind = (k) => { setActiveKind(k); setSelectedSourceId(null); };
 
     const refreshAll = () => {
         loadSources();
-        loadArticles(statusTab, articleSourceFilter, daysBack, sortOrder);
+        loadArticles(statusTab, articleSourceFilter, daysBack, sortOrder, activeKind);
     };
 
     const openAddSource = () => { setEditingSource(null); setSourceFormOpen(true); };
@@ -444,15 +660,23 @@ const AdminArticlesPage = () => {
         setMessage(null);
         try {
             const res = await triggerRssRefresh(source.id);
+            const candidates = collectCandidatesFromRefresh(res);
+            if (candidates.length) {
+                persistInbox(mergeArticleCandidates(readArticleInbox(), candidates));
+            }
+            const newCount = candidates.length || res.result?.added || 0;
+            const isTrailerSrc = (source.source_kind || "article") === "trailer";
             setMessage({
                 type: res.result?.error ? "error" : "success",
                 text: res.result?.error
                     ? `${source.name}: ${res.result.error}`
-                    : `${source.name}: fetched ${res.result?.fetched ?? 0}, added ${res.result?.added ?? 0} new article(s).`,
+                    : isTrailerSrc
+                        ? `${source.name}: fetched ${res.result?.fetched ?? 0}, added ${res.result?.added ?? 0} new.`
+                        : `${source.name}: fetched ${res.result?.fetched ?? 0}, ${newCount} ready to review (saved only on approve).`,
             });
             refreshAll();
         } catch (err) {
-            setMessage({ type: "error", text: err.message });
+            setMessage({ type: "error", text: err.message || "Refresh failed" });
         }
         setRefreshingId(null);
     };
@@ -462,12 +686,22 @@ const AdminArticlesPage = () => {
         setMessage(null);
         try {
             const res = await triggerRssRefresh();
+            const candidates = collectCandidatesFromRefresh(res);
+            if (candidates.length) {
+                persistInbox(mergeArticleCandidates(readArticleInbox(), candidates));
+            }
             const totalAdded = (res.results || []).reduce((sum, r) => sum + (r.added || 0), 0);
-            const skipped = res.skipped ? ` (${res.skipped} already up to date)` : "";
-            setMessage({ type: "success", text: `Refreshed ${res.sourcesProcessed} source(s), ${totalAdded} new article(s)${skipped}.` });
+            const totalReady = candidates.length || totalAdded;
+            const errors = (res.results || []).filter((r) => r.error);
+            setMessage({
+                type: errors.length ? "error" : "success",
+                text: errors.length
+                    ? `Refreshed with ${errors.length} error(s). ${totalReady} item(s) ready to review.`
+                    : `Fetched feeds — ${totalReady} item(s) ready to review (news not saved until approve).`,
+            });
             refreshAll();
         } catch (err) {
-            setMessage({ type: "error", text: err.message });
+            setMessage({ type: "error", text: err.message || "Refresh failed" });
         }
         setRefreshingAll(false);
     };
@@ -478,6 +712,7 @@ const AdminArticlesPage = () => {
 
     const removeArticleFromList = (id) => {
         setArticles((prev) => prev.filter((a) => a.id !== id));
+        removeFromInbox(id);
         setSelectedIds((prev) => {
             if (!prev.has(id)) return prev;
             const next = new Set(prev);
@@ -488,19 +723,41 @@ const AdminArticlesPage = () => {
 
     const handleApprove = async (article) => {
         setActingId(article.id);
-        const result = await updateFeedArticleStatus(article.id, "approved");
+        const result = await updateFeedArticleStatus(article, "approved");
         if (result.success) {
             removeArticleFromList(article.id);
             refreshCounts();
+            if (result.summary) {
+                toast.success("Approved — saved to DB with summary from full article page.");
+            } else {
+                toast.success("Approved — saved to DB.");
+            }
         } else {
             toast.error(result.error?.message || "Approve failed");
         }
         setActingId(null);
     };
 
+    const handleRegenerateSummary = async (article) => {
+        setRegeneratingId(article.id);
+        const result = await regenerateFeedArticleSummary(article.id);
+        if (result.success) {
+            const nextSummary = result.summary || "";
+            const nextItems = result.summaryItems || null;
+            setArticles((prev) =>
+                prev.map((a) => (a.id === article.id ? { ...a, summary: nextSummary, summary_items: nextItems } : a)),
+            );
+            setDetailArticle((prev) => (prev?.id === article.id ? { ...prev, summary: nextSummary, summary_items: nextItems } : prev));
+            toast.success(nextSummary ? "Summary regenerated from the live page." : "Regenerated, but no summary could be built.");
+        } else {
+            toast.error(result.error?.message || "Regenerate failed");
+        }
+        setRegeneratingId(null);
+    };
+
     const handleReject = async (article) => {
         setActingId(article.id);
-        const result = await updateFeedArticleStatus(article.id, "rejected");
+        const result = await updateFeedArticleStatus(article, "rejected");
         if (result.success) {
             removeArticleFromList(article.id);
             refreshCounts();
@@ -550,17 +807,19 @@ const AdminArticlesPage = () => {
 
     const handleBulkApprove = async () => {
         setBulkActing(true);
-        const ids = [...selectedIds];
-        const results = await Promise.all(ids.map((id) => updateFeedArticleStatus(id, "approved")));
+        const selected = articles.filter((a) => selectedIds.has(a.id));
+        const results = await Promise.all(selected.map((a) => updateFeedArticleStatus(a, "approved")));
         const failed = results.filter((r) => !r.success).length;
+        const okIds = selected.filter((_, i) => results[i]?.success).map((a) => a.id);
+        const failedIds = new Set(selected.filter((_, i) => !results[i]?.success).map((a) => a.id));
         toast[failed ? "error" : "success"](
             failed
-                ? `Approved ${ids.length - failed}, failed on ${failed} article(s).`
-                : `Approved ${ids.length} article(s).`,
+                ? `Approved ${okIds.length}, failed on ${failed} article(s).`
+                : `Approved ${okIds.length} article(s).`,
         );
-        const failedIds = new Set(ids.filter((_, i) => !results[i]?.success));
+        removeFromInbox(okIds);
         setSelectedIds(new Set());
-        setArticles((prev) => prev.filter((a) => failedIds.has(a.id) || !ids.includes(a.id)));
+        setArticles((prev) => prev.filter((a) => failedIds.has(a.id) || !okIds.includes(a.id)));
         refreshCounts();
         setBulkActing(false);
     };
@@ -572,20 +831,22 @@ const AdminArticlesPage = () => {
         const ids = [...selectedIds];
         const results = await Promise.all(ids.map((id) => deleteFeedArticle(id)));
         const failed = results.filter((r) => !r.success).length;
+        const okIds = ids.filter((_, i) => results[i]?.success);
         toast[failed ? "error" : "success"](
             failed
-                ? `Deleted ${ids.length - failed}, failed on ${failed} article(s).`
-                : `Deleted ${ids.length} article(s).`,
+                ? `Deleted ${okIds.length}, failed on ${failed} article(s).`
+                : `Deleted ${okIds.length} article(s).`,
         );
         const failedIds = new Set(ids.filter((_, i) => !results[i]?.success));
+        removeFromInbox(okIds);
         setSelectedIds(new Set());
-        setArticles((prev) => prev.filter((a) => failedIds.has(a.id) || !ids.includes(a.id)));
+        setArticles((prev) => prev.filter((a) => failedIds.has(a.id) || !okIds.includes(a.id)));
         refreshCounts();
         setBulkActing(false);
     };
 
     const selectedSource = sources.find((s) => s.id === selectedSourceId) || null;
-    const totalPending = kindSources.reduce((sum, s) => sum + (counts[s.id]?.pending || 0), 0);
+    const totalPending = kindSources.reduce((sum, s) => sum + (countsView[s.id]?.pending || 0), 0);
     const isTrailers = activeKind === "trailer";
 
     return (
@@ -666,7 +927,7 @@ const AdminArticlesPage = () => {
                                 key={source.id}
                                 source={source}
                                 active={selectedSourceId === source.id}
-                                pendingCount={counts[source.id]?.pending || 0}
+                                pendingCount={countsView[source.id]?.pending || 0}
                                 refreshing={refreshingId === source.id}
                                 onSelect={setSelectedSourceId}
                                 onToggle={handleToggleSource}
@@ -714,14 +975,6 @@ const AdminArticlesPage = () => {
                                     className="text-xs px-3 py-2 rounded-md bg-white/5 text-white/70 hover:bg-white/10 flex items-center gap-1.5"
                                 >
                                     <FaPen /> Edit
-                                </button>
-                            )}
-                            {selectedSource && (
-                                <button
-                                    onClick={() => handleDeleteSource(selectedSource)}
-                                    className="text-xs px-3 py-2 rounded-md bg-red-500/10 text-red-400 hover:bg-red-500/20 flex items-center gap-1.5"
-                                >
-                                    <FaTrash /> Delete Feed
                                 </button>
                             )}
                         </div>
@@ -824,6 +1077,7 @@ const AdminArticlesPage = () => {
                                         onReject={handleReject}
                                         onToggle={handleToggleArticle}
                                         onDelete={handleDeleteArticle}
+                                        onOpen={setDetailArticle}
                                         acting={actingId === article.id || (bulkActing && selectedIds.has(article.id))}
                                     />
                                 ))}
@@ -832,6 +1086,13 @@ const AdminArticlesPage = () => {
                     )}
                 </div>
             </main>
+
+            <ArticleDetailModal
+                article={detailArticle}
+                onClose={() => setDetailArticle(null)}
+                onRegenerate={handleRegenerateSummary}
+                regenerating={!!detailArticle && regeneratingId === detailArticle.id}
+            />
 
             <SourceFormModal
                 open={sourceFormOpen}

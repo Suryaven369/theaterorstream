@@ -793,14 +793,26 @@ export async function fetchArticles(options = {}) {
 
     // Exclude trailer entries: a verified trailer carries a tmdb_id and is shown
     // as a clean post via trailer_posts, never as a raw news card here.
-    const { data, error, count } = await supabase
+    let { data, error, count } = await supabase
         .from('feed_articles')
-        .select('id, source_name, source_logo_url, title, link, author, summary, image_url, published_at', { count: 'exact' })
+        .select('id, source_name, source_logo_url, title, link, author, summary, summary_items, image_url, published_at', { count: 'exact' })
         .eq('status', 'approved')
         .eq('is_active', true)
         .is('tmdb_id', null)
         .order('published_at', { ascending: false })
         .range(offset, offset + limit - 1);
+
+    // Pre-migration DBs may not have summary_items yet.
+    if (error && /summary_items/i.test(error.message || '')) {
+        ({ data, error, count } = await supabase
+            .from('feed_articles')
+            .select('id, source_name, source_logo_url, title, link, author, summary, image_url, published_at', { count: 'exact' })
+            .eq('status', 'approved')
+            .eq('is_active', true)
+            .is('tmdb_id', null)
+            .order('published_at', { ascending: false })
+            .range(offset, offset + limit - 1));
+    }
 
     if (error) throw error;
     return { data: data || [], total: count ?? (data || []).length };

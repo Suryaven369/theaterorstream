@@ -1,5 +1,5 @@
-/* Import premium font - must be at the top */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+/* Import premium fonts - must be at the top */
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -30,6 +30,11 @@
 
 * {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.font-article-display {
+  font-family: 'Instrument Serif', Georgia, 'Times New Roman', serif;
+  font-weight: 400;
 }
 
 body {

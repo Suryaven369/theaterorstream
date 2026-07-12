@@ -170,7 +170,7 @@ export default function HashtagPage() {
                       </span>
                     </div>
                     <Link
-                      to={`/post/${post.id}`}
+                      to={`/thread/${post.id}`}
                       className="block text-white/90 text-sm leading-relaxed"
                     >
                       <MovieMentionText content={post.content} />

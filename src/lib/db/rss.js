@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient.js';
+import { approveFeedArticleViaApi } from '../adminSyncApi.js';
 
 // =============================================
 // RSS ARTICLES (admin-curated news articles, sourced from RSS feeds)
@@ -183,7 +184,27 @@ export const getFeedArticleCountsBySource = async () => {
     return counts;
 };
 
-export const updateFeedArticleStatus = async (id, status) => {
+export const updateFeedArticleStatus = async (idOrArticle, status) => {
+    // Approving goes through the admin API so we can fetch the full article page
+    // (RSS excerpts lack Collider h2 list titles) before minting the feed summary.
+    if (status === 'approved') {
+        try {
+            const payload = (idOrArticle && typeof idOrArticle === 'object' && idOrArticle._candidate)
+                ? idOrArticle
+                : (typeof idOrArticle === 'object' ? idOrArticle.id : idOrArticle);
+            return await approveFeedArticleViaApi(payload, { regenerateOnly: false });
+        } catch (err) {
+            console.error('Error approving feed article via API:', err);
+            return { success: false, error: { message: err.message || 'Approve failed' } };
+        }
+    }
+
+    const id = typeof idOrArticle === 'object' ? idOrArticle?.id : idOrArticle;
+    if (typeof id === 'string' && String(id).startsWith('candidate:')) {
+        // Unsaved RSS candidate — reject is local-only (no DB row).
+        return { success: true, localOnly: true };
+    }
+
     // Fetch the row first so we can sync its trailer post (if it's a verified trailer).
     const { data: article } = await supabase
         .from('feed_articles')
@@ -201,8 +222,6 @@ export const updateFeedArticleStatus = async (id, status) => {
         return { success: false, error };
     }
 
-    // Approving/rejecting a verified trailer flips its trailer_post live/hidden —
-    // this is how an admin publishes RSS-polled (pending) trailers.
     if (article?.tmdb_id) {
         await supabase
             .from('trailer_posts')
@@ -212,6 +231,15 @@ export const updateFeedArticleStatus = async (id, status) => {
             .then(() => {}, () => {});
     }
     return { success: true };
+};
+
+export const regenerateFeedArticleSummary = async (id) => {
+    try {
+        return await approveFeedArticleViaApi(id, { regenerateOnly: true });
+    } catch (err) {
+        console.error('Error regenerating article summary:', err);
+        return { success: false, error: { message: err.message || 'Regenerate failed' } };
+    }
 };
 
 export const toggleFeedArticleActive = async (id) => {
@@ -233,6 +261,9 @@ export const toggleFeedArticleActive = async (id) => {
 };
 
 export const deleteFeedArticle = async (id) => {
+    if (typeof id === 'string' && id.startsWith('candidate:')) {
+        return { success: true, localOnly: true };
+    }
     const { error } = await supabase.from('feed_articles').delete().eq('id', id);
     if (error) {
         console.error('Error deleting feed article:', error);

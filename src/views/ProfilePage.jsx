@@ -1341,7 +1341,7 @@ const ProfilePage = () => {
                                         {userPosts.slice(0, 5).map((post) => (
                                             <Link
                                                 key={post.id}
-                                                to={`/post/${post.id}`}
+                                                to={`/thread/${post.id}`}
                                                 className="block p-4 rounded-xl bg-[#1a1d1f] border border-white/5 hover:border-white/15 transition-colors"
                                             >
                                                 <div className="text-sm text-white/85 leading-relaxed line-clamp-4">

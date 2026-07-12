@@ -1,13 +1,14 @@
 import React from 'react';
 import { FaPaperPlane } from 'react-icons/fa';
+import { threadPathForItem } from '../../lib/feedThread';
 
 /**
  * Share sheet for a feed post (copy link, X, WhatsApp).
  */
-export default function FeedShareModal({ post, onClose }) {
+export default function FeedShareModal({ post, shareUrl: shareUrlProp, onClose }) {
   if (!post) return null;
 
-  const postUrl = `${window.location.origin}/post/${post.id}`;
+  const postUrl = shareUrlProp || `${window.location.origin}${threadPathForItem(post)}`;
 
   const copyShareLink = async () => {
     try {

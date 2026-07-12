@@ -2,7 +2,37 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 2026 · HEAD `138b5a9` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 2026 · HEAD `bea5ac8` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Jul 2026 — Reddit-style thread page + mobile optimization
+
+### Thread page restyled to Reddit dark theme ✅
+
+**Problem:** Thread page needed Reddit-style dark UI with polished mobile/iPad responsiveness.
+
+**Files changed:**
+- `src/views/ThreadPage.jsx` — responsive padding, 44px touch targets, safe-area aware top spacing
+- `src/components/social/FeedArticleCard.jsx` — responsive author row, title sizing, media carousel border radius
+- `src/components/social/FeedCommentThread.jsx` — mobile touch targets (40-44px), compact nested comments, responsive composer
+- `src/components/social/RedditActionBar.jsx` — 44px pill buttons on mobile, horizontal scroll, `touch-manipulation`
+- `src/components/social/RedditMediaFrame.jsx` — responsive max-height (`65vh` mobile, `520px` desktop), border radius
+- `src/lib/slugUtils.js` — shortened thread URLs (8-char UUID prefix)
+- `src/lib/feedSessionCache.js` — in-memory session cache for instant navigation
+- `src/lib/feedLikes.js` — session-cached likes, comment upvote support
+- `api/_lib/feed-likes-server.js` — comment upvote toggle endpoint
+- `supabase/migrations/20260723*.sql` — thread comments + likes tables
+
+**Behavior:**
+- Thread page has dark Reddit-style UI with yellow upvote accent
+- All touch targets ≥40-44px on mobile for easy tapping
+- Comments have proper nested indentation with collapse/expand
+- Share buttons use dropdown menus (not modals)
+- Action bar scrolls horizontally on mobile
+- Top bar properly clears fixed header
+
+**Next recommended:** Smoke-test thread page on iPhone/Android and iPad.
 
 ---
 

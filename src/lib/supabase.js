@@ -88,6 +88,7 @@ export {
     getFeedArticles,
     getFeedArticleCountsBySource,
     updateFeedArticleStatus,
+    regenerateFeedArticleSummary,
     toggleFeedArticleActive,
     deleteFeedArticle,
 } from './db/rss.js';

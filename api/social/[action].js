@@ -98,6 +98,35 @@ export default async function handler(req, res) {
             return res.status(200).json({ ok: true, ...result });
         }
 
+        if (action === 'feed-upvote') {
+            const body = await readJsonBody(req);
+            if (!body.kind || body.id == null) {
+                return res.status(400).json({ error: 'kind and id required' });
+            }
+            const { toggleFeedLikeForUser } = await import('../_lib/feed-likes-server.js');
+            const result = await toggleFeedLikeForUser(auth.user.id, {
+                kind: String(body.kind),
+                id: body.id,
+                currentlyLiked: !!body.currentlyLiked,
+            });
+            return res.status(200).json({ ok: true, ...result });
+        }
+
+        if (action === 'feed-comment') {
+            const body = await readJsonBody(req);
+            if (!body.kind || body.id == null || !body.content) {
+                return res.status(400).json({ error: 'kind, id, and content required' });
+            }
+            const { addFeedThreadComment } = await import('../_lib/feed-comments-server.js');
+            const comment = await addFeedThreadComment(auth.user.id, {
+                kind: String(body.kind),
+                id: body.id,
+                content: body.content,
+                parentId: body.parentId || body.parent_id || null,
+            });
+            return res.status(200).json({ ok: true, comment });
+        }
+
         // Permanently delete the caller's own account (auth user + cascaded data).
         // Requires the user to confirm by passing their exact username.
         if (action === 'delete-account') {
@@ -125,6 +154,8 @@ export default async function handler(req, res) {
                 'review-like',
                 'review-comment',
                 'collection-like',
+                'feed-upvote',
+                'feed-comment',
                 'delete-account',
             ],
         });

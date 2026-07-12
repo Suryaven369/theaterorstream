@@ -25,6 +25,7 @@ import UserBoardsPage from "../views/UserBoardsPage";
 import BlogsPage from "../views/BlogsPage";
 import BlogDetails from "../views/BlogDetails";
 import PostDetails from "../views/PostDetails";
+import ThreadPage from "../views/ThreadPage";
 import WatchedMoviesPage from "../views/WatchedMoviesPage";
 import ActivityFeedPage from "../views/ActivityFeedPage";
 import DiaryPage from "../views/DiaryPage";
@@ -175,6 +176,10 @@ const router = createBrowserRouter([
       {
         path: "blog/:id",
         element: <BlogDetails />,
+      },
+      {
+        path: "thread/:feedId",
+        element: <ThreadPage />,
       },
       {
         path: "post/:id",

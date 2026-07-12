@@ -17,7 +17,7 @@ function formatReleaseDate(dateStr) {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function pickComingSoonMovies(cmsSections, regionCode, limit = 6) {
+function pickComingSoonMovies(cmsSections, regionCode, limit = 8) {
   const comingSoonSection = cmsSections.find((s) => s.slug === 'coming-soon');
   if (!comingSoonSection) return { movies: [], usedRegion: regionCode, isFallback: false };
 
@@ -65,10 +65,10 @@ function MovieRow({ movie }) {
       to={movieUrl}
       className="flex items-start gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-all group"
     >
-      <div className="flex-shrink-0 w-12 h-16 rounded-lg overflow-hidden">
+      <div className="flex-shrink-0 w-14 h-[5.25rem] rounded-lg overflow-hidden">
         {movie.poster_path ? (
           <img
-            src={`https://image.tmdb.org/t/p/w154${movie.poster_path}`}
+            src={`https://image.tmdb.org/t/p/w185${movie.poster_path}`}
             alt={movie.title}
             className="w-full h-full object-cover"
             loading="lazy"
@@ -79,8 +79,8 @@ function MovieRow({ movie }) {
           </div>
         )}
       </div>
-      <div className="flex-1 min-w-0">
-        <h3 className="text-sm font-medium text-white group-hover:text-yellow-400 transition-colors line-clamp-2">
+      <div className="flex-1 min-w-0 pt-0.5">
+        <h3 className="text-sm font-medium text-white group-hover:text-yellow-400 transition-colors line-clamp-2 leading-snug">
           {movie.title}
         </h3>
         <div className="flex items-center gap-1.5 mt-1.5">
@@ -104,7 +104,7 @@ export default function HomeComingSoonSidebar({
   placement = 'rail',
 }) {
   const { movies: comingSoonMovies, usedRegion, isFallback } = useMemo(
-    () => pickComingSoonMovies(cmsSections, selectedRegion.code, 6),
+    () => pickComingSoonMovies(cmsSections, selectedRegion.code, 7),
     [cmsSections, selectedRegion.code],
   );
 
@@ -145,7 +145,7 @@ export default function HomeComingSoonSidebar({
                 <Link
                   key={movie.tmdb_id}
                   to={movieUrl}
-                  className="shrink-0 w-[7.25rem] group"
+                  className="shrink-0 w-[8rem] sm:w-[8.5rem] group"
                 >
                   <div className="aspect-[2/3] rounded-xl overflow-hidden bg-white/5 border border-white/[0.06] mb-2">
                     {movie.poster_path ? (
@@ -175,7 +175,7 @@ export default function HomeComingSoonSidebar({
   }
 
   return (
-    <div className="hidden lg:block w-[14.5rem] xl:w-[16rem] shrink-0">
+    <div className="hidden lg:block w-[16.5rem] xl:w-[18rem] shrink-0">
       <div className="sticky top-24">
         <div className="flex items-center gap-3 mb-5">
           <div className="p-2 rounded-lg bg-green-500/10">

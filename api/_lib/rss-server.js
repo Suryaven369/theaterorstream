@@ -114,6 +114,7 @@ const CONTENT_SELECTORS = [
 // ads, newsletter signups, related-post rails, share buttons, comment widgets, etc.
 const CONTENT_CRUFT_SELECTOR =
     'script, style, iframe, object, embed, form, nav, aside, ' +
+    '.cq-quiz, [class*="cq-quiz"], [class*="quiz-embed"], [id*="quiz"], ' +
     '[class*="ad-"], [class*="advert"], [class*="newsletter"], [class*="related"], ' +
     '[class*="share"], [class*="comment"], [class*="byline"], [class*="social"], [class*="tag"]';
 
@@ -195,8 +196,10 @@ function toHeadline(rawTitle) {
 
 function parseRssItem($, el) {
     const $item = $(el);
-    const title = toHeadline(decodeEntities($item.find('title').first().text().trim()));
+    const rawTitle = decodeEntities($item.find('title').first().text().trim());
     const link = $item.find('link').first().text().trim() || $item.find('link').first().attr('href') || '';
+    const isTweet = /nitter\.|\/\/(?:www\.)?(?:twitter|x)\.com\b/i.test(link);
+    const title = isTweet ? rawTitle.replace(/\s+/g, ' ').trim() : toHeadline(rawTitle);
     const guid = firstNonEmpty($item.find('guid').first().text().trim(), link);
     const author = decodeEntities(
         firstNonEmpty(
@@ -215,8 +218,8 @@ function parseRssItem($, el) {
     const item = { title, link, guid, author, description, contentEncoded };
     const image = extractImage(item, $item);
     const bodyHtml = sanitizeArticleHtml(firstNonEmpty(contentEncoded, description));
-    const summarySource = decodeEntities(firstNonEmpty(description, contentEncoded) || '');
-    const summary = summarySource.replace(/\s+/g, ' ').trim().slice(0, 400);
+    const summarySource = decodeEntities(firstNonEmpty(description, contentEncoded, rawTitle) || '');
+    const summary = summarySource.replace(/\s+/g, ' ').trim().slice(0, isTweet ? 2000 : 400);
 
     return {
         title,
@@ -471,7 +474,7 @@ async function matchTmdbTitle(rawTitle) {
 
 export async function fetchAndStoreSource(source, globalFilters = null) {
     const supabase = getSupabaseAdmin();
-    const result = { sourceId: source.id, name: source.name, fetched: 0, added: 0, error: null };
+    const result = { sourceId: source.id, name: source.name, fetched: 0, added: 0, candidates: [], error: null };
 
     // Backfill a logo for sources missing one — or upgrade a generic YouTube
     // favicon to the real channel avatar so each studio is recognisable.
@@ -571,6 +574,49 @@ export async function fetchAndStoreSource(source, globalFilters = null) {
             return result;
         }
 
+        const isTrailer = (source.source_kind || 'article') === 'trailer';
+
+        // News articles: do NOT write to feed_articles until an admin approves.
+        // Return candidates for the admin inbox; skip already-saved guids.
+        if (!isTrailer) {
+            const guids = articles.map((a) => a.guid).filter(Boolean);
+            let existingGuids = new Set();
+            if (guids.length) {
+                const { data: rows } = await supabase
+                    .from('feed_articles')
+                    .select('guid')
+                    .eq('source_id', source.id)
+                    .in('guid', guids);
+                existingGuids = new Set((rows || []).map((r) => r.guid));
+            }
+
+            const fresh = articles.filter((a) => a.guid && !existingGuids.has(a.guid));
+            result.added = 0;
+            result.candidates = fresh.map((article) => ({
+                _candidate: true,
+                id: `candidate:${source.id}:${article.guid}`,
+                source_id: source.id,
+                source_name: source.name,
+                source_logo_url: logoUrl || null,
+                guid: article.guid,
+                title: article.title,
+                link: article.link,
+                author: article.author || null,
+                summary: article.summary || null,
+                body_html: article.bodyHtml || null,
+                image_url: article.imageUrl || null,
+                published_at: article.publishedAt || null,
+                status: 'pending',
+                is_active: true,
+            }));
+
+            await supabase
+                .from('rss_sources')
+                .update({ last_fetched_at: new Date().toISOString(), last_fetch_error: null })
+                .eq('id', source.id);
+            return result;
+        }
+
         const records = articles.map((article) => {
             const rec = {
                 source_id: source.id,
@@ -607,10 +653,7 @@ export async function fetchAndStoreSource(source, globalFilters = null) {
         if (error) throw error;
         result.added = inserted?.length || 0;
 
-        // For newly-added articles, fetch the article's own page once to (a) fill in a
-        // thumbnail when the RSS item had none, and (b) replace the feed's truncated
-        // excerpt with the real full story body — only runs once per article since
-        // it's already stored by the time of any later refresh (duplicates are skipped).
+        // For newly-added trailers, fill missing thumbnail when possible.
         const toEnrich = (inserted || []).slice(0, MAX_FULL_BODY_FETCHES_PER_RUN);
         await mapWithConcurrency(toEnrich, FULL_BODY_CONCURRENCY, async (row) => {
             const { ogImage, fullBodyHtml } = await fetchArticlePageData(row.link);
@@ -776,3 +819,174 @@ export async function subscribeYouTubeSources({ callbackUrl, mode = 'subscribe',
     }
     return { mode, callbackUrl, count: results.length, results };
 }
+
+function bodyNeedsEnrichment(bodyHtml) {
+    const html = String(bodyHtml || '');
+    if (html.length < 1200) return true;
+    // Listicles need real headings from the article page, not the RSS excerpt.
+    if (!/<h[2-4]\b/i.test(html)) return true;
+    return false;
+}
+
+/**
+ * Approve (or re-summarize) a feed article: fetch the full page when the stored
+ * body is a thin RSS excerpt, then mint the non-AI feed summary (list titles etc).
+ */
+export async function approveFeedArticleWithSummary(articleId, { regenerateOnly = false } = {}) {
+    const supabase = getSupabaseAdmin();
+    const { data: article, error } = await supabase
+        .from('feed_articles')
+        .select('id, link, title, summary, body_html, image_url, tmdb_id, media_type, status')
+        .eq('id', articleId)
+        .maybeSingle();
+
+    if (error) return { success: false, error: error.message };
+    if (!article) return { success: false, error: 'Article not found' };
+
+    return finalizeArticleApproval(supabase, article, { regenerateOnly });
+}
+
+/**
+ * Insert a news RSS candidate into feed_articles only on approve (never on fetch).
+ */
+export async function approveFeedArticleCandidate(candidate) {
+    const supabase = getSupabaseAdmin();
+    if (!candidate?.guid || !candidate?.source_id || !candidate?.title) {
+        return { success: false, error: 'Invalid candidate (need source_id, guid, title)' };
+    }
+
+    const { data: existing } = await supabase
+        .from('feed_articles')
+        .select('id, status')
+        .eq('source_id', candidate.source_id)
+        .eq('guid', candidate.guid)
+        .maybeSingle();
+
+    if (existing?.status === 'approved') {
+        return { success: false, error: 'Article already approved' };
+    }
+
+    let articleId = existing?.id || null;
+    if (!articleId) {
+        const row = {
+            source_id: candidate.source_id,
+            source_name: candidate.source_name || null,
+            source_logo_url: candidate.source_logo_url || null,
+            guid: candidate.guid,
+            title: candidate.title,
+            link: candidate.link || null,
+            author: candidate.author || null,
+            summary: candidate.summary || null,
+            body_html: candidate.body_html || null,
+            image_url: candidate.image_url || null,
+            published_at: candidate.published_at || null,
+            status: 'pending',
+            is_active: true,
+        };
+        const { data: inserted, error: insErr } = await supabase
+            .from('feed_articles')
+            .insert(row)
+            .select('id, link, title, summary, body_html, image_url, tmdb_id, media_type, status')
+            .single();
+        if (insErr) return { success: false, error: insErr.message };
+        articleId = inserted.id;
+        return finalizeArticleApproval(supabase, inserted, { regenerateOnly: false });
+    }
+
+    const { data: article, error } = await supabase
+        .from('feed_articles')
+        .select('id, link, title, summary, body_html, image_url, tmdb_id, media_type, status')
+        .eq('id', articleId)
+        .maybeSingle();
+    if (error || !article) return { success: false, error: error?.message || 'Article not found' };
+    return finalizeArticleApproval(supabase, article, { regenerateOnly: false });
+}
+
+async function finalizeArticleApproval(supabase, article, { regenerateOnly = false } = {}) {
+    let bodyHtml = article.body_html || '';
+    const updates = {
+        updated_at: new Date().toISOString(),
+    };
+    if (!regenerateOnly) updates.status = 'approved';
+
+    const { isTwitterFeedArticle, extractTwitterHandle, normalizeTweetText } = await import('../../src/lib/twitterRss.js');
+    if (isTwitterFeedArticle({ link: article.link, sourceName: article.source_name })) {
+        const handle = extractTwitterHandle(article.link, article.source_name);
+        const tweet = normalizeTweetText({
+            title: article.title,
+            summary: article.summary,
+            bodyHtml,
+            handle,
+        });
+        if (tweet) updates.summary = tweet;
+        updates.summary_items = null;
+        // Keep RSS media; do not scrape flaky Nitter HTML pages.
+    } else {
+        if (article.link && bodyNeedsEnrichment(bodyHtml)) {
+            const { ogImage, fullBodyHtml } = await fetchArticlePageData(article.link);
+            if (fullBodyHtml && fullBodyHtml.length > bodyHtml.length) {
+                bodyHtml = fullBodyHtml;
+                updates.body_html = fullBodyHtml;
+            }
+            if (!article.image_url && ogImage) {
+                updates.image_url = ogImage;
+            }
+        }
+
+        const { summarizeArticleForFeed, parseSummaryForDisplay } = await import('../../src/lib/articleSummary.js');
+        // If we have a full page body with headings, ignore prior RSS/quiz summary text.
+        const useRssSummary = /<h[2-4]\b/i.test(bodyHtml) ? '' : (article.summary || '');
+        const feedSummary = summarizeArticleForFeed({
+            title: article.title,
+            summary: useRssSummary,
+            bodyHtml,
+        });
+        if (feedSummary) updates.summary = feedSummary;
+
+        const parsed = parseSummaryForDisplay(feedSummary || '');
+        if (parsed.kind === 'list' && parsed.items.length >= 2) {
+            const { buildListicleSummaryItems } = await import('./listicle-media.js');
+            const summaryItems = await buildListicleSummaryItems(parsed.items, bodyHtml);
+            updates.summary_items = summaryItems;
+        } else {
+            updates.summary_items = null;
+        }
+    }
+
+    const { error: upErr } = await supabase
+        .from('feed_articles')
+        .update(updates)
+        .eq('id', article.id);
+
+    if (upErr) {
+        // Older DBs may not have summary_items yet — retry without it.
+        if (/summary_items/i.test(upErr.message || '')) {
+            delete updates.summary_items;
+            const { error: retryErr } = await supabase
+                .from('feed_articles')
+                .update(updates)
+                .eq('id', article.id);
+            if (retryErr) return { success: false, error: retryErr.message };
+        } else {
+            return { success: false, error: upErr.message };
+        }
+    }
+
+    if (article.tmdb_id && !regenerateOnly) {
+        await supabase
+            .from('trailer_posts')
+            .update({ is_active: true })
+            .eq('tmdb_id', String(article.tmdb_id))
+            .eq('media_type', article.media_type || 'movie')
+            .then(() => {}, () => {});
+    }
+
+    return {
+        success: true,
+        articleId: article.id,
+        summary: updates.summary || null,
+        summaryItems: updates.summary_items || null,
+        enriched: Boolean(updates.body_html),
+    };
+}
+

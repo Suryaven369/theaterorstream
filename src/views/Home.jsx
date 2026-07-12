@@ -7,6 +7,7 @@ import FollowingFeed from "../components/discover/FollowingFeed";
 import FeedPostCard from "../components/social/FeedPostCard";
 import FeedTrailerCard from "../components/social/FeedTrailerCard";
 import FeedArticleCard from "../components/social/FeedArticleCard";
+import FeedTweetCard from "../components/social/FeedTweetCard";
 import FeedActivityCard from "../components/social/FeedActivityCard";
 import FeedComposer from "../components/social/FeedComposer";
 import FeedCommentModal from "../components/social/FeedCommentModal";
@@ -19,8 +20,18 @@ import { getAllUserRatings, getHomepageSections, getOfficialProfile } from "../l
 import { computeOverallFromRatingRow } from "../lib/ratingUtils";
 import { setHomepageSections, setUserRatedMovies, invalidateHomepageSections } from "../store/movieSlice";
 import { useAuth } from "../context/AuthContext";
-import { likePost, unlikePost, savePost, unsavePost, getFeedPosts, updatePost, deletePost } from "../lib/socialFeedApi";
+import { savePost, unsavePost, getFeedPosts, updatePost, deletePost } from "../lib/socialFeedApi";
+import { attachFeedItemLikes, syncLocalFeedLikesToServer, toggleFeedUpvote } from "../lib/feedLikes";
+import { attachFeedItemCommentCounts, threadPathForItem } from "../lib/feedThread";
+import {
+  getCachedFeed,
+  setCachedFeed,
+  patchCachedFeedItem,
+  setCachedThreadItem,
+  shouldSyncLocalLikes,
+} from "../lib/feedSessionCache";
 import ConfirmationModal from "../components/ConfirmationModal";
+import { useToast } from "../components/Toast";
 
 const VALID_TABS = ['home', 'explore', 'watch'];
 
@@ -69,6 +80,7 @@ const FeedSkeleton = ({ count = 5 }) => (
 const Home = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const toast = useToast();
   const { user, profile, isAuthenticated, loading: authLoading } = useAuth();
   const cachedSections = useSelector((state) => state.movieData.homepageSections);
   const cachedTimestamp = useSelector((state) => state.movieData.homepageSectionsTimestamp);
@@ -112,6 +124,15 @@ const Home = () => {
   const [selectedRegion, setSelectedRegion] = useState(getSavedRegion);
   const [cmsSections, setCmsSections] = useState(cachedSections || []);
   const [loadingSections, setLoadingSections] = useState(!cachedSections);
+
+  // Infinite scroll / scope (must stay with other hooks — never after a conditional return)
+  const FEED_PAGE_SIZE = 30;
+  const [feedOffset, setFeedOffset] = useState(0);
+  const [hasMoreFeed, setHasMoreFeed] = useState(true);
+  const [loadingMoreFeed, setLoadingMoreFeed] = useState(false);
+  const loadMoreSentinelRef = React.useRef(null);
+  // 'all' = everyone; 'following' = only people you follow
+  const [feedScope, setFeedScope] = useState('all');
 
   // Keep local sections in sync when Redux cache is patched
   useEffect(() => {
@@ -233,31 +254,34 @@ const Home = () => {
     sourceName: m.source_name || null,
     sourceLogo: m.source_logo || null,
     user: officialUser,
+    likes: 0,
+    isLiked: false,
+    comments: 0,
   });
 
-  const mapArticle = (a, officialUser = null) => ({
-    id: `article-${a.id}`,
-    type: 'article',
-    title: a.title,
-    sourceName: a.source_name,
-    sourceLogo: a.source_logo_url,
-    imageUrl: a.image_url,
-    summary: a.summary,
-    publishedAt: a.published_at,
-    link: a.link,
-    user: officialUser,
-  });
+  const mapArticle = (a, officialUser = null) => {
+    const link = a.link || '';
+    const twitter = /nitter\.|\/\/(?:www\.)?(?:twitter|x)\.com\b/i.test(link);
+    return {
+      id: `article-${a.id}`,
+      type: twitter ? 'tweet' : 'article',
+      title: a.title,
+      sourceName: a.source_name,
+      sourceLogo: a.source_logo_url,
+      imageUrl: a.image_url,
+      summary: a.summary,
+      summaryItems: Array.isArray(a.summary_items) ? a.summary_items : null,
+      publishedAt: a.published_at,
+      link,
+      // Tweets stay attributed to the X account (e.g. DiscussingFilm), not TheaterOrStream.
+      user: twitter ? null : officialUser,
+      likes: 0,
+      isLiked: false,
+      comments: 0,
+    };
+  };
 
   // Load real public posts and show them above the seed feed
-  const FEED_PAGE_SIZE = 30;
-  const [feedOffset, setFeedOffset] = useState(0);
-  const [hasMoreFeed, setHasMoreFeed] = useState(true);
-  const [loadingMoreFeed, setLoadingMoreFeed] = useState(false);
-  const loadMoreSentinelRef = React.useRef(null);
-  // 'all' = everyone (collections/lists stay globally public); 'following' = only
-  // people you follow (their posts, logs, reviews, ratings).
-  const [feedScope, setFeedScope] = useState('all');
-
   // When the user updates their avatar (or username), patch their cards in-place
   // so home feed / composer stay in sync without a full reload.
   useEffect(() => {
@@ -288,15 +312,23 @@ const Home = () => {
   }, [user?.id, profile?.avatar_url, profile?.username, profile?.display_name, profile?.is_verified]);
 
   // One paint: wait for auth, then load posts (+ trailers/articles) together.
-  // Avoids empty→posts→reshuffle flash from staggered loaders / auth race.
+  // Restore from session cache instantly when returning from a thread / other page.
   useEffect(() => {
     if (authLoading) return undefined;
 
     let cancelled = false;
-    setFeedInitialLoading(true);
-    setFeedOffset(0);
-    setHasMoreFeed(true);
-    appearedIds.current.clear();
+    const cached = getCachedFeed(feedScope);
+    if (cached?.items?.length) {
+      setFeedItems(cached.items);
+      setFeedOffset(cached.offset);
+      setHasMoreFeed(cached.hasMore);
+      setFeedInitialLoading(false);
+    } else {
+      setFeedInitialLoading(true);
+      setFeedOffset(0);
+      setHasMoreFeed(true);
+      appearedIds.current.clear();
+    }
 
     const loadFeed = async () => {
       try {
@@ -344,12 +376,24 @@ const Home = () => {
         const trailers = [...byId.values()];
         const articles = (articlesRaw || []).map((a) => mapArticle(a, officialUser));
 
-        setFeedItems(sortByRecency([...posts, ...trailers, ...articles]));
+        const merged = sortByRecency([...posts, ...trailers, ...articles]);
+        const withLikes = await attachFeedItemLikes(merged, user?.id);
+        const withComments = await attachFeedItemCommentCounts(withLikes);
+        if (cancelled) return;
+        setFeedItems(withComments);
         setFeedOffset(posts.length);
         setHasMoreFeed(posts.length >= FEED_PAGE_SIZE);
+        setCachedFeed(feedScope, {
+          items: withComments,
+          offset: posts.length,
+          hasMore: posts.length >= FEED_PAGE_SIZE,
+        });
+        if (shouldSyncLocalLikes(user?.id)) {
+          syncLocalFeedLikesToServer(user.id).catch(() => {});
+        }
       } catch (err) {
         console.error('[Home] loadFeed failed:', err);
-        if (!cancelled) setFeedItems([]);
+        if (!cancelled && !getCachedFeed(feedScope)?.items?.length) setFeedItems([]);
       } finally {
         if (!cancelled) setFeedInitialLoading(false);
       }
@@ -449,36 +493,64 @@ const Home = () => {
     setDeletingPost(false);
   };
 
-  // Handle like/unlike
-  const handleLike = async (postId) => {
+  // Handle upvote / like for every feed item type (post, article, tweet, trailer)
+  const handleLike = async (itemOrId) => {
     if (!isAuthenticated) {
-      requireSignIn('Sign in to like posts.');
+      requireSignIn();
       return;
     }
-    const post = feedItems.find(p => p.id === postId);
-    if (!post) return;
+    const postId = typeof itemOrId === 'object' && itemOrId != null
+      ? itemOrId.id
+      : itemOrId;
+    if (postId == null) return;
 
-    // Optimistic update
-    setFeedItems(prev => prev.map(p => 
-      p.id === postId 
-        ? { ...p, isLiked: !p.isLiked, likes: p.isLiked ? p.likes - 1 : p.likes + 1 }
-        : p
-    ));
+    const baseline = feedItems.find((p) => p.id === postId);
+    if (!baseline) return;
 
-    // API call (will be connected to backend)
+    const wasLiked = !!baseline.isLiked;
+    const prevLikes = baseline.likes || 0;
+
+    setFeedItems((prev) =>
+      prev.map((p) =>
+        p.id === postId
+          ? { ...p, isLiked: !wasLiked, likes: wasLiked ? Math.max(0, prevLikes - 1) : prevLikes + 1 }
+          : p,
+      ),
+    );
+    patchCachedFeedItem(postId, {
+      isLiked: !wasLiked,
+      likes: wasLiked ? Math.max(0, prevLikes - 1) : prevLikes + 1,
+    });
+
     try {
-      if (post.isLiked) {
-        await unlikePost(postId, user?.id);
-      } else {
-        await likePost(postId, user?.id);
+      const result = await toggleFeedUpvote(baseline, user.id);
+      // Keep UI aligned with what was actually persisted (local and/or server)
+      if (result && typeof result.liked === 'boolean') {
+        setFeedItems((prev) =>
+          prev.map((p) => {
+            if (p.id !== postId) return p;
+            const liked = result.liked;
+            // Avoid double-counting if optimistic already applied
+            if (!!p.isLiked === liked) return p;
+            const next = {
+              ...p,
+              isLiked: liked,
+              likes: liked ? (p.likes || 0) + 1 : Math.max(0, (p.likes || 0) - 1),
+            };
+            patchCachedFeedItem(postId, { isLiked: next.isLiked, likes: next.likes });
+            return next;
+          }),
+        );
       }
     } catch (error) {
-      // Revert on error
-      setFeedItems(prev => prev.map(p => 
-        p.id === postId 
-          ? { ...p, isLiked: post.isLiked, likes: post.likes }
-          : p
-      ));
+      console.error('[Home] upvote failed:', error);
+      setFeedItems((prev) =>
+        prev.map((p) =>
+          p.id === postId ? { ...p, isLiked: wasLiked, likes: prevLikes } : p,
+        ),
+      );
+      patchCachedFeedItem(postId, { isLiked: wasLiked, likes: prevLikes });
+      toast.error(error?.message || 'Could not save upvote. Try signing out and back in.');
     }
   };
 
@@ -529,18 +601,66 @@ const Home = () => {
     });
   };
 
-  const handleCommentAdded = (postId) => {
+  const handleCommentAdded = (postId, total) => {
     setFeedItems((prev) =>
-      prev.map((p) => (p.id === postId ? { ...p, comments: p.comments + 1 } : p)),
+      prev.map((p) => {
+        if (p.id !== postId) return p;
+        if (total != null) return { ...p, comments: total };
+        return { ...p, comments: (p.comments || 0) + 1 };
+      }),
     );
+  };
+
+  const openThread = (item) => {
+    if (!item?.id) return;
+    // Prefer the live feed row so an upvote just tapped is carried into the thread.
+    const latest = feedItems.find((p) => p.id === item.id) || item;
+    setCachedThreadItem(latest);
+    navigate(threadPathForItem(latest), {
+      state: {
+        feedItem: latest,
+        feedLike: {
+          id: latest.id,
+          isLiked: !!latest.isLiked,
+          likes: latest.likes || 0,
+        },
+      },
+    });
   };
 
   const renderFeedItem = (item) => {
     if (item.type === 'trailer') {
-      return <FeedTrailerCard key={item.id} item={item} />;
+      return (
+        <FeedTrailerCard
+          key={item.id}
+          item={item}
+          onOpenThread={openThread}
+          onShare={handleShare}
+          onLike={handleLike}
+        />
+      );
+    }
+    if (item.type === 'tweet') {
+      return (
+        <FeedTweetCard
+          key={item.id}
+          item={item}
+          onOpenThread={openThread}
+          onShare={handleShare}
+          onLike={handleLike}
+        />
+      );
     }
     if (item.type === 'article') {
-      return <FeedArticleCard key={item.id} item={item} />;
+      return (
+        <FeedArticleCard
+          key={item.id}
+          item={item}
+          onOpenThread={openThread}
+          onShare={handleShare}
+          onLike={handleLike}
+        />
+      );
     }
     if (item.type === 'activity') {
       return (
@@ -549,6 +669,8 @@ const Home = () => {
           item={item}
           onLike={handleLike}
           onOpenComments={openComments}
+          onOpenThread={openThread}
+          onShare={handleShare}
         />
       );
     }
@@ -571,6 +693,7 @@ const Home = () => {
         onSave={handleSave}
         onShare={handleShare}
         onOpenComments={openComments}
+        onOpenThread={openThread}
       />
     );
   };
