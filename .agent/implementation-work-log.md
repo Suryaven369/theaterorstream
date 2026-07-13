@@ -2,7 +2,35 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 2026 · HEAD `2926a7b` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 2026 · HEAD `pending` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Jul 2026 — UI Design System Audit & Redesign
+
+### Aligned UI with design rules document ✅
+
+**Problem:** UI had multiple violations of the design rules: glassmorphism in header, gradient text, neon green accent color, gradient avatar backgrounds, two font families, and inconsistent colors across components.
+
+**Files changed:**
+- `src/index.css` — replaced color system with design tokens (`--color-background`, `--color-surface`, `--color-theater`, etc.), removed glassmorphism/gradient classes, removed Instrument Serif font
+- `src/components/Header.jsx` — solid header background, amber logo text, solid avatar backgrounds, neutral navigation, simplified search button, amber Sign In button
+- `src/components/social/FeedPostCard.jsx` — design system colors, rounded-lg avatars, amber accent for interactions
+- `src/components/social/RedditActionBar.jsx` — amber upvote color (`--color-theater`), design system surface colors
+- `src/components/home/HomeSocialSidebar.jsx` — design system colors for trending and suggested users
+- `src/components/social/FeedCommentThread.jsx` — amber upvote/reply/OP badge, design system colors throughout
+- `src/views/ThreadPage.jsx` — design system background and text colors
+- `src/components/social/FeedArticleCard.jsx` — design system colors for author row, title, slides, and external link
+
+**Behavior:**
+- Primary accent is amber (`#f59e0b` / `--color-theater`) instead of neon green
+- No glassmorphism or decorative gradients
+- Single font family (Inter)
+- Consistent design tokens across all components
+- Rounded-lg (8px) instead of rounded-full for most elements
+- Semantic color usage throughout
+
+**Next recommended:** Smoke-test on mobile/desktop; verify all pages use design system colors consistently.
 
 ---
 

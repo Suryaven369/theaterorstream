@@ -57,18 +57,18 @@ function ReplyComposer({
         rows={2}
         autoFocus
         placeholder={placeholder}
-        className="w-full bg-black/35 border border-white/10 rounded-lg sm:rounded-xl px-3 py-2 text-[13px] sm:text-sm text-white placeholder:text-white/35 outline-none focus:border-sky-500/40 resize-none"
+        className="w-full bg-[var(--color-background)] border border-[var(--color-border)] rounded-lg sm:rounded-xl px-3 py-2 text-[13px] sm:text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] outline-none focus:border-[var(--color-theater)]/60 resize-none"
       />
       <div className="flex justify-end gap-1.5 sm:gap-2 mt-1.5">
         {onCancel && (
-          <button type="button" onClick={onCancel} className="text-[11px] sm:text-xs text-white/50 px-2 py-1.5 hover:text-white min-h-[40px] sm:min-h-0 touch-manipulation">
+          <button type="button" onClick={onCancel} className="text-[11px] sm:text-xs text-[var(--color-text-muted)] px-2 py-1.5 hover:text-[var(--color-text)] min-h-[40px] sm:min-h-0 touch-manipulation">
             Cancel
           </button>
         )}
         <button
           type="submit"
           disabled={busy || !text.trim()}
-          className="text-[11px] sm:text-xs font-semibold px-3 py-1.5 rounded-full bg-sky-600 text-white hover:bg-sky-500 disabled:opacity-40 min-h-[40px] sm:min-h-0 touch-manipulation"
+          className="text-[11px] sm:text-xs font-medium px-3 py-1.5 rounded-lg bg-[var(--color-theater)] text-[var(--color-background)] hover:bg-[var(--color-theater)]/90 disabled:opacity-40 min-h-[40px] sm:min-h-0 touch-manipulation"
         >
           {busy ? 'Posting…' : 'Reply'}
         </button>
@@ -222,13 +222,13 @@ function CommentNode({
   };
 
   return (
-    <div className={`relative ${depth > 0 ? 'ml-1.5 sm:ml-3 pl-2.5 sm:pl-3 border-l border-white/10' : ''}`}>
+    <div className={`relative ${depth > 0 ? 'ml-1.5 sm:ml-3 pl-2.5 sm:pl-3 border-l border-[var(--color-border)]' : ''}`}>
       {hasReplies && (
         <button
           type="button"
           aria-label={collapsed ? 'Expand thread' : 'Collapse thread'}
           onClick={() => toggleCollapsed(comment.id)}
-          className="absolute -left-[11px] sm:-left-[9px] top-2 sm:top-3 w-5 h-5 sm:w-4 sm:h-4 rounded-full bg-[#0f1113] border border-white/25 text-[11px] sm:text-[10px] text-white/60 leading-none flex items-center justify-center hover:border-sky-400/60 hover:text-white z-10 touch-manipulation"
+          className="absolute -left-[11px] sm:-left-[9px] top-2 sm:top-3 w-5 h-5 sm:w-4 sm:h-4 rounded-full bg-[var(--color-background)] border border-[var(--color-border)] text-[11px] sm:text-[10px] text-[var(--color-text-muted)] leading-none flex items-center justify-center hover:border-[var(--color-text-muted)] hover:text-[var(--color-text)] z-10 touch-manipulation"
           style={depth === 0 ? { left: '-2px' } : undefined}
         >
           {collapsed ? '+' : '−'}
@@ -238,7 +238,7 @@ function CommentNode({
       <div className="flex gap-2 sm:gap-2.5 py-1.5 sm:py-2">
         <Link
           to={comment.user?.username ? `/${comment.user.username}/profile` : '#'}
-          className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-white/10 overflow-hidden shrink-0 flex items-center justify-center text-[10px] sm:text-xs mt-0.5"
+          className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-[var(--color-surface-subtle)] overflow-hidden shrink-0 flex items-center justify-center text-[10px] sm:text-xs mt-0.5"
         >
           {comment.user?.avatarUrl ? (
             <img src={comment.user.avatarUrl} alt="" className="w-full h-full object-cover" />
@@ -251,21 +251,21 @@ function CommentNode({
           <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap text-[11px] sm:text-[12px]">
             <Link
               to={comment.user?.username ? `/${comment.user.username}/profile` : '#'}
-              className="font-semibold text-white hover:underline inline-flex items-center gap-1"
+              className="font-medium text-[var(--color-text)] hover:underline inline-flex items-center gap-1"
             >
               {comment.user?.name || 'User'}
               {comment.user?.isVerified && <VerifiedBadge size={10} />}
             </Link>
             {isOp && (
-              <span className="text-[9px] sm:text-[10px] font-bold px-1 sm:px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300">OP</span>
+              <span className="text-[9px] sm:text-[10px] font-medium px-1 sm:px-1.5 py-0.5 rounded bg-[var(--color-theater)]/15 text-[var(--color-theater)]">OP</span>
             )}
-            <span className="text-white/30">·</span>
-            <span className="text-white/40 truncate max-w-[80px] sm:max-w-none">{comment.time}</span>
+            <span className="text-[var(--color-text-muted)]">·</span>
+            <span className="text-[var(--color-text-muted)] truncate max-w-[80px] sm:max-w-none">{comment.time}</span>
           </div>
 
           {!collapsed && (
             <>
-              <MovieMentionText content={comment.content} className="text-[13px] sm:text-[14px] text-white/85 leading-relaxed mt-0.5 sm:mt-1" />
+              <MovieMentionText content={comment.content} className="text-[13px] sm:text-[14px] text-[var(--color-text-secondary)] leading-relaxed mt-0.5 sm:mt-1" />
 
               <div className="flex items-center gap-0.5 sm:gap-1 mt-1 sm:mt-1.5 -ml-1.5 flex-wrap">
                 <button
@@ -273,8 +273,8 @@ function CommentNode({
                   aria-label={voted === 'up' ? 'Remove upvote' : 'Upvote'}
                   disabled={voteBusy}
                   onClick={submitUpvote}
-                  className={`inline-flex items-center gap-0.5 sm:gap-1 px-2 py-1.5 sm:py-1 rounded-full text-[10px] sm:text-[11px] font-semibold hover:bg-[#262C30] disabled:opacity-60 min-h-[40px] sm:min-h-0 touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-green)]/40 ${
-                    voted === 'up' ? 'text-[#FFCC00]' : 'text-[#7C8892] hover:text-[#F2F4F5]'
+                  className={`inline-flex items-center gap-0.5 sm:gap-1 px-2 py-1.5 sm:py-1 rounded-lg text-[10px] sm:text-[11px] font-medium hover:bg-[var(--color-surface-subtle)] disabled:opacity-60 min-h-[40px] sm:min-h-0 touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-theater)]/40 ${
+                    voted === 'up' ? 'text-[var(--color-theater)]' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
                   }`}
                 >
                   <BiUpvote className="text-[14px] sm:text-[15px]" />
@@ -288,10 +288,10 @@ function CommentNode({
                       if (!isAuthenticated) onRequireSignIn?.();
                       else setReplyOpen((o) => !o);
                     }}
-                    className={`inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1.5 sm:py-1 rounded-full text-[10px] sm:text-[11px] font-semibold transition-colors min-h-[40px] sm:min-h-0 touch-manipulation ${
+                    className={`inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1.5 sm:py-1 rounded-lg text-[10px] sm:text-[11px] font-medium transition-colors min-h-[40px] sm:min-h-0 touch-manipulation ${
                       replyOpen
-                        ? 'bg-sky-500/20 text-sky-300'
-                        : 'text-white/60 hover:text-white hover:bg-white/5'
+                        ? 'bg-[var(--color-theater)]/15 text-[var(--color-theater)]'
+                        : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-subtle)]'
                     }`}
                   >
                     <FaRegComment className="text-[10px]" />
@@ -300,7 +300,7 @@ function CommentNode({
                 )}
 
                 {hasReplies && (
-                  <span className="text-[10px] sm:text-[11px] text-white/35 px-0.5 sm:px-1 hidden sm:inline">
+                  <span className="text-[10px] sm:text-[11px] text-[var(--color-text-muted)] px-0.5 sm:px-1 hidden sm:inline">
                     {replies.length} {replies.length === 1 ? 'reply' : 'replies'}
                   </span>
                 )}
@@ -310,8 +310,8 @@ function CommentNode({
                   type="button"
                   aria-expanded={shareOpen}
                   aria-haspopup="menu"
-                  className={`inline-flex items-center gap-0.5 sm:gap-1 px-2 py-1.5 sm:py-1 rounded-full text-[10px] sm:text-[11px] font-semibold transition-colors min-h-[40px] sm:min-h-0 touch-manipulation ${
-                    shareOpen ? 'bg-[#262C30] text-[#F2F4F5]' : 'text-white/40 hover:text-white/70 hover:bg-white/5'
+                  className={`inline-flex items-center gap-0.5 sm:gap-1 px-2 py-1.5 sm:py-1 rounded-lg text-[10px] sm:text-[11px] font-medium transition-colors min-h-[40px] sm:min-h-0 touch-manipulation ${
+                    shareOpen ? 'bg-[var(--color-surface-subtle)] text-[var(--color-text)]' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-subtle)]'
                   }`}
                   onClick={openShareMenu}
                 >
@@ -321,7 +321,7 @@ function CommentNode({
                 {shareOpen && createPortal(
                   <div
                     role="menu"
-                    className="fixed w-48 bg-[#1E2225] border border-[#30363B] rounded-xl shadow-2xl py-1.5 z-[9999]"
+                    className="fixed w-48 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-2xl py-1.5 z-[9999]"
                     style={{ top: menuPos.top, left: menuPos.left }}
                     onClick={(e) => e.stopPropagation()}
                   >
@@ -329,18 +329,18 @@ function CommentNode({
                       type="button"
                       role="menuitem"
                       onClick={handleCopyLink}
-                      className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left text-[13px] text-[#F2F4F5] hover:bg-[#262C30] transition-colors"
+                      className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left text-[13px] text-[var(--color-text)] hover:bg-[var(--color-surface-subtle)] transition-colors"
                     >
-                      <FaLink className="text-[#A8B3BD] text-[12px]" aria-hidden />
+                      <FaLink className="text-[var(--color-text-muted)] text-[12px]" aria-hidden />
                       {copied ? 'Copied!' : 'Copy link'}
                     </button>
                     <button
                       type="button"
                       role="menuitem"
                       onClick={handleEmbed}
-                      className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left text-[13px] text-[#F2F4F5] hover:bg-[#262C30] transition-colors"
+                      className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left text-[13px] text-[var(--color-text)] hover:bg-[var(--color-surface-subtle)] transition-colors"
                     >
-                      <FaCode className="text-[#A8B3BD] text-[12px]" aria-hidden />
+                      <FaCode className="text-[var(--color-text-muted)] text-[12px]" aria-hidden />
                       Embed
                     </button>
                   </div>,
@@ -381,7 +381,7 @@ function CommentNode({
             <button
               type="button"
               onClick={() => toggleCollapsed(comment.id)}
-              className="mt-1 text-[12px] font-semibold text-sky-400 hover:underline"
+              className="mt-1 text-[12px] font-medium text-[var(--color-theater)] hover:underline"
             >
               Show {replies.length} more {replies.length === 1 ? 'reply' : 'replies'}
             </button>
@@ -528,7 +528,7 @@ export default function FeedCommentThread({
           <button
             type="button"
             onClick={openComposer}
-            className="w-full text-left rounded-xl sm:rounded-2xl border border-[#30363B] bg-[#0B0C0D]/45 px-3 sm:px-4 py-3 sm:py-3.5 text-[13px] sm:text-[14px] text-[#7C8892] hover:border-[#3a4248] hover:bg-[#0B0C0D]/65 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-green)]/40 min-h-[48px] touch-manipulation"
+            className="w-full text-left rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 sm:px-4 py-3 sm:py-3.5 text-[13px] sm:text-[14px] text-[var(--color-text-muted)] hover:border-[var(--color-text-muted)]/40 hover:bg-[var(--color-surface)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-theater)]/40 min-h-[48px] touch-manipulation"
           >
             {isAuthenticated ? 'Join the conversation' : 'Sign in to join the conversation'}
           </button>
@@ -541,7 +541,7 @@ export default function FeedCommentThread({
               rows={3}
               placeholder="Join the conversation"
               disabled={!isAuthenticated || busy}
-              className="w-full bg-[#0B0C0D]/45 border border-[#30363B] rounded-xl sm:rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 text-[13px] sm:text-sm text-[#F2F4F5] placeholder:text-[#7C8892] outline-none focus:border-[#3a4248] resize-none disabled:opacity-60"
+              className="w-full bg-[var(--color-background)] border border-[var(--color-border)] rounded-lg px-3 sm:px-4 py-2.5 sm:py-3 text-[13px] sm:text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] outline-none focus:border-[var(--color-theater)]/60 resize-none disabled:opacity-60"
             />
             <div className="flex justify-end gap-2 mt-2">
               <button
@@ -550,14 +550,14 @@ export default function FeedCommentThread({
                   setComposerOpen(false);
                   setText('');
                 }}
-                className="px-3 py-1.5 rounded-full text-xs font-semibold text-[#A8B3BD] hover:bg-[#262C30] hover:text-[#F2F4F5] min-h-[44px] sm:min-h-[36px] touch-manipulation"
+                className="px-3 py-1.5 rounded-lg text-xs font-medium text-[var(--color-text-muted)] hover:bg-[var(--color-surface-subtle)] hover:text-[var(--color-text)] min-h-[44px] sm:min-h-[36px] touch-manipulation"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={busy || !text.trim() || !isAuthenticated}
-                className="px-4 sm:px-3.5 py-1.5 rounded-full bg-sky-600 text-white text-xs font-semibold hover:bg-sky-500 disabled:opacity-40 min-h-[44px] sm:min-h-[36px] touch-manipulation"
+                className="px-4 sm:px-3.5 py-1.5 rounded-lg bg-[var(--color-theater)] text-[var(--color-background)] text-xs font-medium hover:bg-[var(--color-theater)]/90 disabled:opacity-40 min-h-[44px] sm:min-h-[36px] touch-manipulation"
               >
                 {busy ? 'Posting…' : 'Comment'}
               </button>
@@ -568,9 +568,9 @@ export default function FeedCommentThread({
 
       <div className="px-3 sm:px-4 pb-6 sm:pb-8">
         {loading ? (
-          <p className="text-sm text-[#7C8892] py-6 text-center">Loading comments…</p>
+          <p className="text-sm text-[var(--color-text-muted)] py-6 text-center">Loading comments…</p>
         ) : tree.length === 0 ? (
-          <p className="text-sm text-[#7C8892] py-6 text-center">No comments yet. Start the thread.</p>
+          <p className="text-sm text-[var(--color-text-muted)] py-6 text-center">No comments yet. Start the thread.</p>
         ) : (
           tree.map((c) => (
             <CommentNode

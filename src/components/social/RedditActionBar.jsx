@@ -12,7 +12,7 @@ function formatCount(num) {
 }
 
 const pillBase =
-  'inline-flex items-center gap-1 sm:gap-1.5 h-11 sm:h-9 min-h-[44px] sm:min-h-[34px] px-3 sm:px-3.5 rounded-full bg-[#262C30] text-[#F2F4F5]/80 transition-colors hover:bg-[#333A3F] hover:text-[#F2F4F5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-green)]/50 focus-visible:ring-offset-1 focus-visible:ring-offset-[#181C1F] shrink-0 touch-manipulation';
+  'inline-flex items-center gap-1 sm:gap-1.5 h-11 sm:h-9 min-h-[44px] sm:min-h-[34px] px-3 sm:px-3.5 rounded-lg bg-[var(--color-surface-subtle)] text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-border)] hover:text-[var(--color-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-theater)]/50 focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--color-surface)] shrink-0 touch-manipulation';
 
 /**
  * Reddit-style action pills: upvote · comment · share dropdown
@@ -114,7 +114,7 @@ export default function RedditActionBar({
     ? createPortal(
         <div
           role="menu"
-          className="fixed w-48 bg-[#1E2225] border border-[#30363B] rounded-xl shadow-2xl py-1.5 z-[9999]"
+          className="fixed w-48 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-2xl py-1.5 z-[9999]"
           style={{ top: menuPos.top, left: menuPos.left }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -122,36 +122,36 @@ export default function RedditActionBar({
             type="button"
             role="menuitem"
             onClick={handleCopyLink}
-            className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left text-[13px] text-[#F2F4F5] hover:bg-[#262C30] transition-colors"
+            className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left text-[13px] text-[var(--color-text)] hover:bg-[var(--color-surface-subtle)] transition-colors"
           >
-            <FaLink className="text-[#A8B3BD] text-[12px]" aria-hidden />
+            <FaLink className="text-[var(--color-text-muted)] text-[12px]" aria-hidden />
             {copied ? 'Copied!' : 'Copy link'}
           </button>
           <button
             type="button"
             role="menuitem"
             onClick={handleShareToProfile}
-            className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left text-[13px] text-[#F2F4F5] hover:bg-[#262C30] transition-colors"
+            className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left text-[13px] text-[var(--color-text)] hover:bg-[var(--color-surface-subtle)] transition-colors"
           >
-            <FaUserCircle className="text-[#A8B3BD] text-[12px]" aria-hidden />
+            <FaUserCircle className="text-[var(--color-text-muted)] text-[12px]" aria-hidden />
             Share to profile
           </button>
           <button
             type="button"
             role="menuitem"
             onClick={handleRepost}
-            className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left text-[13px] text-[#F2F4F5] hover:bg-[#262C30] transition-colors"
+            className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left text-[13px] text-[var(--color-text)] hover:bg-[var(--color-surface-subtle)] transition-colors"
           >
-            <FaRetweet className="text-[#A8B3BD] text-[13px]" aria-hidden />
+            <FaRetweet className="text-[var(--color-text-muted)] text-[13px]" aria-hidden />
             Repost
           </button>
           <button
             type="button"
             role="menuitem"
             onClick={handleEmbed}
-            className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left text-[13px] text-[#F2F4F5] hover:bg-[#262C30] transition-colors"
+            className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left text-[13px] text-[var(--color-text)] hover:bg-[var(--color-surface-subtle)] transition-colors"
           >
-            <FaCode className="text-[#A8B3BD] text-[12px]" aria-hidden />
+            <FaCode className="text-[var(--color-text-muted)] text-[12px]" aria-hidden />
             Embed
           </button>
         </div>,
@@ -175,11 +175,11 @@ export default function RedditActionBar({
           onUpvote?.(e);
         }}
         className={`${pillBase} ${
-          isUpvoted ? 'text-[#FFCC00] hover:text-[#FFCC00]' : ''
+          isUpvoted ? 'text-[var(--color-theater)] hover:text-[var(--color-theater)]' : ''
         }`}
       >
         <BiUpvote className="text-[16px] sm:text-[16px]" aria-hidden />
-        <span className="text-[12px] sm:text-[13px] font-semibold tabular-nums">{formatCount(score)}</span>
+        <span className="text-[12px] sm:text-[13px] font-medium tabular-nums">{formatCount(score)}</span>
       </button>
 
       <button
@@ -189,7 +189,7 @@ export default function RedditActionBar({
         className={pillBase}
       >
         <FaRegComment className="text-[13px] sm:text-[14px]" aria-hidden />
-        <span className="text-[12px] sm:text-[13px] font-semibold tabular-nums">{formatCount(comments)}</span>
+        <span className="text-[12px] sm:text-[13px] font-medium tabular-nums">{formatCount(comments)}</span>
       </button>
 
       {showShare && (
@@ -201,10 +201,10 @@ export default function RedditActionBar({
             aria-expanded={shareOpen}
             aria-haspopup="menu"
             onClick={openMenu}
-            className={`${pillBase} ${shareOpen ? 'bg-[#333A3F]' : ''}`}
+            className={`${pillBase} ${shareOpen ? 'bg-[var(--color-border)]' : ''}`}
           >
             <FaShare className="text-[12px] sm:text-[13px]" aria-hidden />
-            <span className="text-[12px] sm:text-[13px] font-semibold">Share</span>
+            <span className="text-[12px] sm:text-[13px] font-medium">Share</span>
           </button>
           {menuContent}
         </>

@@ -57,13 +57,13 @@ export default function FeedPostCard({
 
   return (
     <article
-      className={`bg-[#1a1d1f] ${isThread ? 'rounded-none sm:rounded-t-xl border-0' : 'rounded-lg border border-white/5'} overflow-hidden hover:border-white/10 transition-colors ${onOpenThread ? 'cursor-pointer' : ''}`}
+      className={`bg-[var(--color-surface)] ${isThread ? 'rounded-none sm:rounded-t-xl border-0' : 'rounded-lg border border-[var(--color-border)]'} overflow-hidden hover:border-[var(--color-text-muted)]/30 transition-colors ${onOpenThread ? 'cursor-pointer' : ''}`}
       onClick={onOpenThread ? openThread : undefined}
       role={onOpenThread ? 'link' : undefined}
     >
       <div className="flex items-center justify-between p-3 pb-2">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-sm overflow-hidden shrink-0">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-lg bg-[var(--color-surface-subtle)] flex items-center justify-center text-sm overflow-hidden shrink-0">
             {item.user.avatarUrl ? (
               <img src={item.user.avatarUrl} alt="" className="w-full h-full object-cover" />
             ) : (
@@ -73,12 +73,12 @@ export default function FeedPostCard({
           <div>
             <Link
               to={`/${item.user.username}/profile`}
-              className="text-sm font-medium text-white hover:text-[var(--accent-green)] transition-colors inline-flex items-center gap-1"
+              className="text-sm font-medium text-[var(--color-text)] hover:text-[var(--color-theater)] transition-colors inline-flex items-center gap-1"
             >
               {item.user.name}
               {item.user.isVerified && <VerifiedBadge size={14} />}
             </Link>
-            <p className="text-[11px] text-white/40">
+            <p className="text-[11px] text-[var(--color-text-muted)]">
               @{item.user.username} · {item.time}
             </p>
           </div>
@@ -87,7 +87,7 @@ export default function FeedPostCard({
           <div className="relative">
             <button
               onClick={() => onToggleMenu(openMenuId === item.id ? null : item.id)}
-              className="p-1.5 rounded-full hover:bg-white/5 text-white/40 hover:text-white transition-colors"
+              className="p-1.5 rounded-lg hover:bg-[var(--color-surface-subtle)] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
             >
               <FaEllipsisH className="text-xs" />
             </button>
@@ -99,18 +99,18 @@ export default function FeedPostCard({
                   onClick={() => onToggleMenu(null)}
                   aria-label="Close menu"
                 />
-                <div className="absolute right-0 top-8 z-20 w-36 bg-[#222] border border-white/10 rounded-lg shadow-xl overflow-hidden">
+                <div className="absolute right-0 top-8 z-20 w-36 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-xl overflow-hidden">
                   {item.postType !== 'log' && item.postType !== 'list' && (
                     <button
                       onClick={() => onStartEdit(item)}
-                      className="w-full text-left px-3 py-2 text-xs text-white hover:bg-white/10"
+                      className="w-full text-left px-3 py-2.5 text-xs text-[var(--color-text)] hover:bg-[var(--color-surface-subtle)]"
                     >
                       ✏️ Edit
                     </button>
                   )}
                   <button
                     onClick={() => onDelete(item)}
-                    className="w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-red-500/10"
+                    className="w-full text-left px-3 py-2.5 text-xs text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
                   >
                     🗑 Delete
                   </button>
@@ -123,7 +123,7 @@ export default function FeedPostCard({
 
       {item.postType === 'log' && (
         <div className="px-3 pb-1">
-          <span className="inline-block text-[10px] px-2 py-0.5 rounded-full bg-[var(--accent-green)]/15 text-[var(--accent-green)]">
+          <span className="inline-block text-[10px] px-2 py-0.5 rounded-md bg-[var(--color-theater)]/15 text-[var(--color-theater)]">
             🎬 Logged a film
           </span>
         </div>
@@ -132,7 +132,7 @@ export default function FeedPostCard({
         <div className="px-3 pb-1">
           <Link
             to={`/collection/${createSlug(item.movieTitle || '')}`}
-            className="inline-block text-[10px] px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-300 hover:bg-purple-500/25 transition-colors"
+            className="inline-block text-[10px] px-2 py-0.5 rounded-md bg-[var(--color-surface-subtle)] text-[var(--color-text-secondary)] hover:bg-[var(--color-border)] transition-colors"
           >
             📋 New list — view
           </Link>
@@ -146,16 +146,16 @@ export default function FeedPostCard({
             onChange={(e) => onEditTextChange(e.target.value.slice(0, 500))}
             rows={3}
             maxLength={500}
-            className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-[13px] text-white outline-none focus:border-[var(--accent-green)] resize-none"
+            className="w-full bg-[var(--color-background)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-[13px] text-[var(--color-text)] outline-none focus:border-[var(--color-theater)] resize-none"
           />
           <div className="flex items-center justify-end gap-2 mt-2">
-            <button onClick={onCancelEdit} className="px-3 py-1.5 text-xs text-white/60 hover:text-white">
+            <button onClick={onCancelEdit} className="px-3 py-1.5 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
               Cancel
             </button>
             <button
               onClick={() => onSaveEdit(item)}
               disabled={savingEdit || !editText.trim()}
-              className="px-3 py-1.5 text-xs rounded-full bg-[var(--accent-green)] text-black font-semibold disabled:opacity-50"
+              className="px-3 py-1.5 text-xs rounded-lg bg-[var(--color-theater)] text-[var(--color-background)] font-medium disabled:opacity-50"
             >
               {savingEdit ? 'Saving…' : 'Save'}
             </button>
@@ -289,7 +289,7 @@ export default function FeedPostCard({
           />
           <button
             onClick={() => onSave(item.id)}
-            className={`p-2 rounded-full hover:bg-white/5 transition-colors shrink-0 ${item.isSaved ? 'text-yellow-400' : 'text-white/45 hover:text-white'}`}
+            className={`p-2 rounded-lg hover:bg-[var(--color-surface-subtle)] transition-colors shrink-0 ${item.isSaved ? 'text-[var(--color-theater)]' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}`}
             aria-label="Save"
           >
             {item.isSaved ? <FaBookmark className="text-sm" /> : <FaRegBookmark className="text-sm" />}

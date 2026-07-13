@@ -123,14 +123,14 @@ export default function FeedArticleCard({
   };
 
   const arrowBtn =
-    'absolute top-1/2 z-10 -translate-y-1/2 flex h-[34px] w-[34px] min-h-[44px] min-w-[44px] sm:min-h-[34px] sm:min-w-[34px] items-center justify-center rounded-full bg-black/55 text-white/90 backdrop-blur-[2px] border border-white/10 hover:bg-black/70 hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40';
+    'absolute top-1/2 z-10 -translate-y-1/2 flex h-[34px] w-[34px] min-h-[44px] min-w-[44px] sm:min-h-[34px] sm:min-w-[34px] items-center justify-center rounded-lg bg-black/55 text-white/90 border border-white/10 hover:bg-black/70 hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40';
 
   return (
     <article
       className={`${
         isThread
           ? 'bg-transparent rounded-none border-0'
-          : 'bg-[#1a1d1f] rounded-lg border border-white/5 hover:border-white/10'
+          : 'bg-[var(--color-surface)] rounded-lg border border-[var(--color-border)] hover:border-[var(--color-text-muted)]/30'
       } overflow-hidden transition-colors ${onOpenThread ? 'cursor-pointer' : ''}`}
       onClick={onOpenThread ? openThread : undefined}
       role={onOpenThread ? 'link' : undefined}
@@ -144,10 +144,10 @@ export default function FeedArticleCard({
                 <img
                   src={official.avatarUrl}
                   alt=""
-                  className="w-6 h-6 sm:w-7 sm:h-7 rounded-full object-cover border border-[#30363B]"
+                  className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg object-cover border border-[var(--color-border)]"
                 />
               ) : (
-                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center text-[10px] sm:text-xs">
+                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-[var(--color-surface-subtle)] flex items-center justify-center text-[10px] sm:text-xs">
                   📰
                 </div>
               )}
@@ -156,19 +156,19 @@ export default function FeedArticleCard({
               <Link
                 to={`/${official.username}/profile`}
                 data-no-thread
-                className="text-[12px] sm:text-[13px] font-bold text-[#F2F4F5] hover:underline truncate inline-flex items-center gap-1"
+                className="text-[12px] sm:text-[13px] font-medium text-[var(--color-text)] hover:underline truncate inline-flex items-center gap-1"
               >
                 {publisherName}
                 {official.isVerified && <VerifiedBadge size={11} />}
               </Link>
-              <span className="text-[#7C8892] text-[10px] sm:text-[11px]" aria-hidden>·</span>
-              <span className="text-[11px] sm:text-[12px] text-[#7C8892] truncate max-w-[100px] sm:max-w-none">{when}</span>
+              <span className="text-[var(--color-text-muted)] text-[10px] sm:text-[11px]" aria-hidden>·</span>
+              <span className="text-[11px] sm:text-[12px] text-[var(--color-text-muted)] truncate max-w-[100px] sm:max-w-none">{when}</span>
             </div>
           </>
         ) : (
           <>
             <div
-              className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[10px] sm:text-xs overflow-hidden shrink-0 ${item.sourceLogo ? 'bg-white' : 'bg-gradient-to-br from-orange-500 to-amber-500'}`}
+              className={`w-6 h-6 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center text-[10px] sm:text-xs overflow-hidden shrink-0 ${item.sourceLogo ? 'bg-white' : 'bg-[var(--color-surface-subtle)]'}`}
             >
               {item.sourceLogo ? (
                 <img
@@ -178,11 +178,7 @@ export default function FeedArticleCard({
                   loading="lazy"
                   onError={(e) => {
                     e.currentTarget.style.display = 'none';
-                    e.currentTarget.parentElement.classList.add(
-                      'bg-gradient-to-br',
-                      'from-orange-500',
-                      'to-amber-500',
-                    );
+                    e.currentTarget.parentElement.classList.add('bg-amber-600');
                     e.currentTarget.parentElement.classList.remove('bg-white');
                     e.currentTarget.nextSibling.style.display = 'flex';
                   }}
@@ -191,11 +187,11 @@ export default function FeedArticleCard({
               <span className={item.sourceLogo ? 'hidden' : ''}>📰</span>
             </div>
             <div className="min-w-0 flex items-center gap-1 sm:gap-1.5">
-              <span className="text-[12px] sm:text-[13px] font-bold text-[#F2F4F5] truncate">
+              <span className="text-[12px] sm:text-[13px] font-medium text-[var(--color-text)] truncate">
                 {publisherName}
               </span>
-              <span className="text-[#7C8892] text-[10px] sm:text-[11px]" aria-hidden>·</span>
-              <span className="text-[11px] sm:text-[12px] text-[#7C8892] truncate max-w-[100px] sm:max-w-none">{when}</span>
+              <span className="text-[var(--color-text-muted)] text-[10px] sm:text-[11px]" aria-hidden>·</span>
+              <span className="text-[11px] sm:text-[12px] text-[var(--color-text-muted)] truncate max-w-[100px] sm:max-w-none">{when}</span>
             </div>
           </>
         )}
@@ -207,9 +203,9 @@ export default function FeedArticleCard({
           <h3
             className={`${
               isThread
-                ? 'text-[20px] sm:text-[26px] md:text-[28px] lg:text-[30px] font-bold leading-[1.25] tracking-tight'
-                : 'text-[14px] sm:text-[15px] md:text-base font-semibold leading-snug'
-            } text-[#F2F4F5] hover:text-[var(--accent-green)] transition-colors`}
+                ? 'text-[20px] sm:text-[26px] md:text-[28px] lg:text-[30px] font-semibold leading-[1.25] tracking-tight'
+                : 'text-[14px] sm:text-[15px] md:text-base font-medium leading-snug'
+            } text-[var(--color-text)] hover:text-[var(--color-theater)] transition-colors`}
           >
             {item.title}
           </h3>
@@ -218,7 +214,7 @@ export default function FeedArticleCard({
             href={externalUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="block text-[14px] sm:text-[15px] md:text-base font-semibold text-[#F2F4F5] leading-snug hover:text-[var(--accent-green)] transition-colors"
+            className="block text-[14px] sm:text-[15px] md:text-base font-medium text-[var(--color-text)] leading-snug hover:text-[var(--color-theater)] transition-colors"
           >
             {item.title}
           </a>
@@ -226,9 +222,9 @@ export default function FeedArticleCard({
           <h3
             className={`${
               isThread
-                ? 'text-[20px] sm:text-[26px] md:text-[28px] lg:text-[30px] font-bold leading-[1.25] tracking-tight'
-                : 'text-[14px] sm:text-[15px] md:text-base font-semibold leading-snug'
-            } text-[#F2F4F5]`}
+                ? 'text-[20px] sm:text-[26px] md:text-[28px] lg:text-[30px] font-semibold leading-[1.25] tracking-tight'
+                : 'text-[14px] sm:text-[15px] md:text-base font-medium leading-snug'
+            } text-[var(--color-text)]`}
           >
             {item.title}
           </h3>
@@ -260,8 +256,8 @@ export default function FeedArticleCard({
                     </div>
                   )
                 ) : (
-                  <div className={`${isThread ? 'min-h-[200px] rounded-2xl' : 'aspect-video'} bg-gradient-to-br from-[#1f2428] to-[#14181c] flex items-center justify-center px-6`}>
-                    <p className="font-article-display text-xl sm:text-2xl text-white/70 text-center leading-snug line-clamp-3">
+                  <div className={`${isThread ? 'min-h-[200px] rounded-xl' : 'aspect-video'} bg-[var(--color-surface-subtle)] flex items-center justify-center px-6`}>
+                    <p className="text-xl sm:text-2xl text-[var(--color-text-secondary)] text-center leading-snug line-clamp-3">
                       {item.title}
                     </p>
                   </div>
@@ -272,17 +268,17 @@ export default function FeedArticleCard({
                 isThread && s.entry.imageUrl ? (
                   <div className="relative">
                     <RedditMediaFrame src={s.entry.imageUrl} alt={s.entry.title} mode="adaptive" />
-                    <div className="absolute inset-x-0 bottom-0 z-10 p-4 rounded-b-2xl bg-gradient-to-t from-black/90 via-black/40 to-transparent pointer-events-none">
-                      <p className="text-[11px] sm:text-xs font-medium tracking-[0.14em] uppercase text-amber-400/90 mb-1.5">
+                    <div className="absolute inset-x-0 bottom-0 z-10 p-4 rounded-b-xl bg-gradient-to-t from-black/90 via-black/40 to-transparent pointer-events-none">
+                      <p className="text-[11px] sm:text-xs font-medium tracking-[0.14em] uppercase text-[var(--color-theater)] mb-1.5">
                         {s.entry.index} / {s.entry.total}
                       </p>
-                      <h4 className="font-article-display text-[22px] sm:text-[28px] text-white leading-tight tracking-[-0.02em]">
+                      <h4 className="text-[22px] sm:text-[28px] text-white leading-tight tracking-[-0.02em]">
                         {s.entry.title}
                       </h4>
                     </div>
                   </div>
                 ) : (
-                  <div className="relative aspect-video overflow-hidden bg-[#0e1215]">
+                  <div className="relative aspect-video overflow-hidden bg-[var(--color-background)]">
                     {s.entry.imageUrl ? (
                       <img
                         src={s.entry.imageUrl}
@@ -292,14 +288,14 @@ export default function FeedArticleCard({
                         onError={(e) => { e.currentTarget.style.opacity = '0.2'; }}
                       />
                     ) : (
-                      <div className="absolute inset-0 bg-gradient-to-br from-[#1a2228] to-[#0e1215]" />
+                      <div className="absolute inset-0 bg-[var(--color-surface-subtle)]" />
                     )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/35 to-black/10" />
                     <div className="absolute inset-x-0 bottom-0 p-4 sm:p-5">
-                      <p className="text-[11px] sm:text-xs font-medium tracking-[0.14em] uppercase text-amber-400/90 mb-1.5">
+                      <p className="text-[11px] sm:text-xs font-medium tracking-[0.14em] uppercase text-[var(--color-theater)] mb-1.5">
                         {s.entry.index} / {s.entry.total}
                       </p>
-                      <h4 className="font-article-display text-[26px] sm:text-[34px] text-white leading-tight tracking-[-0.02em]">
+                      <h4 className="text-[26px] sm:text-[34px] text-white leading-tight tracking-[-0.02em]">
                         {s.entry.title}
                       </h4>
                     </div>
@@ -308,15 +304,15 @@ export default function FeedArticleCard({
               )}
 
               {s.kind === 'prose' && (
-                <div className={`${isThread ? 'min-h-[220px] max-h-[420px] rounded-2xl' : 'aspect-video'} bg-gradient-to-b from-[#1a1f24] via-[#14191e] to-[#0f1317] px-11 sm:px-14 pt-5 sm:pt-6 pb-9 flex flex-col overflow-hidden`}>
-                  <p className="text-[10px] sm:text-[11px] font-semibold tracking-[0.16em] uppercase text-[#7C8892] mb-2.5 shrink-0">
+                <div className={`${isThread ? 'min-h-[220px] max-h-[420px] rounded-xl' : 'aspect-video'} bg-[var(--color-surface-subtle)] px-11 sm:px-14 pt-5 sm:pt-6 pb-9 flex flex-col overflow-hidden`}>
+                  <p className="text-[10px] sm:text-[11px] font-medium tracking-[0.16em] uppercase text-[var(--color-text-muted)] mb-2.5 shrink-0">
                     Summary
                   </p>
                   <div className="min-h-0 flex-1 overflow-y-auto scrollbar-hide pr-0.5">
                     {proseBlocks.map((p, i) => (
                       <p
                         key={i}
-                        className={`text-[14px] sm:text-[15.5px] text-[#F2F4F5]/90 leading-[1.65] tracking-[0.01em] ${i > 0 ? 'mt-3.5' : ''}`}
+                        className={`text-[14px] sm:text-[15.5px] text-[var(--color-text-secondary)] leading-[1.65] tracking-[0.01em] ${i > 0 ? 'mt-3.5' : ''}`}
                       >
                         {p}
                       </p>
@@ -359,12 +355,12 @@ export default function FeedArticleCard({
                     aria-label={`Go to slide ${i + 1}`}
                     onClick={() => goTo(i)}
                     className={`h-1.5 rounded-full transition-all shrink-0 pointer-events-auto ${
-                      slide === i ? 'w-3.5 bg-white' : 'w-1.5 bg-[#7C8892] hover:bg-[#A8B3BD]'
+                      slide === i ? 'w-3.5 bg-white' : 'w-1.5 bg-[var(--color-text-muted)] hover:bg-[var(--color-text-secondary)]'
                     }`}
                   />
                 ))
               ) : (
-                <span className="rounded-full bg-black/55 backdrop-blur-sm px-2.5 py-0.5 text-[10px] text-white/85 border border-white/10 pointer-events-auto">
+                <span className="rounded-lg bg-black/55 px-2.5 py-0.5 text-[10px] text-white/85 border border-white/10 pointer-events-auto">
                   {slide + 1} / {slideCount}
                 </span>
               )}
@@ -393,7 +389,7 @@ export default function FeedArticleCard({
             href={externalUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-[12px] sm:text-[13px] text-[var(--accent-green)] font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-green)]/40 rounded-sm min-h-[44px] sm:min-h-0 touch-manipulation"
+            className="inline-flex items-center gap-1 text-[12px] sm:text-[13px] text-[var(--color-theater)] font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-theater)]/40 rounded-sm min-h-[44px] sm:min-h-0 touch-manipulation"
           >
             Read on {item.sourceName || 'source'}
             <span aria-hidden>↗</span>

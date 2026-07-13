@@ -1,40 +1,53 @@
-/* Import premium fonts - must be at the top */
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600;700;800&display=swap');
+/* Import font - Inter only per design rules */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  /* Letterboxd-inspired dark cinema palette */
-  --primary: #f5c518;
-  --primary-hover: #e4b400;
-  --accent-green: #00c030;
-  --accent-green-dim: rgba(0, 192, 48, 0.15);
-  --bg-primary: #14181c;
-  --bg-secondary: #1c2228;
-  --bg-card: #1c2228;
-  --bg-elevated: #242c34;
-  --text-primary: #ffffff;
-  --text-secondary: #99aabb;
-  --text-muted: #6b7a8a;
-  --border-color: #2c3440;
-  --gradient-gold: linear-gradient(135deg, #f5c518 0%, #e4b400 50%, #d4a400 100%);
-  --glass-bg: rgba(28, 34, 40, 0.85);
-  --glass-border: rgba(255, 255, 255, 0.08);
+  /* TheaterOrStream Design System - Content-first dark palette */
+  
+  /* Backgrounds */
+  --color-background: #0f1115;
+  --color-surface: #171a20;
+  --color-surface-subtle: #1d2129;
+  --color-border: #2a2f39;
+  
+  /* Text */
+  --color-text: #f3f4f6;
+  --color-text-secondary: #c5cad3;
+  --color-text-muted: #9299a6;
+  
+  /* Semantic colors */
+  --color-theater: #f59e0b;
+  --color-stream: #6b7280;
+  --color-positive: #22c55e;
+  --color-danger: #ef4444;
+  
+  /* Legacy aliases (for gradual migration) */
+  --primary: #f59e0b;
+  --primary-hover: #d97706;
+  --accent-green: #f59e0b;
+  --accent-green-dim: rgba(245, 158, 11, 0.15);
+  --bg-primary: #0f1115;
+  --bg-secondary: #171a20;
+  --bg-card: #171a20;
+  --bg-elevated: #1d2129;
+  --text-primary: #f3f4f6;
+  --text-secondary: #c5cad3;
+  --text-muted: #9299a6;
+  --border-color: #2a2f39;
+  
+  /* Tier colors (kept for badges) */
   --tier-bronze: #cd7f32;
   --tier-silver: #c0c0c0;
-  --tier-gold: #f5c518;
+  --tier-gold: #f59e0b;
   --tier-platinum: #e5e4e2;
 }
 
 * {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-}
-
-.font-article-display {
-  font-family: 'Instrument Serif', Georgia, 'Times New Roman', serif;
-  font-weight: 400;
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 body {
@@ -71,40 +84,34 @@ body {
   background: var(--text-muted);
 }
 
-/* Glassmorphism effect */
+/* Header background - subtle solid instead of glass */
 .glass {
-  background: var(--glass-bg);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--glass-border);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
 }
 
-/* Smooth transitions */
+/* Smooth transitions - kept subtle per design rules */
 .transition-smooth {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 160ms ease, border-color 160ms ease, opacity 160ms ease;
 }
 
-/* Gradient text */
+/* Text accent - solid color instead of gradient */
 .text-gradient {
-  background: var(--gradient-gold);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--color-theater);
 }
 
-/* Card hover effects */
+/* Card hover effects - subtle per design rules */
 .card-hover {
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: border-color 160ms ease, background-color 160ms ease;
 }
 
 .card-hover:hover {
-  transform: translateY(-8px) scale(1.02);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  border-color: var(--color-border);
 }
 
-/* Subtle glow effect */
+/* Glow effect - disabled per design rules */
 .glow {
-  box-shadow: 0 0 40px rgba(245, 197, 24, 0.15);
+  /* Removed decorative glow */
 }
 
 /* Feed card entrance — used by the Home feed for smooth Instagram-style item loading */

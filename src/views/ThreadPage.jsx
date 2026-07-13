@@ -217,19 +217,19 @@ export default function ThreadPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0B0C0D] flex items-center justify-center pt-20">
-        <div className="animate-spin w-8 h-8 border-2 border-[var(--accent-green)] border-t-transparent rounded-full" />
+      <div className="min-h-screen bg-[var(--color-background)] flex items-center justify-center pt-20">
+        <div className="animate-spin w-8 h-8 border-2 border-[var(--color-theater)] border-t-transparent rounded-full" />
       </div>
     );
   }
 
   if (!item) {
     return (
-      <div className="min-h-screen bg-[#0B0C0D] flex items-center justify-center pt-20 px-4">
+      <div className="min-h-screen bg-[var(--color-background)] flex items-center justify-center pt-20 px-4">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-[#F2F4F5] mb-2">Thread not found</h2>
-          <p className="text-[#7C8892] text-sm mb-4">This post may be private or no longer available.</p>
-          <Link to="/" className="text-[var(--accent-green)] hover:underline">
+          <h2 className="text-2xl font-semibold text-[var(--color-text)] mb-2">Thread not found</h2>
+          <p className="text-[var(--color-text-muted)] text-sm mb-4">This post may be private or no longer available.</p>
+          <Link to="/" className="text-[var(--color-theater)] hover:underline">
             Back to Home
           </Link>
         </div>
@@ -285,7 +285,7 @@ export default function ThreadPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0B0C0D] pt-16 sm:pt-20 pb-12 sm:pb-16">
+    <div className="min-h-screen bg-[var(--color-background)] pt-16 sm:pt-20 pb-12 sm:pb-16">
       <SeoHead
         title={item.title || item.content?.slice(0, 60) || 'Thread'}
         description={item.summary || item.content || 'Discussion on TheaterOrStream'}
@@ -298,16 +298,16 @@ export default function ThreadPage() {
           <div className="flex items-center gap-2 sm:gap-2.5 px-3 sm:px-4 py-2 sm:py-2.5">
             <Link
               to="/"
-              className="w-11 h-11 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-[#A8B3BD] hover:bg-[#262C30] hover:text-[#F2F4F5] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-green)]/40 shrink-0"
+              className="w-11 h-11 sm:w-9 sm:h-9 rounded-lg flex items-center justify-center text-[var(--color-text-muted)] hover:bg-[var(--color-surface-subtle)] hover:text-[var(--color-text)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-theater)]/40 shrink-0"
               aria-label="Back to feed"
             >
               <FaArrowLeft className="text-[14px]" />
             </Link>
             <div className="min-w-0 flex-1">
-              <h1 className="text-[14px] sm:text-[16px] font-bold text-[#F2F4F5] leading-tight truncate">
+              <h1 className="text-[14px] sm:text-[16px] font-semibold text-[var(--color-text)] leading-tight truncate">
                 TheaterOrStream
               </h1>
-              <p className="text-[10px] sm:text-[11px] text-[#7C8892] leading-tight mt-0.5">
+              <p className="text-[10px] sm:text-[11px] text-[var(--color-text-muted)] leading-tight mt-0.5">
                 {item.comments || 0} {(item.comments || 0) === 1 ? 'comment' : 'comments'}
               </p>
             </div>
