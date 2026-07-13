@@ -20,16 +20,16 @@
   --color-text-muted: #9299a6;
   
   /* Semantic colors */
-  --color-theater: #f59e0b;
+  --color-theater: #f5c518;
   --color-stream: #6b7280;
   --color-positive: #22c55e;
   --color-danger: #ef4444;
   
   /* Legacy aliases (for gradual migration) */
-  --primary: #f59e0b;
-  --primary-hover: #d97706;
-  --accent-green: #f59e0b;
-  --accent-green-dim: rgba(245, 158, 11, 0.15);
+  --primary: #f5c518;
+  --primary-hover: #e4b400;
+  --accent-green: #f5c518;
+  --accent-green-dim: rgba(245, 197, 24, 0.15);
   --bg-primary: #0f1115;
   --bg-secondary: #171a20;
   --bg-card: #171a20;
@@ -42,7 +42,7 @@
   /* Tier colors (kept for badges) */
   --tier-bronze: #cd7f32;
   --tier-silver: #c0c0c0;
-  --tier-gold: #f59e0b;
+  --tier-gold: #f5c518;
   --tier-platinum: #e5e4e2;
 }
 
