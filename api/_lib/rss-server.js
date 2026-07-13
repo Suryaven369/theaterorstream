@@ -1094,20 +1094,32 @@ async function finalizeArticleApproval(supabase, article, { regenerateOnly = fal
             }
         }
 
-        const { summarizeArticleForFeed, parseSummaryForDisplay } = await import('../../src/lib/articleSummary.js');
+        const { summarizeArticleForFeed, parseSummaryForDisplay, isListicleArticle, isReasonBasedListicle } = await import('../../src/lib/articleSummary.js');
         // If we have a full page body with headings, ignore prior RSS/quiz summary text.
         const useRssSummary = /<h[2-4]\b/i.test(bodyHtml) ? '' : (article.summary || '');
+        
+        // Debug logging for listicle detection
+        const hasH2Headings = (bodyHtml.match(/<h[2-4]/gi) || []).length;
+        const isListicle = isListicleArticle(article.title, bodyHtml);
+        const isReasonBased = isReasonBasedListicle(article.title);
+        console.log(`[rss] Article "${article.title.slice(0, 50)}...": h2-h4 count=${hasH2Headings}, isListicle=${isListicle}, isReasonBased=${isReasonBased}, bodyLen=${bodyHtml.length}`);
+        
         const feedSummary = summarizeArticleForFeed({
             title: article.title,
             summary: useRssSummary,
             bodyHtml,
         });
         if (feedSummary) updates.summary = feedSummary;
+        
+        console.log(`[rss] Feed summary (first 200 chars): ${(feedSummary || '').slice(0, 200).replace(/\n/g, ' | ')}`);
 
         const parsed = parseSummaryForDisplay(feedSummary || '');
+        console.log(`[rss] Parsed kind=${parsed.kind}, items=${parsed.items?.length || 0}`);
+        
         if (parsed.kind === 'list' && parsed.items.length >= 2) {
             const { buildListicleSummaryItems } = await import('./listicle-media.js');
             const summaryItems = await buildListicleSummaryItems(parsed.items, bodyHtml);
+            console.log(`[rss] Built ${summaryItems?.length || 0} summary items, images: ${summaryItems?.filter(i => i.imageUrl).length || 0}`);
             updates.summary_items = summaryItems;
         } else {
             updates.summary_items = null;

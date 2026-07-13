@@ -6,6 +6,28 @@ Session log for production architecture Phase 1 work (DB-first performance + Ver
 
 ---
 
+## Session: Jul 14, 2026 — Listicle Carousel Integration
+
+### Integrated listicle carousel extraction into News Intelligence publisher ✅
+
+**Problem:** Articles like "5 Reasons Why..." weren't displaying as carousels in the home feed. The carousel system existed in `FeedArticleCard.jsx` but News Intelligence publishing wasn't extracting `summary_items`.
+
+**Files changed:**
+- `api/_lib/news-publisher.js` — Added:
+  - Imports for `isListicleArticle`, `parseSummaryForDisplay`, `buildListicleSummaryItems`
+  - `extractListicleSummaryItems()` helper function
+  - Updated `autoPublishCluster()` to extract and store carousel items
+  - Updated `manualPublishCluster()` with same logic
+  - Added `hasCarousel` and `carouselItems` to return values and logs
+- `api/admin/[action].js` — Added `reextract-listicles` job to re-process existing approved articles without carousel data
+
+**Behavior:** 
+- When articles are published via News Intelligence, listicles automatically get carousel items
+- Carousel shows: cover image → numbered list items with images (from article or TMDB posters)
+- Admin can run `reextract-listicles` to backfill existing articles
+
+---
+
 ## Session: Jul 14, 2026 — News Intelligence Fixes & Google Trends Integration
 
 ### Fixed admin authentication for News Intel page ✅

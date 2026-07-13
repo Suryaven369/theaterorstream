@@ -528,6 +528,73 @@ async function handleRss(req, res, auth) {
         return res.status(200).json({ ok: true, clusters, count: clusters.length });
     }
 
+    // Re-extract listicle carousel items for approved articles without summary_items
+    if (job === 'reextract-listicles') {
+        const supabase = getSupabaseAdmin();
+        const { isListicleArticle, parseSummaryForDisplay } = await import('../../src/lib/articleSummary.js');
+        const { buildListicleSummaryItems } = await import('../_lib/listicle-media.js');
+        
+        const limit = body.limit || 20;
+        
+        // Find approved articles without summary_items that look like listicles
+        const { data: articles, error } = await supabase
+            .from('feed_articles')
+            .select('id, title, summary, body_html')
+            .eq('status', 'approved')
+            .eq('is_active', true)
+            .is('summary_items', null)
+            .order('published_at', { ascending: false })
+            .limit(limit);
+        
+        if (error) {
+            return res.status(500).json({ error: error.message });
+        }
+        
+        const results = { processed: 0, extracted: 0, skipped: 0, errors: [], details: [] };
+        
+        for (const article of articles || []) {
+            results.processed++;
+            try {
+                if (!isListicleArticle(article.title, article.summary)) {
+                    results.skipped++;
+                    continue;
+                }
+                
+                const parsed = parseSummaryForDisplay(article.summary || '');
+                if (parsed.kind !== 'list' || parsed.items.length < 2) {
+                    results.skipped++;
+                    continue;
+                }
+                
+                const summaryItems = await buildListicleSummaryItems(parsed.items, article.body_html || '');
+                if (!summaryItems || summaryItems.length < 2) {
+                    results.skipped++;
+                    continue;
+                }
+                
+                const { error: updateErr } = await supabase
+                    .from('feed_articles')
+                    .update({ summary_items: summaryItems })
+                    .eq('id', article.id);
+                
+                if (updateErr) {
+                    results.errors.push({ id: article.id, title: article.title, error: updateErr.message });
+                } else {
+                    results.extracted++;
+                    results.details.push({ 
+                        id: article.id, 
+                        title: article.title.slice(0, 60), 
+                        items: summaryItems.length 
+                    });
+                }
+            } catch (err) {
+                results.errors.push({ id: article.id, title: article.title, error: err.message });
+            }
+        }
+        
+        return res.status(200).json({ ok: true, ...results });
+    }
+
     return res.status(400).json({
         error: 'Invalid job',
         allowed: [

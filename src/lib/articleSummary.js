@@ -211,12 +211,19 @@ export function titleLooksLikeListicle(title = '') {
     return /\b(top\s+\d+|\d+\s+(best|greatest|great|scariest|worst|essential|forgotten|underrated|perfect)|best\s+\d+|ranked|rankings?|must[- ]see|watchlist|listicle|our\s+picks|the\s+list|hidden\s+gems?|best\s+(shows?|series|movies|films)|shows?\s+to\s+watch|series\s+(to|you\s+should)|which\s+.+\s+are\s+you)\b/i.test(t);
 }
 
+/** Detect "reasons/ways/facts" type listicles that need full heading extraction. */
+export function isReasonBasedListicle(title = '') {
+    const t = String(title || '').toLowerCase();
+    return /\b\d+\s+(reasons?|ways?|facts?|things?|tips?|steps?|signs?|secrets?|mistakes?|lessons?|rules?|truths?|problems?|actors?|movies?|films?|shows?|characters?|scenes?|moments?|episodes?)\b/i.test(t);
+}
+
 /**
  * Detect real listicles. Genre words alone (sci-fi, dystopian) must NOT match —
  * news pieces like "Ridley Scott Sci-Fi Movie Alien Covenant Is Leaving…" are prose.
  */
 export function isListicleArticle(title = '', text = '') {
     if (titleLooksLikeListicle(title)) return true;
+    if (isReasonBasedListicle(title)) return true;
     const hay = String(text || '').slice(0, 500).toLowerCase();
     // Body can confirm ranking language, but never genre-only keywords.
     return /\b(top\s+\d+|\d+\s+(best|greatest|great|scariest|worst|essential|forgotten|underrated)|ranked|rankings?|listicle|our\s+picks|the\s+list|hidden\s+gems?)\b/i.test(hay);
@@ -288,6 +295,29 @@ function extractListItemsFromText(text) {
 const SKIP_LISTICLE_HEADINGS =
     /^(cast|crew|shorts|subscribe|follow us|about|contact|legal|explore|what to watch|related|more stories|share|comments?|newsletter|trending|latest|recommended|sources?|see also|watch on|where to watch|faq|recap)$/i;
 
+/**
+ * Extract full headings for reason-based listicles (not movie titles).
+ * More liberal: allows longer text, sentences, and non-Title-Case.
+ */
+function extractFullHeadings(bodyHtml, maxItems = LISTICLE_MAX_ITEMS) {
+    if (!bodyHtml) return [];
+    const items = [];
+    const re = /<h([2-4])\b[^>]*>([\s\S]*?)<\/h\1>/gi;
+    let m;
+    while ((m = re.exec(bodyHtml)) !== null) {
+        let raw = stripHtmlToText(m[2]).trim();
+        if (!raw || raw.length < 2 || raw.length > 150) continue;
+        if (SKIP_LISTICLE_HEADINGS.test(raw)) continue;
+        // Strip leading numbers like "1. " or "#1 "
+        raw = raw.replace(/^[\d#.)\-\s]+/, '').trim();
+        if (raw && raw.length >= 2) {
+            items.push(raw);
+        }
+        if (items.length >= maxItems) break;
+    }
+    return items;
+}
+
 function extractHeadingCandidates(bodyHtml) {
     if (!bodyHtml) return [];
     const withYears = [];
@@ -334,17 +364,32 @@ function dedupeTitles(items) {
 }
 
 /**
- * Listicle summary = numbered movie/show titles only (no intro / no blurbs).
+ * Listicle summary = numbered entries (movie titles OR full headings for reasons).
  * Prefers Collider-style h2/h3 headings ('Show' (year)) over quiz lists.
+ * For "N reasons/ways/facts" articles, extracts full headings instead of just titles.
  */
 export function summarizeListicle({ title = '', summary = '', bodyHtml = '' } = {}) {
     const cleanedHtml = stripQuizBlocks(bodyHtml);
     const plain = mergeSourceText({ title, summary, bodyHtml: cleanedHtml });
+    const titleIsList = titleLooksLikeListicle(title);
+    const isReasonBased = isReasonBasedListicle(title);
+    
+    // For reason-based listicles ("5 Reasons Why..."), extract full headings
+    if (isReasonBased) {
+        const fullHeadings = extractFullHeadings(cleanedHtml);
+        if (fullHeadings.length >= 2) {
+            const items = dedupeTitles(fullHeadings);
+            if (items.length >= 2) {
+                return items.map((it, i) => `${i + 1}) ${it}`).join('\n');
+            }
+        }
+    }
+    
+    // For movie/show listicles, use restrictive title extraction
     const fromHeadings = extractHeadingCandidates(cleanedHtml);
     const fromHtml = extractListItemsFromHtml(cleanedHtml);
     const fromText = extractListItemsFromText(plain);
     const fromTags = extractTaggedTitlesFromHtml(cleanedHtml);
-    const titleIsList = titleLooksLikeListicle(title);
 
     // Prefer structural list signals. Bold/italic title spam is only trusted when
     // the headline itself is clearly a Top-N / ranked listicle.
@@ -411,7 +456,7 @@ export function takeSentencesByWordCount(text, minWords = ARTICLE_SUMMARY_MIN_WO
 
 /**
  * Parse a stored summary into structured blocks for the feed carousel UI.
- * Listicles expose movie/show titles only — quiz blurbs are dropped or salvaged.
+ * Listicles expose movie/show titles OR full reason text.
  */
 export function parseSummaryForDisplay(summary) {
     const raw = String(summary || '').trim();
@@ -424,16 +469,31 @@ export function parseSummaryForDisplay(summary) {
     const lines = normalized.split(/\n+/).map((l) => l.trim()).filter(Boolean);
     const listLines = lines.filter((l) => /^\d+[.)]\s+/.test(l));
 
-    if (listLines.length >= 3) {
-        const items = dedupeTitles(
+    if (listLines.length >= 2) {
+        // First try restrictive movie-title extraction
+        const movieTitleItems = dedupeTitles(
             listLines
                 .map((l) => resolveListEntry(l.replace(/^\d+[.)]\s+/, '')))
                 .filter(Boolean),
         );
-        // Need real film/show names — never show "You're drawn to…" as a list.
-        if (items.length >= 2) {
-            return { kind: 'list', intro: '', items, paragraphs: [] };
+        
+        if (movieTitleItems.length >= 2) {
+            return { kind: 'list', intro: '', items: movieTitleItems, paragraphs: [] };
         }
+        
+        // Fallback: keep full text for reason-based listicles (sentences are OK)
+        const fullTextItems = listLines
+            .map((l) => {
+                const text = l.replace(/^\d+[.)]\s+/, '').trim();
+                // Basic cleanup but keep full text
+                return normalizeProseText(text);
+            })
+            .filter((t) => t && t.length >= 5 && t.length <= 200);
+        
+        if (fullTextItems.length >= 2) {
+            return { kind: 'list', intro: '', items: fullTextItems, paragraphs: [] };
+        }
+        
         return { kind: 'empty', intro: '', items: [], paragraphs: [] };
     }
 

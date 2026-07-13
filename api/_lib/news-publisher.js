@@ -6,10 +6,13 @@
  * - Review queue for medium-score stories
  * - Archive for low-score or stale stories
  * - Original headline generation to avoid plagiarism
+ * - Listicle carousel extraction for "Top N" / "X Reasons" articles
  */
 
 import { getSupabaseAdmin } from './supabase-admin.js';
 import { getTrendScoreBreakdown, getPublishReadyClusters, getReviewQueueClusters } from './news-trending.js';
+import { isListicleArticle, parseSummaryForDisplay } from '../../src/lib/articleSummary.js';
+import { buildListicleSummaryItems } from './listicle-media.js';
 
 // Publishing thresholds
 const THRESHOLDS = {
@@ -43,6 +46,34 @@ function getMistralKey() {
 
 function getGeminiKey() {
     return process.env.GEMINI_API_KEY;
+}
+
+/**
+ * Extract listicle carousel items (cover + numbered entries with images)
+ * Returns null for non-listicle articles
+ */
+async function extractListicleSummaryItems(title, summary, bodyHtml) {
+    try {
+        if (!isListicleArticle(title, summary)) {
+            return null;
+        }
+        
+        const parsed = parseSummaryForDisplay(summary || '');
+        if (parsed.kind !== 'list' || parsed.items.length < 2) {
+            return null;
+        }
+        
+        const items = await buildListicleSummaryItems(parsed.items, bodyHtml || '');
+        if (!items || items.length < 2) {
+            return null;
+        }
+        
+        console.log(`[news-publisher] Extracted ${items.length} listicle items for: ${title.slice(0, 50)}...`);
+        return items;
+    } catch (err) {
+        console.warn('[news-publisher] Listicle extraction failed:', err.message);
+        return null;
+    }
 }
 
 /**
@@ -337,17 +368,31 @@ export async function autoPublishCluster(clusterId) {
     // Generate original headline and summary
     const headline = await generateOriginalHeadline(cluster, sourceArticle);
     const summary = await generateClusterSummary(cluster, sourceArticle);
+    
+    // Extract listicle carousel items if applicable
+    const summaryItems = await extractListicleSummaryItems(
+        headline,
+        summary,
+        sourceArticle.body_html
+    );
 
     // Update source article as the published article
+    const articleUpdate = {
+        status: 'approved',
+        title: headline,
+        summary: summary,
+        is_primary_source: true,
+        updated_at: new Date().toISOString(),
+    };
+    
+    // Add carousel items for listicle articles
+    if (summaryItems) {
+        articleUpdate.summary_items = summaryItems;
+    }
+
     const { error: updateErr } = await supabase
         .from('feed_articles')
-        .update({
-            status: 'approved',
-            title: headline,
-            summary: summary,
-            is_primary_source: true,
-            updated_at: new Date().toISOString(),
-        })
+        .update(articleUpdate)
         .eq('id', sourceArticle.id);
 
     if (updateErr) {
@@ -380,6 +425,8 @@ export async function autoPublishCluster(clusterId) {
             generated_title: headline,
             trend_score: cluster.trend_score,
             article_count: cluster.article_count,
+            has_carousel: !!summaryItems,
+            carousel_items: summaryItems?.length || 0,
         },
         duration_ms: Date.now() - startTime,
     });
@@ -391,6 +438,8 @@ export async function autoPublishCluster(clusterId) {
         headline,
         summary,
         trendScore: cluster.trend_score,
+        hasCarousel: !!summaryItems,
+        carouselItems: summaryItems?.length || 0,
     };
 }
 
@@ -477,17 +526,31 @@ export async function manualPublishCluster(clusterId, options = {}) {
     // Use custom or generate headline/summary
     const headline = customHeadline || await generateOriginalHeadline(cluster, sourceArticle);
     const summary = customSummary || await generateClusterSummary(cluster, sourceArticle);
+    
+    // Extract listicle carousel items if applicable
+    const summaryItems = await extractListicleSummaryItems(
+        headline,
+        summary,
+        sourceArticle.body_html
+    );
 
     // Update source article
+    const articleUpdate = {
+        status: 'approved',
+        title: headline,
+        summary: summary,
+        is_primary_source: true,
+        updated_at: new Date().toISOString(),
+    };
+    
+    // Add carousel items for listicle articles
+    if (summaryItems) {
+        articleUpdate.summary_items = summaryItems;
+    }
+
     const { error: updateErr } = await supabase
         .from('feed_articles')
-        .update({
-            status: 'approved',
-            title: headline,
-            summary: summary,
-            is_primary_source: true,
-            updated_at: new Date().toISOString(),
-        })
+        .update(articleUpdate)
         .eq('id', sourceArticle.id);
 
     if (updateErr) {
@@ -515,6 +578,8 @@ export async function manualPublishCluster(clusterId, options = {}) {
             manual: true,
             original_title: sourceArticle.title,
             trend_score: cluster.trend_score,
+            has_carousel: !!summaryItems,
+            carousel_items: summaryItems?.length || 0,
         },
         duration_ms: Date.now() - startTime,
     });
@@ -525,6 +590,8 @@ export async function manualPublishCluster(clusterId, options = {}) {
         articleId: sourceArticle.id,
         headline,
         summary,
+        hasCarousel: !!summaryItems,
+        carouselItems: summaryItems?.length || 0,
     };
 }
 
