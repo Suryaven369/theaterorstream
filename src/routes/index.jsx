@@ -40,6 +40,7 @@ import TagsDiscoverPage from "../views/TagsDiscoverPage";
 import AdminSectionsPage from "../views/admin/AdminSectionsPage";
 import AdminTrailersPage from "../views/admin/AdminTrailersPage";
 import AdminArticlesPage from "../views/admin/AdminArticlesPage";
+import AdminNewsIntelPage from "../views/admin/AdminNewsIntelPage";
 import AdminCollectionsPage from "../views/admin/AdminCollectionsPage";
 import AdminSettingsPage from "../views/admin/AdminSettingsPage";
 import AdminProfileConnectPage from "../views/admin/AdminProfileConnectPage";
@@ -281,6 +282,10 @@ const router = createBrowserRouter([
           {
             path: "articles",
             element: <AdminArticlesPage />,
+          },
+          {
+            path: "news-intel",
+            element: <AdminNewsIntelPage />,
           },
           {
             path: "collections",

@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from "react-router-dom";
-import { FiHome, FiFilm, FiGrid, FiTag, FiSettings, FiLogOut, FiLayout, FiActivity, FiSearch, FiList, FiVideo, FiRss, FiLink } from "react-icons/fi";
+import { FiHome, FiFilm, FiGrid, FiTag, FiSettings, FiLogOut, FiLayout, FiActivity, FiSearch, FiList, FiVideo, FiRss, FiLink, FiCpu } from "react-icons/fi";
 
 const AdminLayout = () => {
     const location = useLocation();
@@ -12,6 +12,7 @@ const AdminLayout = () => {
         { path: "/admin/sections", label: "Sections", icon: FiLayout },
         { path: "/admin/trailers", label: "Trailers", icon: FiVideo },
         { path: "/admin/articles", label: "Articles", icon: FiRss },
+        { path: "/admin/news-intel", label: "News Intel", icon: FiCpu },
         { path: "/admin/collections", label: "Collections", icon: FiTag },
         { path: "/admin/settings", label: "Settings", icon: FiSettings, exact: true },
         { path: "/admin/settings/profile-connect", label: "Profile Connect", icon: FiLink },

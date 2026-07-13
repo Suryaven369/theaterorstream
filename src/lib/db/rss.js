@@ -271,3 +271,422 @@ export const deleteFeedArticle = async (id) => {
     }
     return { success: true };
 };
+
+// =============================================
+// NEWS INTELLIGENCE SYSTEM
+// =============================================
+
+// --- RSS Source Intelligence Fields ---
+
+export const updateRssSourceIntelligence = async (id, fields) => {
+    const allowed = ['source_type', 'trust_score', 'region', 'language', 'auto_publish_allowed', 'default_category', 'failure_count'];
+    const patch = { updated_at: new Date().toISOString() };
+    allowed.forEach((k) => {
+        if (fields[k] !== undefined) patch[k] = fields[k];
+    });
+
+    const { data, error } = await supabase
+        .from('rss_sources')
+        .update(patch)
+        .eq('id', id)
+        .select();
+
+    if (error) {
+        console.error('Error updating RSS source intelligence fields:', error);
+        return { success: false, error };
+    }
+    return { success: true, data };
+};
+
+// --- Article Classification ---
+
+export const getArticlesPendingClassification = async (limit = 50) => {
+    const { data, error } = await supabase
+        .from('feed_articles')
+        .select('*, rss_sources(name, source_type, trust_score)')
+        .eq('classification_status', 'pending')
+        .eq('status', 'pending')
+        .is('rejection_reason', null)
+        .order('published_at', { ascending: false })
+        .limit(limit);
+
+    if (error) {
+        console.error('Error fetching articles pending classification:', error);
+        return [];
+    }
+    return data || [];
+};
+
+export const updateArticleClassification = async (id, classification) => {
+    const patch = {
+        classification_status: 'completed',
+        classified_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+    };
+
+    // Map classification result fields
+    const fields = [
+        'relevant', 'relevance_score', 'primary_category', 'secondary_categories',
+        'professional_focus_score', 'gossip_probability', 'lifestyle_probability',
+        'controversy_probability', 'rumour_probability', 'clickbait_probability',
+        'article_quality_score', 'verification_level', 'entities_json',
+        'ai_summary', 'ai_main_event', 'ai_why_it_matters', 'model_version'
+    ];
+
+    fields.forEach((k) => {
+        if (classification[k] !== undefined) patch[k] = classification[k];
+    });
+
+    // Handle entities object → entities_json
+    if (classification.entities && !classification.entities_json) {
+        patch.entities_json = classification.entities;
+    }
+
+    const { data, error } = await supabase
+        .from('feed_articles')
+        .update(patch)
+        .eq('id', id)
+        .select();
+
+    if (error) {
+        console.error('Error updating article classification:', error);
+        return { success: false, error };
+    }
+    return { success: true, data };
+};
+
+export const updateArticleKeywordScores = async (id, positiveScore, negativeScore, rejectionReason = null) => {
+    const patch = {
+        positive_keyword_score: positiveScore,
+        negative_keyword_score: negativeScore,
+        updated_at: new Date().toISOString(),
+    };
+
+    if (rejectionReason) {
+        patch.rejection_reason = rejectionReason;
+        patch.classification_status = 'skipped';
+    }
+
+    const { error } = await supabase
+        .from('feed_articles')
+        .update(patch)
+        .eq('id', id);
+
+    if (error) {
+        console.error('Error updating article keyword scores:', error);
+        return { success: false, error };
+    }
+    return { success: true };
+};
+
+export const getClassifiedArticles = async (filters = {}, limit = 50) => {
+    let query = supabase
+        .from('feed_articles')
+        .select('*, rss_sources(name, logo_url, source_type, trust_score)')
+        .eq('classification_status', 'completed')
+        .order('classified_at', { ascending: false })
+        .limit(limit);
+
+    if (filters.minRelevance) {
+        query = query.gte('relevance_score', filters.minRelevance);
+    }
+    if (filters.maxGossip) {
+        query = query.lte('gossip_probability', filters.maxGossip);
+    }
+    if (filters.category) {
+        query = query.eq('primary_category', filters.category);
+    }
+    if (filters.clusterId) {
+        query = query.eq('cluster_id', filters.clusterId);
+    }
+    if (filters.unclustered) {
+        query = query.is('cluster_id', null);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+        console.error('Error fetching classified articles:', error);
+        return [];
+    }
+    return data || [];
+};
+
+// --- Story Clusters ---
+
+export const getStoryClusters = async (status = 'active', limit = 50) => {
+    const { data, error } = await supabase
+        .from('news_story_clusters')
+        .select('*')
+        .eq('status', status)
+        .order('trend_score', { ascending: false })
+        .limit(limit);
+
+    if (error) {
+        console.error('Error fetching story clusters:', error);
+        return [];
+    }
+    return data || [];
+};
+
+export const getClusterWithArticles = async (clusterId) => {
+    const { data: cluster, error: clusterError } = await supabase
+        .from('news_story_clusters')
+        .select('*')
+        .eq('id', clusterId)
+        .single();
+
+    if (clusterError) {
+        console.error('Error fetching cluster:', clusterError);
+        return null;
+    }
+
+    const { data: articles, error: articlesError } = await supabase
+        .from('feed_articles')
+        .select('*, rss_sources(name, logo_url, trust_score)')
+        .eq('cluster_id', clusterId)
+        .order('is_primary_source', { ascending: false })
+        .order('published_at', { ascending: false });
+
+    if (articlesError) {
+        console.error('Error fetching cluster articles:', articlesError);
+    }
+
+    return { ...cluster, articles: articles || [] };
+};
+
+export const createStoryCluster = async (cluster) => {
+    const { data, error } = await supabase
+        .from('news_story_clusters')
+        .insert({
+            canonical_title: cluster.canonical_title,
+            main_event: cluster.main_event,
+            primary_category: cluster.primary_category,
+            event_type: cluster.event_type,
+            entities_json: cluster.entities_json || {},
+            first_seen_at: cluster.first_seen_at || new Date().toISOString(),
+            last_seen_at: new Date().toISOString(),
+            article_count: cluster.article_count || 1,
+            trusted_source_count: cluster.trusted_source_count || 0,
+            official_source_count: cluster.official_source_count || 0,
+        })
+        .select()
+        .single();
+
+    if (error) {
+        console.error('Error creating story cluster:', error);
+        return { success: false, error };
+    }
+    return { success: true, data };
+};
+
+export const updateStoryCluster = async (id, fields) => {
+    const allowed = [
+        'canonical_title', 'main_event', 'primary_category', 'event_type',
+        'entities_json', 'last_seen_at', 'article_count', 'trusted_source_count',
+        'official_source_count', 'verification_level', 'trend_score', 'trend_velocity',
+        'peak_trend_score', 'status', 'published_post_id'
+    ];
+    const patch = { updated_at: new Date().toISOString() };
+    allowed.forEach((k) => {
+        if (fields[k] !== undefined) patch[k] = fields[k];
+    });
+
+    const { data, error } = await supabase
+        .from('news_story_clusters')
+        .update(patch)
+        .eq('id', id)
+        .select();
+
+    if (error) {
+        console.error('Error updating story cluster:', error);
+        return { success: false, error };
+    }
+    return { success: true, data };
+};
+
+export const assignArticleToCluster = async (articleId, clusterId, isPrimary = false) => {
+    const { error } = await supabase
+        .from('feed_articles')
+        .update({
+            cluster_id: clusterId,
+            is_primary_source: isPrimary,
+            updated_at: new Date().toISOString(),
+        })
+        .eq('id', articleId);
+
+    if (error) {
+        console.error('Error assigning article to cluster:', error);
+        return { success: false, error };
+    }
+
+    // Update cluster stats via RPC
+    await supabase.rpc('update_cluster_stats', { p_cluster_id: clusterId });
+
+    return { success: true };
+};
+
+export const getTrendingClusters = async (minScore = 45, limit = 20) => {
+    const { data, error } = await supabase
+        .from('news_story_clusters')
+        .select('*')
+        .eq('status', 'active')
+        .gte('trend_score', minScore)
+        .order('trend_score', { ascending: false })
+        .limit(limit);
+
+    if (error) {
+        console.error('Error fetching trending clusters:', error);
+        return [];
+    }
+    return data || [];
+};
+
+// --- Keyword Dictionaries ---
+
+export const getKeywordDictionaries = async (category = null) => {
+    let query = supabase
+        .from('news_keyword_dictionaries')
+        .select('*')
+        .eq('is_active', true)
+        .order('category')
+        .order('subcategory')
+        .order('term');
+
+    if (category) {
+        query = query.eq('category', category);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+        console.error('Error fetching keyword dictionaries:', error);
+        return [];
+    }
+    return data || [];
+};
+
+export const createKeyword = async (keyword) => {
+    const { data, error } = await supabase
+        .from('news_keyword_dictionaries')
+        .insert({
+            category: keyword.category,
+            subcategory: keyword.subcategory || null,
+            term: keyword.term.toLowerCase().trim(),
+            weight: keyword.weight || 1,
+            is_phrase: keyword.is_phrase || keyword.term.includes(' '),
+            is_active: true,
+        })
+        .select()
+        .single();
+
+    if (error) {
+        console.error('Error creating keyword:', error);
+        return { success: false, error };
+    }
+    return { success: true, data };
+};
+
+export const updateKeyword = async (id, fields) => {
+    const allowed = ['category', 'subcategory', 'term', 'weight', 'is_phrase', 'is_active'];
+    const patch = { updated_at: new Date().toISOString() };
+    allowed.forEach((k) => {
+        if (fields[k] !== undefined) {
+            patch[k] = k === 'term' ? fields[k].toLowerCase().trim() : fields[k];
+        }
+    });
+
+    const { data, error } = await supabase
+        .from('news_keyword_dictionaries')
+        .update(patch)
+        .eq('id', id)
+        .select();
+
+    if (error) {
+        console.error('Error updating keyword:', error);
+        return { success: false, error };
+    }
+    return { success: true, data };
+};
+
+export const deleteKeyword = async (id) => {
+    const { error } = await supabase
+        .from('news_keyword_dictionaries')
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+        console.error('Error deleting keyword:', error);
+        return { success: false, error };
+    }
+    return { success: true };
+};
+
+export const bulkCreateKeywords = async (keywords) => {
+    const rows = keywords.map((kw) => ({
+        category: kw.category,
+        subcategory: kw.subcategory || null,
+        term: kw.term.toLowerCase().trim(),
+        weight: kw.weight || 1,
+        is_phrase: kw.is_phrase || kw.term.includes(' '),
+        is_active: true,
+    }));
+
+    const { data, error } = await supabase
+        .from('news_keyword_dictionaries')
+        .upsert(rows, { onConflict: 'category,subcategory,term', ignoreDuplicates: true })
+        .select();
+
+    if (error) {
+        console.error('Error bulk creating keywords:', error);
+        return { success: false, error };
+    }
+    return { success: true, data, count: data?.length || 0 };
+};
+
+// --- Processing Logs ---
+
+export const logProcessingStep = async (log) => {
+    const { error } = await supabase
+        .from('news_processing_logs')
+        .insert({
+            article_id: log.article_id || null,
+            cluster_id: log.cluster_id || null,
+            step: log.step,
+            status: log.status,
+            message: log.message || null,
+            metadata_json: log.metadata || null,
+            duration_ms: log.duration_ms || null,
+        });
+
+    if (error) {
+        console.error('Error logging processing step:', error);
+    }
+    return !error;
+};
+
+export const getProcessingLogs = async (filters = {}, limit = 100) => {
+    let query = supabase
+        .from('news_processing_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+    if (filters.articleId) {
+        query = query.eq('article_id', filters.articleId);
+    }
+    if (filters.clusterId) {
+        query = query.eq('cluster_id', filters.clusterId);
+    }
+    if (filters.step) {
+        query = query.eq('step', filters.step);
+    }
+    if (filters.status) {
+        query = query.eq('status', filters.status);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+        console.error('Error fetching processing logs:', error);
+        return [];
+    }
+    return data || [];
+};

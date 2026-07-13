@@ -220,9 +220,325 @@ async function handleRss(req, res, auth) {
         return res.status(200).json({ ok: true, ...result });
     }
 
+    // News Intelligence: Keyword analysis
+    if (job === 'analyze-keywords') {
+        const { analyzeArticle } = await import('../_lib/news-keywords.js');
+        if (!body.text && !body.title) {
+            return res.status(400).json({ error: 'text or title required for analyze-keywords' });
+        }
+        const result = await analyzeArticle(body.title || '', body.text || body.body || '');
+        return res.status(200).json({ ok: true, analysis: result });
+    }
+
+    if (job === 'keyword-stats') {
+        const { getKeywordStats } = await import('../_lib/news-keywords.js');
+        const stats = await getKeywordStats();
+        return res.status(200).json({ ok: true, stats });
+    }
+
+    // News Intelligence: AI Classification
+    if (job === 'classify-article') {
+        const { classifyAndUpdateArticle, getClassifierStatus } = await import('../_lib/news-classifier.js');
+        if (!body.articleId) {
+            return res.status(400).json({ error: 'articleId required for classify-article' });
+        }
+        const result = await classifyAndUpdateArticle(body.articleId);
+        if (!result.success) {
+            return res.status(400).json({ error: result.error || 'Classification failed' });
+        }
+        return res.status(200).json({ ok: true, ...result });
+    }
+
+    if (job === 'classify-text') {
+        const { classifyArticle, getClassifierStatus } = await import('../_lib/news-classifier.js');
+        if (!body.title) {
+            return res.status(400).json({ error: 'title required for classify-text' });
+        }
+        const classification = await classifyArticle({
+            title: body.title,
+            summary: body.summary || body.text || '',
+            body: body.body || '',
+            source_name: body.source_name || 'Test',
+        });
+        if (!classification) {
+            return res.status(400).json({ error: 'Classification failed - check API keys' });
+        }
+        return res.status(200).json({ ok: true, classification });
+    }
+
+    if (job === 'batch-classify') {
+        const { batchClassifyArticles } = await import('../_lib/news-classifier.js');
+        if (!body.articleIds || !Array.isArray(body.articleIds)) {
+            return res.status(400).json({ error: 'articleIds array required for batch-classify' });
+        }
+        const result = await batchClassifyArticles(body.articleIds, {
+            concurrency: body.concurrency || 3,
+        });
+        return res.status(200).json({ ok: true, ...result });
+    }
+
+    if (job === 'classifier-status') {
+        const { getClassifierStatus } = await import('../_lib/news-classifier.js');
+        const status = getClassifierStatus();
+        return res.status(200).json({ ok: true, ...status });
+    }
+
+    if (job === 'pending-classification') {
+        const { getArticlesPendingClassification } = await import('../_lib/news-classifier.js');
+        const articles = await getArticlesPendingClassification(body.limit || 50);
+        return res.status(200).json({ ok: true, articles, count: articles.length });
+    }
+
+    // News Intelligence: Entity Normalization
+    if (job === 'normalize-entities') {
+        const { normalizeAndUpdateArticleEntities } = await import('../_lib/news-entities.js');
+        if (!body.articleId) {
+            return res.status(400).json({ error: 'articleId required for normalize-entities' });
+        }
+        const result = await normalizeAndUpdateArticleEntities(body.articleId);
+        if (!result.success) {
+            return res.status(400).json({ error: result.error || 'Entity normalization failed' });
+        }
+        return res.status(200).json({ ok: true, ...result });
+    }
+
+    if (job === 'normalize-entities-raw') {
+        const { normalizeEntities } = await import('../_lib/news-entities.js');
+        if (!body.entities) {
+            return res.status(400).json({ error: 'entities object required for normalize-entities-raw' });
+        }
+        const normalized = await normalizeEntities(body.entities);
+        return res.status(200).json({ ok: true, normalized });
+    }
+
+    if (job === 'entity-overlap') {
+        const { calculateEntityOverlap } = await import('../_lib/news-entities.js');
+        if (!body.entities1 || !body.entities2) {
+            return res.status(400).json({ error: 'entities1 and entities2 required for entity-overlap' });
+        }
+        const overlap = calculateEntityOverlap(body.entities1, body.entities2);
+        return res.status(200).json({ ok: true, overlap });
+    }
+
+    // News Intelligence: Clustering
+    if (job === 'cluster-article') {
+        const { clusterArticle } = await import('../_lib/news-clustering.js');
+        if (!body.articleId) {
+            return res.status(400).json({ error: 'articleId required for cluster-article' });
+        }
+        const result = await clusterArticle(body.articleId);
+        if (!result.success) {
+            return res.status(400).json({ error: result.error || 'Clustering failed' });
+        }
+        return res.status(200).json({ ok: true, ...result });
+    }
+
+    if (job === 'batch-cluster') {
+        const { batchClusterArticles } = await import('../_lib/news-clustering.js');
+        if (!body.articleIds || !Array.isArray(body.articleIds)) {
+            return res.status(400).json({ error: 'articleIds array required for batch-cluster' });
+        }
+        const result = await batchClusterArticles(body.articleIds);
+        return res.status(200).json({ ok: true, ...result });
+    }
+
+    if (job === 'unclustered-articles') {
+        const { getUnclusteredArticles } = await import('../_lib/news-clustering.js');
+        const articles = await getUnclusteredArticles(body.limit || 50);
+        return res.status(200).json({ ok: true, articles, count: articles.length });
+    }
+
+    if (job === 'get-cluster') {
+        const { getClusterWithArticles } = await import('../_lib/news-clustering.js');
+        if (!body.clusterId) {
+            return res.status(400).json({ error: 'clusterId required for get-cluster' });
+        }
+        const cluster = await getClusterWithArticles(body.clusterId);
+        if (!cluster) {
+            return res.status(404).json({ error: 'Cluster not found' });
+        }
+        return res.status(200).json({ ok: true, cluster });
+    }
+
+    if (job === 'merge-clusters') {
+        const { mergeClusters } = await import('../_lib/news-clustering.js');
+        if (!body.sourceClusterId || !body.targetClusterId) {
+            return res.status(400).json({ error: 'sourceClusterId and targetClusterId required for merge-clusters' });
+        }
+        const result = await mergeClusters(body.sourceClusterId, body.targetClusterId);
+        if (!result.success) {
+            return res.status(400).json({ error: result.error || 'Merge failed' });
+        }
+        return res.status(200).json({ ok: true, ...result });
+    }
+
+    if (job === 'find-duplicate') {
+        const { findExactDuplicate } = await import('../_lib/news-clustering.js');
+        if (!body.title && !body.link) {
+            return res.status(400).json({ error: 'title or link required for find-duplicate' });
+        }
+        const result = await findExactDuplicate({ title: body.title, link: body.link, id: body.excludeId });
+        return res.status(200).json({ ok: true, ...result });
+    }
+
+    if (job === 'title-similarity') {
+        const { calculateTitleSimilarity } = await import('../_lib/news-clustering.js');
+        if (!body.title1 || !body.title2) {
+            return res.status(400).json({ error: 'title1 and title2 required for title-similarity' });
+        }
+        const similarity = calculateTitleSimilarity(body.title1, body.title2);
+        return res.status(200).json({ ok: true, similarity });
+    }
+
+    // News Intelligence: Trend Scoring
+    if (job === 'update-trend-score') {
+        const { updateClusterTrendScore } = await import('../_lib/news-trending.js');
+        if (!body.clusterId) {
+            return res.status(400).json({ error: 'clusterId required for update-trend-score' });
+        }
+        const result = await updateClusterTrendScore(body.clusterId);
+        if (!result.success) {
+            return res.status(400).json({ error: result.error || 'Trend scoring failed' });
+        }
+        return res.status(200).json({ ok: true, ...result });
+    }
+
+    if (job === 'recalculate-all-trends') {
+        const { recalculateAllTrendScores } = await import('../_lib/news-trending.js');
+        const result = await recalculateAllTrendScores();
+        return res.status(200).json({ ok: true, ...result });
+    }
+
+    if (job === 'trending-clusters') {
+        const { getTrendingClusters } = await import('../_lib/news-trending.js');
+        const clusters = await getTrendingClusters({
+            minScore: body.minScore || 0,
+            limit: body.limit || 20,
+            includeArticles: body.includeArticles || false,
+        });
+        return res.status(200).json({ ok: true, clusters, count: clusters.length });
+    }
+
+    if (job === 'publish-ready-clusters') {
+        const { getPublishReadyClusters } = await import('../_lib/news-trending.js');
+        const clusters = await getPublishReadyClusters(body.minScore || 72);
+        return res.status(200).json({ ok: true, clusters, count: clusters.length });
+    }
+
+    if (job === 'review-queue-clusters') {
+        const { getReviewQueueClusters } = await import('../_lib/news-trending.js');
+        const clusters = await getReviewQueueClusters(body.minScore || 45, body.maxScore || 71);
+        return res.status(200).json({ ok: true, clusters, count: clusters.length });
+    }
+
+    if (job === 'trend-breakdown') {
+        const { getTrendScoreBreakdown } = await import('../_lib/news-trending.js');
+        if (!body.clusterId) {
+            return res.status(400).json({ error: 'clusterId required for trend-breakdown' });
+        }
+        const breakdown = await getTrendScoreBreakdown(body.clusterId);
+        if (!breakdown) {
+            return res.status(404).json({ error: 'Cluster not found' });
+        }
+        return res.status(200).json({ ok: true, ...breakdown });
+    }
+
+    if (job === 'archive-stale-clusters') {
+        const { archiveStaleClusters } = await import('../_lib/news-trending.js');
+        const result = await archiveStaleClusters(body.maxAgeHours || 168, body.maxScore || 20);
+        return res.status(200).json({ ok: true, ...result });
+    }
+
+    // News Intelligence: Publishing
+    if (job === 'evaluate-publish') {
+        const { evaluateForAutoPublish } = await import('../_lib/news-publisher.js');
+        if (!body.clusterId) {
+            return res.status(400).json({ error: 'clusterId required for evaluate-publish' });
+        }
+        const result = await evaluateForAutoPublish({ id: body.clusterId });
+        return res.status(200).json({ ok: true, ...result });
+    }
+
+    if (job === 'auto-publish-cluster') {
+        const { autoPublishCluster } = await import('../_lib/news-publisher.js');
+        if (!body.clusterId) {
+            return res.status(400).json({ error: 'clusterId required for auto-publish-cluster' });
+        }
+        const result = await autoPublishCluster(body.clusterId);
+        if (!result.success) {
+            return res.status(400).json({ error: result.error || 'Auto-publish failed' });
+        }
+        return res.status(200).json({ ok: true, ...result });
+    }
+
+    if (job === 'process-publish-ready') {
+        const { processPublishReadyClusters } = await import('../_lib/news-publisher.js');
+        const result = await processPublishReadyClusters();
+        return res.status(200).json({ ok: true, ...result });
+    }
+
+    if (job === 'manual-publish-cluster') {
+        const { manualPublishCluster } = await import('../_lib/news-publisher.js');
+        if (!body.clusterId) {
+            return res.status(400).json({ error: 'clusterId required for manual-publish-cluster' });
+        }
+        const result = await manualPublishCluster(body.clusterId, {
+            customHeadline: body.headline,
+            customSummary: body.summary,
+        });
+        if (!result.success) {
+            return res.status(400).json({ error: result.error || 'Manual publish failed' });
+        }
+        return res.status(200).json({ ok: true, ...result });
+    }
+
+    if (job === 'reject-cluster') {
+        const { rejectCluster } = await import('../_lib/news-publisher.js');
+        if (!body.clusterId) {
+            return res.status(400).json({ error: 'clusterId required for reject-cluster' });
+        }
+        const result = await rejectCluster(body.clusterId, body.reason);
+        if (!result.success) {
+            return res.status(400).json({ error: result.error || 'Reject failed' });
+        }
+        return res.status(200).json({ ok: true, ...result });
+    }
+
+    if (job === 'archive-low-score') {
+        const { archiveLowScoreClusters } = await import('../_lib/news-publisher.js');
+        const result = await archiveLowScoreClusters();
+        return res.status(200).json({ ok: true, ...result });
+    }
+
+    if (job === 'publishing-decision') {
+        const { getPublishingDecision } = await import('../_lib/news-publisher.js');
+        if (!body.clusterId) {
+            return res.status(400).json({ error: 'clusterId required for publishing-decision' });
+        }
+        const result = await getPublishingDecision(body.clusterId);
+        if (!result) {
+            return res.status(404).json({ error: 'Cluster not found' });
+        }
+        return res.status(200).json({ ok: true, ...result });
+    }
+
+    if (job === 'review-queue-detailed') {
+        const { getReviewQueueWithEvaluations } = await import('../_lib/news-publisher.js');
+        const clusters = await getReviewQueueWithEvaluations();
+        return res.status(200).json({ ok: true, clusters, count: clusters.length });
+    }
+
     return res.status(400).json({
         error: 'Invalid job',
-        allowed: ['refresh-source', 'refresh-all', 'approve-article', 'regenerate-summary'],
+        allowed: [
+            'refresh-source', 'refresh-all', 'approve-article', 'regenerate-summary',
+            'analyze-keywords', 'keyword-stats',
+            'classify-article', 'classify-text', 'batch-classify', 'classifier-status', 'pending-classification',
+            'normalize-entities', 'normalize-entities-raw', 'entity-overlap',
+            'cluster-article', 'batch-cluster', 'unclustered-articles', 'get-cluster', 'merge-clusters', 'find-duplicate', 'title-similarity',
+            'update-trend-score', 'recalculate-all-trends', 'trending-clusters', 'publish-ready-clusters', 'review-queue-clusters', 'trend-breakdown', 'archive-stale-clusters',
+            'evaluate-publish', 'auto-publish-cluster', 'process-publish-ready', 'manual-publish-cluster', 'reject-cluster', 'archive-low-score', 'publishing-decision', 'review-queue-detailed'
+        ],
     });
 }
 

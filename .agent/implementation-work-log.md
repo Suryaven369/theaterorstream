@@ -6,6 +6,336 @@ Session log for production architecture Phase 1 work (DB-first performance + Ver
 
 ---
 
+## Session: Jul 2026 — News Intelligence System (Phase 1: Schema)
+
+### Database schema extensions for news intelligence ✅
+
+**Problem:** Need automated editorial filtering for RSS news - reject gossip/lifestyle, classify articles, cluster related stories, score trends, auto-publish quality content.
+
+**Files changed:**
+- `supabase/migrations/20260724000000_news_intelligence_schema.sql` — New migration adding:
+  - `rss_sources` extensions: `source_type`, `trust_score`, `region`, `language`, `auto_publish_allowed`, `default_category`, `failure_count`
+  - `feed_articles` extensions: classification scores (`relevance_score`, `gossip_probability`, `lifestyle_probability`, etc.), entity extraction (`entities_json`), clustering (`cluster_id`, `is_primary_source`), keyword scores, AI metadata
+  - New `news_story_clusters` table for grouping related articles by story
+  - New `news_keyword_dictionaries` table for pre-AI filtering keywords
+  - New `news_processing_logs` table for pipeline audit trail
+  - Helper functions: `get_pending_classification_articles()`, `get_active_clusters_for_trending()`, `update_cluster_stats()`
+  - RLS policies and indexes
+- `src/lib/db/rss.js` — Added 20+ new functions for news intelligence CRUD operations
+- `src/lib/supabase.js` — Exported new news intelligence functions
+
+**Behavior:** Schema ready for Phase 2 (keyword filtering) through Phase 9 (background jobs). Existing RSS pipeline unchanged but extensible.
+
+### Keyword filtering system ✅
+
+**Problem:** Need to pre-filter articles before expensive AI classification to reject obvious gossip/lifestyle content.
+
+**Files changed:**
+- `supabase/migrations/20260724000100_news_keyword_seeds.sql` — Seeded ~320 keywords:
+  - Rejection (~200): relationship (31), lifestyle (37), personal (23), gossip (25), controversy (26), clickbait (29)
+  - Positive (~120): movie_term (33), announcement (23), casting (20), production (31), release (24), industry (21), awards (30)
+  - Category indicators (19) for detecting article types
+- `src/lib/newsKeywords.js` — Frontend keyword service with caching, normalization, scoring
+- `api/_lib/news-keywords.js` — Server-side keyword analysis service
+- `api/_lib/rss-server.js` — Integrated keyword analysis into article approval flow
+- `api/admin/[action].js` — Added `analyze-keywords` and `keyword-stats` admin jobs
+
+**Behavior:**
+- Keyword analysis runs automatically when articles are approved
+- Scores stored in `positive_keyword_score`, `negative_keyword_score` columns
+- Hard rejection rules: negative > 15 + positive < 5, heavy relationship/personal, clickbait > 8
+- Processing logged to `news_processing_logs` table
+- Admin can test keywords via API: `POST /api/admin/rss { job: 'analyze-keywords', title: '...', text: '...' }`
+
+### AI Classification Service ✅
+
+**Problem:** Need LLM-based editorial classification to score articles for relevance, detect gossip/lifestyle content, extract entities, and recommend approve/review/reject actions.
+
+**Files changed:**
+- `api/_lib/news-classifier.js` — New AI classification service:
+  - Editorial system prompt with strict acceptance/rejection criteria
+  - Gemini + Mistral fallback chain
+  - Structured JSON output with 15+ fields
+  - `classifyArticle()` for direct classification
+  - `classifyAndUpdateArticle()` for DB integration
+  - `batchClassifyArticles()` for bulk processing
+  - Processing log integration
+- `api/admin/[action].js` — Added 5 new admin API actions:
+  - `classify-article`: Classify single article by ID
+  - `classify-text`: Test classification on any text
+  - `batch-classify`: Classify multiple articles
+  - `classifier-status`: Check API key availability
+  - `pending-classification`: Get articles awaiting classification
+
+**Classification Output Schema:**
+```json
+{
+  "relevant": boolean,
+  "relevance_score": 0-100,
+  "primary_category": "casting_news|production_update|release_announcement|...",
+  "professional_focus_score": 0-100,
+  "gossip_probability": 0.00-1.00,
+  "lifestyle_probability": 0.00-1.00,
+  "entities": { movies: [], people: [], studios: [], ... },
+  "main_event": "One sentence summary",
+  "recommended_action": "approve|review|reject"
+}
+```
+
+**Behavior:**
+- Uses Gemini 2.0 Flash by default (fast, cheap)
+- Falls back to Mistral if Gemini unavailable
+- Low temperature (0.1) for consistent classification
+- Results stored in feed_articles columns
+- Processing logged to news_processing_logs
+
+### Entity Extraction and Normalization ✅
+
+**Problem:** Need to normalize entities from AI classification — match movies to TMDB IDs, standardize studio/franchise names, prepare for clustering.
+
+**Files changed:**
+- `api/_lib/news-entities.js` — New entity normalization service:
+  - `normalizeStudioName()` — 50+ studio/streamer alias mappings
+  - `normalizeFranchiseName()` — 35+ franchise alias mappings
+  - `searchLibraryForTitle()` — Search movies_library with scoring
+  - `searchTmdbForTitle()` — Fallback TMDB API search
+  - `enrichMovieEntities()` — Match movies/TV to TMDB IDs
+  - `normalizeEntities()` — Main normalization function
+  - `normalizeAndUpdateArticleEntities()` — DB integration
+  - `calculateEntityOverlap()` — For clustering support
+- `api/_lib/news-classifier.js` — Integrated entity normalization into classification flow
+- `api/admin/[action].js` — Added 3 new admin API actions:
+  - `normalize-entities`: Normalize entities for article by ID
+  - `normalize-entities-raw`: Test normalization on raw entities
+  - `entity-overlap`: Calculate overlap between two entity sets
+
+**Entity Normalization Features:**
+- Studio aliases: Disney, Warner Bros, Universal, Paramount, Marvel, DC, Netflix, Amazon, etc.
+- Franchise aliases: MCU, DCEU, Star Wars, Harry Potter, Fast & Furious, James Bond, etc.
+- Movie matching: Tries movies_library first, falls back to TMDB search
+- Enriched output includes: tmdb_id, poster_path, vote_average, in_library flag
+
+**Behavior:**
+- Entity normalization runs automatically after AI classification
+- Matched movies include TMDB IDs for linking to detail pages
+- Entity overlap calculation ready for Phase 5 (clustering)
+
+### Duplicate Detection and Story Clustering ✅
+
+**Problem:** Need to detect duplicate articles and group related articles about the same story into clusters.
+
+**Files changed:**
+- `api/_lib/news-clustering.js` — New clustering service:
+  - `findExactDuplicate()` — Check by URL and title hash
+  - `calculateTitleSimilarity()` — Jaccard similarity between titles
+  - `findMatchingCluster()` — Score clusters by entity overlap + title similarity
+  - `createClusterFromArticle()` — Initialize new cluster with article data
+  - `addArticleToCluster()` — Assign article and update stats
+  - `updateClusterStats()` — Recalculate article count, trusted sources, verification level
+  - `clusterArticle()` — Main clustering function
+  - `batchClusterArticles()` — Batch processing
+  - `mergeClusters()` — Combine two clusters
+  - `getClusterWithArticles()` — Fetch cluster details
+- `api/admin/[action].js` — Added 7 new admin API actions:
+  - `cluster-article`: Cluster a single article
+  - `batch-cluster`: Cluster multiple articles
+  - `unclustered-articles`: Get articles awaiting clustering
+  - `get-cluster`: Get cluster with all articles
+  - `merge-clusters`: Combine two clusters
+  - `find-duplicate`: Check for exact duplicates
+  - `title-similarity`: Calculate title similarity
+
+**Clustering Algorithm:**
+1. Check for exact duplicates (URL match, title hash)
+2. Find candidate clusters (within 72-hour window)
+3. Score each cluster:
+   - Entity overlap: up to 60 points (threshold: 40%)
+   - Title similarity: up to 30 points (threshold: 50%)
+   - Category match: 10 points
+   - Recency bonus: 5 points
+4. Join best cluster (score ≥30) or create new
+
+**Cluster Stats:**
+- `article_count`: Total articles in cluster
+- `trusted_source_count`: Articles from sources with trust_score ≥0.7
+- `official_source_count`: Articles from official_studio sources
+- `verification_level`: studio_confirmed | multiple_sources | trusted_source | unconfirmed
+
+### Trend Scoring System ✅
+
+**Problem:** Need to calculate trending scores for clusters to determine which stories are worth publishing.
+
+**Files changed:**
+- `api/_lib/news-trending.js` — New trend scoring service:
+  - `calculateTrendScore()` — Weighted formula with components and penalties
+  - `updateClusterTrendScore()` — Update single cluster with logging
+  - `recalculateAllTrendScores()` — Batch update all active clusters
+  - `getTrendingClusters()` — Get sorted by trend score
+  - `getPublishReadyClusters()` — Score ≥72, ready for auto-publish
+  - `getReviewQueueClusters()` — Score 45-71, needs manual review
+  - `getTrendScoreBreakdown()` — Debug view of score components
+  - `archiveStaleClusters()` — Clean up old, low-score clusters
+- `api/admin/[action].js` — Added 7 new admin API actions:
+  - `update-trend-score`: Recalculate single cluster
+  - `recalculate-all-trends`: Batch recalculate all
+  - `trending-clusters`: Get trending sorted
+  - `publish-ready-clusters`: Get clusters ready for auto-publish
+  - `review-queue-clusters`: Get clusters needing manual review
+  - `trend-breakdown`: Debug score components
+  - `archive-stale-clusters`: Clean up old clusters
+
+**Trend Score Formula:**
+```
+Base Score = (
+  sourceCount × 0.25 +
+  velocity × 0.20 +
+  authority × 0.15 +
+  official × 0.15 +
+  importance × 0.15 +
+  freshness × 0.10
+) × 100
+
+Penalties:
+  - gossip: -25 × avgGossipProbability
+  - rumour: -15 × avgRumourProbability
+
+Bonuses:
+  - quality > 75: +5
+  - official source: +10
+  - 3+ trusted sources: +5
+```
+
+**Publishing Thresholds:**
+- Score ≥72: Auto-publish eligible
+- Score 45-71: Review queue
+- Score <45: Archive candidate
+
+### Publishing Decision Engine ✅
+
+**Problem:** Need automated publishing decisions based on trend scores and quality thresholds.
+
+**Files changed:**
+- `api/_lib/news-publisher.js` — New publishing decision engine:
+  - `evaluateForAutoPublish()` — Check all thresholds
+  - `generateOriginalHeadline()` — AI headline generation to avoid plagiarism
+  - `generateClusterSummary()` — AI summary generation
+  - `autoPublishCluster()` — Publish eligible cluster
+  - `processPublishReadyClusters()` — Batch auto-publish
+  - `manualPublishCluster()` — Admin manual publish with optional custom headline
+  - `rejectCluster()` — Mark cluster as rejected
+  - `archiveLowScoreClusters()` — Clean up low-score clusters
+  - `getPublishingDecision()` — Get decision summary for cluster
+  - `getReviewQueueWithEvaluations()` — Review queue with full evaluations
+- `api/admin/[action].js` — Added 8 new admin API actions:
+  - `evaluate-publish`: Check auto-publish eligibility
+  - `auto-publish-cluster`: Auto-publish single cluster
+  - `process-publish-ready`: Batch auto-publish all eligible
+  - `manual-publish-cluster`: Admin manual publish
+  - `reject-cluster`: Reject a cluster
+  - `archive-low-score`: Archive low-score clusters
+  - `publishing-decision`: Get decision summary
+  - `review-queue-detailed`: Review queue with evaluations
+
+**Auto-Publish Thresholds:**
+- Trend score ≥72
+- Relevance score ≥70
+- Quality score ≥65
+- Gossip probability ≤10%
+- Rumour probability ≤20%
+- Source allows auto-publish
+
+**Publishing Flow:**
+1. Get primary article from cluster
+2. Generate original headline (LLM)
+3. Generate summary (LLM)
+4. Update article as approved
+5. Mark cluster as published
+6. Log the action
+
+### Enhanced Admin UI ✅
+
+**Problem:** Need admin interface to manage news intelligence features - classification, clusters, trending, keywords.
+
+**Files changed:**
+- `src/views/admin/AdminNewsIntelPage.jsx` — New admin page with 4 tabs:
+  - **Intelligence Tab**: Pending classification queue, batch classify, keyword/classifier stats
+  - **Clusters Tab**: Story clusters grid, unclustered count, cluster details with articles
+  - **Trending Tab**: Publish-ready clusters, review queue, approve/reject/publish buttons
+  - **Keywords Tab**: Keyword dictionary stats, keyword tester with live analysis
+- `src/components/AdminLayout.jsx` — Added "News Intel" nav item with FiCpu icon
+- `src/routes/index.jsx` — Added `/admin/news-intel` route
+
+**UI Features:**
+- Score badges with color coding (green ≥72, yellow 45-71, red <45)
+- Probability bars for gossip/rumour scores
+- Batch operations (classify top 10, cluster pending, publish all ready)
+- Cluster cards with expandable article lists
+- Keyword tester with instant feedback
+- Real-time refresh for all tabs
+
+**API Integration:**
+- Calls existing `/api/admin/rss` with all news intelligence jobs
+- Proper loading states and error handling
+- Toast notifications for actions
+
+### Background Cron Jobs ✅
+
+**Problem:** Need automated pipeline to run classification, clustering, trend scoring, and publishing without manual intervention.
+
+**Files changed:**
+- `api/cron/[job].js` — Added 5 news intelligence cron jobs:
+  - `news-classify`: Classify pending articles through AI (batch of 10)
+  - `news-cluster`: Cluster classified articles (batch of 20)
+  - `news-trend`: Recalculate all cluster trend scores
+  - `news-publish`: Auto-publish eligible + archive stale clusters
+  - `news-pipeline`: Full pipeline run (all 4 steps combined)
+- `vercel.json` — Added news-pipeline cron to run every 6 hours
+
+**Cron Job Details:**
+
+| Job | Purpose | Schedule |
+|-----|---------|----------|
+| `news-classify` | AI classification of pending articles | Manual/API |
+| `news-cluster` | Group articles into story clusters | Manual/API |
+| `news-trend` | Recalculate trend scores | Manual/API |
+| `news-publish` | Auto-publish high-score, archive stale | Manual/API |
+| `news-pipeline` | Full pipeline (all steps) | Every 6 hours |
+
+**Pipeline Flow:**
+```
+1. Classify pending articles (up to 10)
+        ↓
+2. Cluster unclustered articles (up to 20)
+        ↓
+3. Recalculate all trend scores
+        ↓
+4. Auto-publish eligible clusters
+   Archive stale low-score clusters
+```
+
+**Manual Trigger:**
+```bash
+curl -X GET "https://your-domain/api/cron/news-pipeline" \
+  -H "Authorization: Bearer $CRON_SECRET"
+```
+
+---
+
+## News Intelligence System - COMPLETE ✅
+
+All 9 phases implemented:
+1. ✅ Database schema extensions
+2. ✅ Keyword filtering (~320 terms)
+3. ✅ AI classification service
+4. ✅ Entity extraction/normalization
+5. ✅ Duplicate detection & clustering
+6. ✅ Trend scoring system
+7. ✅ Publishing decision engine
+8. ✅ Admin UI (4 tabs)
+9. ✅ Background cron jobs
+
+---
+
 ## Session: Jul 2026 — UI Design System Audit & Redesign
 
 ### Aligned UI with design rules document ✅

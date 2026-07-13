@@ -3,6 +3,7 @@ import https from 'node:https';
 import http from 'node:http';
 import { getSupabaseAdmin } from './supabase-admin.js';
 import { fetchTmdbApi } from './tmdb-server.js';
+import { analyzeArticle as analyzeArticleKeywords } from './news-keywords.js';
 
 const FETCH_TIMEOUT_MS = 15000;
 const DEFAULT_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -267,8 +268,140 @@ function parseAtomEntry($, el) {
     };
 }
 
+/**
+ * Entertainment keywords for filtering Google Trends
+ * Only trends matching these keywords will be imported
+ */
+const ENTERTAINMENT_KEYWORDS = [
+    // Movies & Film
+    'movie', 'film', 'cinema', 'trailer', 'sequel', 'prequel', 'remake', 'reboot',
+    'box office', 'blockbuster', 'premiere', 'screening',
+    // TV & Streaming
+    'tv show', 'series', 'season', 'episode', 'finale', 'netflix', 'disney+', 'disney plus',
+    'hbo', 'max', 'hulu', 'amazon prime', 'apple tv', 'peacock', 'paramount+',
+    'streaming', 'binge', 'showrunner',
+    // People
+    'actor', 'actress', 'director', 'producer', 'writer', 'screenwriter', 'filmmaker',
+    'cast', 'casting', 'star', 'starring',
+    // Studios & Franchises
+    'marvel', 'mcu', 'dc', 'dceu', 'warner bros', 'universal', 'paramount', 'sony pictures',
+    'pixar', 'dreamworks', 'lionsgate', 'a24', 'blumhouse', 'lucasfilm',
+    'star wars', 'avengers', 'spider-man', 'spiderman', 'batman', 'superman', 'james bond',
+    'fast furious', 'jurassic', 'transformers', 'mission impossible', 'indiana jones',
+    'harry potter', 'lord of the rings', 'game of thrones', 'stranger things',
+    // Awards
+    'oscar', 'academy award', 'emmy', 'golden globe', 'bafta', 'cannes', 'sundance',
+    'venice film', 'toronto film', 'sag award', 'critics choice',
+    // Genres
+    'horror movie', 'comedy film', 'action movie', 'thriller', 'sci-fi', 'superhero',
+    'animated', 'animation', 'documentary',
+    // Bollywood & International
+    'bollywood', 'tollywood', 'kollywood', 'hindi movie', 'tamil movie', 'telugu movie',
+    'korean drama', 'k-drama', 'anime',
+    // Industry terms
+    'box office', 'opening weekend', 'release date', 'production', 'filming',
+    'post-production', 'script', 'screenplay',
+];
+
+/**
+ * Check if text contains entertainment-related keywords
+ */
+function isEntertainmentRelated(text) {
+    if (!text) return false;
+    const lower = text.toLowerCase();
+    return ENTERTAINMENT_KEYWORDS.some(keyword => lower.includes(keyword));
+}
+
+/**
+ * Parse Google Trends RSS format - extracts news items from the custom ht:news_item elements
+ * Google Trends RSS structure:
+ *   <item>
+ *     <title>search term</title>
+ *     <ht:approx_traffic>1000+</ht:approx_traffic>
+ *     <ht:news_item>
+ *       <ht:news_item_title>Actual headline</ht:news_item_title>
+ *       <ht:news_item_url>https://...</ht:news_item_url>
+ *       <ht:news_item_picture>https://...</ht:news_item_picture>
+ *       <ht:news_item_source>Source Name</ht:news_item_source>
+ *     </ht:news_item>
+ *   </item>
+ */
+function parseGoogleTrendsItem($, itemEl, newsItemEl) {
+    const $item = $(itemEl);
+    const $news = $(newsItemEl);
+    
+    const trendTerm = decodeEntities($item.find('title').first().text().trim());
+    const traffic = $item.find('ht\\:approx_traffic').text().trim();
+    const pubDateRaw = $item.find('pubDate').first().text().trim();
+    
+    const title = decodeEntities($news.find('ht\\:news_item_title').text().trim());
+    const link = $news.find('ht\\:news_item_url').text().trim();
+    const imageUrl = $news.find('ht\\:news_item_picture').text().trim() || null;
+    const sourceName = decodeEntities($news.find('ht\\:news_item_source').text().trim());
+    
+    if (!title || !link) return null;
+    
+    return {
+        title: toHeadline(title),
+        link,
+        guid: link,
+        author: sourceName || null,
+        summary: `Trending: "${trendTerm}" (${traffic} searches). ${title}`,
+        bodyHtml: null,
+        imageUrl,
+        publishedAt: pubDateRaw ? new Date(pubDateRaw).toISOString() : null,
+        // Extra metadata for Google Trends
+        _trendTerm: trendTerm,
+        _traffic: traffic,
+        _isGoogleTrends: true,
+    };
+}
+
+function parseGoogleTrendsFeed($) {
+    const articles = [];
+    const items = $('item').toArray();
+    let totalNewsItems = 0;
+    let entertainmentMatches = 0;
+    
+    for (const itemEl of items) {
+        const $item = $(itemEl);
+        const trendTerm = $item.find('title').first().text().trim();
+        const newsItems = $item.find('ht\\:news_item').toArray();
+        
+        for (const newsItemEl of newsItems) {
+            totalNewsItems++;
+            const $news = $(newsItemEl);
+            const headline = $news.find('ht\\:news_item_title').text().trim();
+            
+            // Only include if trend term OR headline contains entertainment keywords
+            if (!isEntertainmentRelated(trendTerm) && !isEntertainmentRelated(headline)) {
+                continue; // Skip non-entertainment trends
+            }
+            
+            entertainmentMatches++;
+            const parsed = parseGoogleTrendsItem($, itemEl, newsItemEl);
+            if (parsed) articles.push(parsed);
+        }
+    }
+    
+    console.log(`[rss] Google Trends: ${entertainmentMatches}/${totalNewsItems} items matched entertainment filter`);
+    return articles;
+}
+
 export function parseFeedXml(xml) {
     const $ = cheerio.load(xml, { xmlMode: true });
+
+    // Detect Google Trends RSS by checking for the ht namespace or ht:news_item elements
+    const isGoogleTrends = xml.includes('xmlns:ht="https://trends.google.com') || 
+                           xml.includes('<ht:news_item>') ||
+                           $('ht\\:news_item').length > 0;
+    
+    if (isGoogleTrends) {
+        const trendArticles = parseGoogleTrendsFeed($);
+        if (trendArticles.length > 0) {
+            return trendArticles;
+        }
+    }
 
     const rssItems = $('item').toArray();
     if (rssItems.length) {
@@ -908,6 +1041,34 @@ async function finalizeArticleApproval(supabase, article, { regenerateOnly = fal
         updated_at: new Date().toISOString(),
     };
     if (!regenerateOnly) updates.status = 'approved';
+
+    // Run keyword analysis for news intelligence (non-blocking, best-effort)
+    try {
+        const keywordAnalysis = await analyzeArticleKeywords(
+            article.title,
+            article.summary || bodyHtml
+        );
+        updates.positive_keyword_score = keywordAnalysis.positiveScore;
+        updates.negative_keyword_score = keywordAnalysis.negativeScore;
+        
+        // Log the analysis
+        await supabase.from('news_processing_logs').insert({
+            article_id: article.id,
+            step: 'keyword_filter',
+            status: 'success',
+            message: keywordAnalysis.recommendation.reason,
+            metadata_json: {
+                positive_score: keywordAnalysis.positiveScore,
+                negative_score: keywordAnalysis.negativeScore,
+                action: keywordAnalysis.recommendation.action,
+                confidence: keywordAnalysis.recommendation.confidence,
+                matched_negative: keywordAnalysis.matchedNegative?.slice(0, 10) || [],
+                matched_positive: keywordAnalysis.matchedPositive?.slice(0, 10) || [],
+            },
+        }).then(() => {}, () => {}); // Silent fail for logging
+    } catch (kwErr) {
+        console.warn('[rss] Keyword analysis failed (non-fatal):', kwErr.message);
+    }
 
     const { isTwitterFeedArticle, extractTwitterHandle, normalizeTweetText } = await import('../../src/lib/twitterRss.js');
     if (isTwitterFeedArticle({ link: article.link, sourceName: article.source_name })) {

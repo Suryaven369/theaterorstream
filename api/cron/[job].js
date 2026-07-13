@@ -8,6 +8,24 @@ import { isEmbeddingConfigured } from '../_lib/embedding-server.js';
 import { refreshAllRssSources, subscribeYouTubeSources } from '../_lib/rss-server.js';
 import { captureAllTasteSnapshots } from '../_lib/events-server.js';
 
+// News Intelligence imports (lazy-loaded to avoid slowing down other crons)
+async function getNewsClassifier() {
+    const mod = await import('../_lib/news-classifier.js');
+    return mod;
+}
+async function getNewsClustering() {
+    const mod = await import('../_lib/news-clustering.js');
+    return mod;
+}
+async function getNewsTrending() {
+    const mod = await import('../_lib/news-trending.js');
+    return mod;
+}
+async function getNewsPublisher() {
+    const mod = await import('../_lib/news-publisher.js');
+    return mod;
+}
+
 export const config = {
     runtime: 'nodejs',
     maxDuration: 60,
@@ -97,6 +115,136 @@ export default async function handler(req, res) {
             return res.status(200).json({ ok: true, ...result });
         }
 
+        // ============================================================
+        // NEWS INTELLIGENCE CRON JOBS
+        // ============================================================
+
+        // Classify pending articles through AI (runs every 5 minutes)
+        if (job === 'news-classify') {
+            const { getArticlesPendingClassification, batchClassifyArticles, isClassifierEnabled } = await getNewsClassifier();
+            
+            if (!isClassifierEnabled()) {
+                return res.status(503).json({ error: 'AI classifier not configured (need GEMINI_API_KEY or MISTRAL_API_KEY)' });
+            }
+
+            const limit = Number(req.query?.limit) || 10;
+            const pending = await getArticlesPendingClassification(limit);
+            
+            if (!pending.length) {
+                return res.status(200).json({ ok: true, message: 'No articles pending classification', processed: 0 });
+            }
+
+            const ids = pending.map(a => a.id);
+            const result = await batchClassifyArticles(ids, { concurrency: 2 });
+            
+            return res.status(200).json({
+                ok: true,
+                ...result,
+                message: `Classified ${result.successful}/${result.total} articles`,
+            });
+        }
+
+        // Cluster classified articles (runs every 10 minutes)
+        if (job === 'news-cluster') {
+            const { getUnclusteredArticles, batchClusterArticles } = await getNewsClustering();
+            
+            const limit = Number(req.query?.limit) || 20;
+            const unclustered = await getUnclusteredArticles(limit);
+            
+            if (!unclustered.length) {
+                return res.status(200).json({ ok: true, message: 'No unclustered articles', processed: 0 });
+            }
+
+            const ids = unclustered.map(a => a.id);
+            const result = await batchClusterArticles(ids);
+            
+            return res.status(200).json({
+                ok: true,
+                ...result,
+                message: `Clustered ${result.successful} articles, created ${result.newClusters} new clusters`,
+            });
+        }
+
+        // Recalculate trend scores (runs every 20 minutes)
+        if (job === 'news-trend') {
+            const { recalculateAllTrendScores } = await getNewsTrending();
+            
+            const result = await recalculateAllTrendScores();
+            
+            return res.status(200).json({
+                ok: true,
+                ...result,
+                message: `Recalculated ${result.updated} cluster trend scores`,
+            });
+        }
+
+        // Auto-publish eligible clusters (runs every 30 minutes)
+        if (job === 'news-publish') {
+            const { processPublishReadyClusters, archiveLowScoreClusters } = await getNewsPublisher();
+            
+            // Process publish-ready clusters
+            const publishResult = await processPublishReadyClusters();
+            
+            // Also archive stale low-score clusters
+            const archiveResult = await archiveLowScoreClusters();
+            
+            return res.status(200).json({
+                ok: true,
+                published: publishResult.published,
+                skipped: publishResult.skipped,
+                archived: archiveResult.archived,
+                message: `Published ${publishResult.published} clusters, archived ${archiveResult.archived} stale`,
+            });
+        }
+
+        // Full news pipeline run (manual trigger for testing)
+        if (job === 'news-pipeline') {
+            const { getArticlesPendingClassification, batchClassifyArticles, isClassifierEnabled } = await getNewsClassifier();
+            const { getUnclusteredArticles, batchClusterArticles } = await getNewsClustering();
+            const { recalculateAllTrendScores } = await getNewsTrending();
+            const { processPublishReadyClusters, archiveLowScoreClusters } = await getNewsPublisher();
+            
+            const results = {
+                classify: { skipped: true },
+                cluster: { skipped: true },
+                trend: { skipped: true },
+                publish: { skipped: true },
+            };
+
+            // Step 1: Classify
+            if (isClassifierEnabled()) {
+                const pending = await getArticlesPendingClassification(10);
+                if (pending.length) {
+                    results.classify = await batchClassifyArticles(pending.map(a => a.id), { concurrency: 2 });
+                    results.classify.skipped = false;
+                }
+            }
+
+            // Step 2: Cluster
+            const unclustered = await getUnclusteredArticles(20);
+            if (unclustered.length) {
+                results.cluster = await batchClusterArticles(unclustered.map(a => a.id));
+                results.cluster.skipped = false;
+            }
+
+            // Step 3: Recalculate trends
+            results.trend = await recalculateAllTrendScores();
+            results.trend.skipped = false;
+
+            // Step 4: Publish & archive
+            results.publish = {
+                ...(await processPublishReadyClusters()),
+                archived: (await archiveLowScoreClusters()).archived,
+                skipped: false,
+            };
+
+            return res.status(200).json({
+                ok: true,
+                results,
+                message: 'Full news pipeline completed',
+            });
+        }
+
         return res.status(404).json({
             error: 'Unknown cron job',
             allowed: [
@@ -105,6 +253,11 @@ export default async function handler(req, res) {
                 'embedding-backfill',
                 'rss-refresh',
                 'websub-renew',
+                'news-classify',
+                'news-cluster',
+                'news-trend',
+                'news-publish',
+                'news-pipeline',
             ],
         });
     } catch (error) {

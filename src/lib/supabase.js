@@ -91,6 +91,25 @@ export {
     regenerateFeedArticleSummary,
     toggleFeedArticleActive,
     deleteFeedArticle,
+    // News Intelligence System
+    updateRssSourceIntelligence,
+    getArticlesPendingClassification,
+    updateArticleClassification,
+    updateArticleKeywordScores,
+    getClassifiedArticles,
+    getStoryClusters,
+    getClusterWithArticles,
+    createStoryCluster,
+    updateStoryCluster,
+    assignArticleToCluster,
+    getTrendingClusters,
+    getKeywordDictionaries,
+    createKeyword,
+    updateKeyword,
+    deleteKeyword,
+    bulkCreateKeywords,
+    logProcessingStep,
+    getProcessingLogs,
 } from './db/rss.js';
 
 export {
