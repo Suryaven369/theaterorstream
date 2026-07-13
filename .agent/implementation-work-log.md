@@ -2,7 +2,30 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 2026 · HEAD `f915b7f` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 2026 · HEAD `2926a7b` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Jul 2026 — Instant home feed + Twitter card polish
+
+### Home feed stale-while-revalidate + localStorage cache ✅
+
+**Problem:** Home feed took time to load on page reload because cache was in-memory only and blocked on auth.
+
+**Files changed:**
+- `src/lib/feedSessionCache.js` — localStorage persistence, stale-while-revalidate pattern
+- `src/views/Home.jsx` — initialize from cache immediately, don't block on auth
+
+**Behavior:** Feed renders instantly from localStorage on page reload, background refresh if stale.
+
+### Twitter card skeleton + fallback ✅
+
+**Problem:** Twitter cards showed raw blockquote while X widget loaded, looked amateur.
+
+**Files changed:**
+- `src/components/social/FeedTweetCard.jsx` — skeleton loader, styled fallback card, smooth transitions
+
+**Behavior:** Shows animated skeleton → polished fallback card → official embed (with fade transition).
 
 ---
 
