@@ -29,6 +29,7 @@ import {
   patchCachedFeedItem,
   setCachedThreadItem,
   shouldSyncLocalLikes,
+  isFeedStale,
 } from "../lib/feedSessionCache";
 import ConfirmationModal from "../components/ConfirmationModal";
 import { useToast } from "../components/Toast";
@@ -106,8 +107,15 @@ const Home = () => {
   };
 
   // Feed state for social interactions
-  const [feedItems, setFeedItems] = useState([]);
-  const [feedInitialLoading, setFeedInitialLoading] = useState(true);
+  // Initialize from cache immediately to avoid flash of skeleton on page reload
+  const [feedItems, setFeedItems] = useState(() => {
+    const cached = getCachedFeed('all', true);
+    return cached?.items?.length ? cached.items : [];
+  });
+  const [feedInitialLoading, setFeedInitialLoading] = useState(() => {
+    const cached = getCachedFeed('all', true);
+    return !cached?.items?.length;
+  });
   // Track which item IDs have already entered the DOM so we only animate truly new items.
   const appearedIds = React.useRef(new Set());
   const [commentModalPost, setCommentModalPost] = useState(null);
@@ -311,13 +319,13 @@ const Home = () => {
     });
   }, [user?.id, profile?.avatar_url, profile?.username, profile?.display_name, profile?.is_verified]);
 
-  // One paint: wait for auth, then load posts (+ trailers/articles) together.
-  // Restore from session cache instantly when returning from a thread / other page.
+  // Stale-while-revalidate: show cached data instantly, refresh in background.
+  // Don't block on auth for initial render - use cached/public data first.
   useEffect(() => {
-    if (authLoading) return undefined;
-
     let cancelled = false;
-    const cached = getCachedFeed(feedScope);
+
+    // Try to restore from cache immediately (including localStorage on reload)
+    const cached = getCachedFeed(feedScope, true); // allowStale=true
     if (cached?.items?.length) {
       setFeedItems(cached.items);
       setFeedOffset(cached.offset);
@@ -328,6 +336,17 @@ const Home = () => {
       setFeedOffset(0);
       setHasMoreFeed(true);
       appearedIds.current.clear();
+    }
+
+    // If auth is still loading, we already showed cached data above.
+    // Schedule refresh once auth settles.
+    if (authLoading) {
+      return () => { cancelled = true; };
+    }
+
+    // Skip network fetch if cache is fresh (not stale)
+    if (cached?.items?.length && !isFeedStale(feedScope)) {
+      return () => { cancelled = true; };
     }
 
     const loadFeed = async () => {
@@ -393,7 +412,7 @@ const Home = () => {
         }
       } catch (err) {
         console.error('[Home] loadFeed failed:', err);
-        if (!cancelled && !getCachedFeed(feedScope)?.items?.length) setFeedItems([]);
+        if (!cancelled && !getCachedFeed(feedScope, true)?.items?.length) setFeedItems([]);
       } finally {
         if (!cancelled) setFeedInitialLoading(false);
       }
@@ -788,8 +807,8 @@ const Home = () => {
                 {/* Topics you follow (directors / genres / franchises) — new releases */}
                 {feedScope === 'following' && <FollowingFeed />}
 
-                {/* Feed Items — skeleton until the full first page is ready */}
-                {(authLoading || feedInitialLoading) ? (
+                {/* Feed Items — skeleton only when no cached data and still loading */}
+                {feedInitialLoading && feedItems.length === 0 ? (
                   <FeedSkeleton count={6} />
                 ) : (
                   <>
@@ -822,11 +841,11 @@ const Home = () => {
                 )}
 
                 {/* Infinite scroll sentinel — loads the next page of posts as it scrolls into view */}
-                {!authLoading && !feedInitialLoading && hasMoreFeed ? (
+                {!feedInitialLoading && hasMoreFeed && feedItems.length > 0 ? (
                   <div ref={loadMoreSentinelRef} className="py-2">
                     {loadingMoreFeed && <FeedSkeleton count={2} />}
                   </div>
-                ) : !authLoading && !feedInitialLoading && !hasMoreFeed && feedItems.length > 0 ? (
+                ) : !feedInitialLoading && !hasMoreFeed && feedItems.length > 0 ? (
                   <p className="text-center text-xs text-white/30 py-6">You're all caught up</p>
                 ) : null}
               </div>

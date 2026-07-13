@@ -1,25 +1,80 @@
 /**
- * In-memory session cache for Home feed + thread pages.
- * Survives route changes (Home unmount ↔ Thread) so navigations feel instant.
+ * In-memory + localStorage cache for Home feed + thread pages.
+ * Survives route changes AND page reloads for instant rendering.
  */
 
-const FEED_TTL_MS = 90_000;
+export const FEED_TTL_MS = 90_000; // 90s for fresh
+const FEED_STALE_TTL_MS = 300_000; // 5min for stale-while-revalidate
 const THREAD_TTL_MS = 120_000;
 const COMMENTS_TTL_MS = 60_000;
+
+const STORAGE_KEY_FEED = 'tos_feed_cache';
+const STORAGE_KEY_THREAD = 'tos_thread_cache';
 
 const feedByScope = new Map(); // scope -> { items, offset, hasMore, ts }
 const threadById = new Map(); // item.id -> { item, ts }
 const commentsByKey = new Map(); // subjectKey -> { list, ts }
 let syncLikesDoneForUser = null;
+let storageInitialized = false;
 
 function isFresh(ts, ttl) {
   return typeof ts === 'number' && Date.now() - ts < ttl;
 }
 
-export function getCachedFeed(scope = 'all') {
+function initFromStorage() {
+  if (storageInitialized || typeof localStorage === 'undefined') return;
+  storageInitialized = true;
+  try {
+    const feedData = localStorage.getItem(STORAGE_KEY_FEED);
+    if (feedData) {
+      const parsed = JSON.parse(feedData);
+      for (const [scope, entry] of Object.entries(parsed)) {
+        if (entry?.ts && isFresh(entry.ts, FEED_STALE_TTL_MS)) {
+          feedByScope.set(scope, entry);
+          for (const item of entry.items || []) {
+            if (item?.id) threadById.set(item.id, { item, ts: entry.ts });
+          }
+        }
+      }
+    }
+  } catch {
+    // Ignore parse errors
+  }
+}
+
+function persistToStorage() {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    const feedObj = {};
+    for (const [scope, entry] of feedByScope.entries()) {
+      if (entry?.ts && isFresh(entry.ts, FEED_STALE_TTL_MS)) {
+        // Only persist first 30 items to keep storage small
+        feedObj[scope] = {
+          ...entry,
+          items: (entry.items || []).slice(0, 30),
+        };
+      }
+    }
+    localStorage.setItem(STORAGE_KEY_FEED, JSON.stringify(feedObj));
+  } catch {
+    // Storage full or unavailable
+  }
+}
+
+export function getCachedFeed(scope = 'all', allowStale = false) {
+  initFromStorage();
   const entry = feedByScope.get(scope);
-  if (!entry || !isFresh(entry.ts, FEED_TTL_MS)) return null;
+  if (!entry) return null;
+  const ttl = allowStale ? FEED_STALE_TTL_MS : FEED_TTL_MS;
+  if (!isFresh(entry.ts, ttl)) return null;
   return entry;
+}
+
+export function isFeedStale(scope = 'all') {
+  initFromStorage();
+  const entry = feedByScope.get(scope);
+  if (!entry?.ts) return true;
+  return !isFresh(entry.ts, FEED_TTL_MS);
 }
 
 export function setCachedFeed(scope, { items, offset, hasMore }) {
@@ -33,6 +88,8 @@ export function setCachedFeed(scope, { items, offset, hasMore }) {
   for (const item of items || []) {
     if (item?.id) setCachedThreadItem(item);
   }
+  // Persist to localStorage for page reload survival
+  persistToStorage();
 }
 
 export function patchCachedFeedItem(itemId, patch) {
