@@ -80,6 +80,46 @@ export const isFollowing = async (followerId, followingId) => {
     return !!data;
 };
 
+// Get suggested users to follow (excludes current user and already-followed users)
+export const getSuggestedUsersToFollow = async (currentUserId, limit = 3) => {
+    // Get IDs of users the current user is already following
+    let excludeIds = currentUserId ? [currentUserId] : [];
+    
+    if (currentUserId) {
+        const { data: following } = await supabase
+            .from('user_follows')
+            .select('following_id')
+            .eq('follower_id', currentUserId);
+        if (following?.length) {
+            excludeIds = [...excludeIds, ...following.map((f) => f.following_id)];
+        }
+    }
+
+    // Get random users not in the exclude list, prioritize verified/active users
+    let query = supabase
+        .from('user_profiles')
+        .select('id, username, display_name, avatar_url, is_verified')
+        .not('username', 'is', null);
+    
+    if (excludeIds.length) {
+        query = query.not('id', 'in', `(${excludeIds.join(',')})`);
+    }
+
+    const { data, error } = await query
+        .order('is_verified', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(limit + 5); // Fetch a few extra for randomization
+
+    if (error) {
+        console.warn('[getSuggestedUsersToFollow]', error.message);
+        return [];
+    }
+
+    // Shuffle and take the requested limit for variety
+    const shuffled = (data || []).sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, limit).map(normalizeProfileMediaUrls);
+};
+
 // =============================================
 // PROFILE SEARCH
 // =============================================

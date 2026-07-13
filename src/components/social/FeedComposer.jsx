@@ -81,6 +81,7 @@ export default function FeedComposer({
       }
 
       const saved = res.post || {};
+      const nowISO = new Date().toISOString();
       const newItem = {
         id: saved.id || `local-${Date.now()}`,
         type: 'post',
@@ -90,6 +91,8 @@ export default function FeedComposer({
         comments: 0,
         shares: 0,
         time: 'Just now',
+        createdAt: saved.created_at || nowISO,
+        publishedAt: saved.created_at || nowISO,
         hasImage: !!(saved.image_url ?? imageUrl),
         isLiked: false,
         isSaved: false,

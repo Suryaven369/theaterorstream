@@ -4,7 +4,6 @@ import { searchContentFromEdge } from "../lib/contentEdgeApi";
 import { resolveTmdbImageUrl } from "../utils/imageHelper";
 
 const SIZE_OPTIONS = [
-    { key: "sm", label: "Small" },
     { key: "md", label: "Medium" },
     { key: "lg", label: "Large" },
     { key: "none", label: "No image" },
@@ -27,7 +26,7 @@ const MovieMentionPicker = ({ query, onInsert, onClose }) => {
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
     const [picked, setPicked] = useState(null);
-    const [size, setSize] = useState("sm");
+    const [size, setSize] = useState("md");
     const debounceRef = useRef(null);
 
     useEffect(() => {

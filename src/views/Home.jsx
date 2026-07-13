@@ -614,9 +614,11 @@ const Home = () => {
 
   const handleComposerFeedReload = (reloadItems) => {
     setFeedItems((prev) => {
-      const realIds = new Set(reloadItems.map((p) => p.id));
-      const rest = prev.filter((p) => !realIds.has(p.id) && !String(p.id).startsWith('local-'));
-      return [...reloadItems, ...rest];
+      const reloadIds = new Set(reloadItems.map((p) => p.id));
+      // Keep items not in the reload batch (trailers, articles, older posts)
+      const rest = prev.filter((p) => !reloadIds.has(p.id) && !String(p.id).startsWith('local-'));
+      // Merge and re-sort by time to maintain proper chronological order
+      return sortByRecency([...reloadItems, ...rest]);
     });
   };
 
