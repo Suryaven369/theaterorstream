@@ -2,7 +2,53 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 2026 · HEAD `83d59cd` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 2026 · HEAD `05cd120` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Jul 14, 2026 — News Intelligence Fixes & Google Trends Integration
+
+### Fixed admin authentication for News Intel page ✅
+
+**Problem:** AdminNewsIntelPage.jsx was getting 401 Unauthorized errors.
+
+**Files changed:**
+- `src/views/admin/AdminNewsIntelPage.jsx` — Added `getAccessToken()` function and Authorization header to API calls
+
+**Behavior:** News Intel admin page now properly authenticates with the backend API.
+
+### Switched AI classifier to Mistral primary ✅
+
+**Problem:** User requested Mistral as primary LLM instead of Gemini.
+
+**Files changed:**
+- `api/_lib/news-classifier.js` — Changed order to try Mistral first, Gemini fallback
+- `api/_lib/news-publisher.js` — Same for headline/summary generation
+
+**Behavior:** Classification and content generation now use Mistral API by default with Gemini as fallback.
+
+### Added Google Trends RSS support with entertainment filter ✅
+
+**Problem:** Google Trends RSS feeds were not being parsed correctly (nested ht:news_item structure) and returned all topics, not just entertainment.
+
+**Files changed:**
+- `api/_lib/rss-server.js` — Added:
+  - `ENTERTAINMENT_KEYWORDS` array (80+ terms: movies, streaming, studios, franchises, awards, Bollywood)
+  - `isEntertainmentRelated()` function for keyword matching
+  - `parseGoogleTrendsItem()` and `parseGoogleTrendsFeed()` for custom Google Trends RSS format
+  - Entertainment pre-filter in `parseGoogleTrendsFeed()` to skip non-entertainment trends
+- `supabase/migrations/20260724000200_seed_news_intelligence_sources.sql` — Fixed Google Trends URLs from old format to new `https://trends.google.com/trending/rss?geo=XX`
+
+**Behavior:** Google Trends now imports only entertainment-related trending topics. Console logs filter ratio (e.g., "5/30 items matched entertainment filter").
+
+### Adjusted cron schedule for Hobby plan ✅
+
+**Problem:** Vercel Hobby plan limits cron to once per day.
+
+**Files changed:**
+- `vercel.json` — Changed news-pipeline cron from `0 */6 * * *` (every 6 hours) to `0 8 * * *` (daily at 8 AM UTC)
+
+**Behavior:** News pipeline runs once daily on Vercel Hobby plan. Manual refresh available anytime via admin console.
 
 ---
 
