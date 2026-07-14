@@ -1,29 +1,32 @@
 /**
  * MovieGlu API integration for fetching movies currently in theaters.
  * Uses sandbox credentials for development, can switch to production for IN territory.
+ * 
+ * Environment variables:
+ *   MOVIEGLU_CLIENT - Client ID (default: VIIL)
+ *   MOVIEGLU_API_KEY - API key
+ *   MOVIEGLU_AUTH - Authorization header value
+ *   MOVIEGLU_TERRITORY - Territory code (XX for sandbox, IN for India)
+ *   MOVIEGLU_GEOLOCATION - Default geolocation (lat;lng)
  */
 
-const USE_SANDBOX = process.env.MOVIEGLU_USE_SANDBOX !== 'false';
-
-const MOVIEGLU_CONFIG = {
-  sandbox: {
-    client: 'VIIL',
-    apiKey: 'JMR2brley32xry4DZdJLc3gGhJJW2leClK1YTFU2',
-    authorization: 'Basic VklJTF9YWDpLTUlsRzVkbzJwemk=',
-    territory: 'XX',
-    defaultGeolocation: '-22.0;14.0',
-  },
-  production: {
-    client: 'VIIL',
-    apiKey: 'HWhl9CuN9E7yjHi14mRb61D9Y8DKUxLSK2WRSOAg',
-    authorization: 'Basic VklJTDpuYkZGNXBtSG55TG8=',
-    territory: 'IN',
-    defaultGeolocation: '19.076;72.8777', // Mumbai
-  },
-};
-
 function getConfig() {
-  return USE_SANDBOX ? MOVIEGLU_CONFIG.sandbox : MOVIEGLU_CONFIG.production;
+  const territory = process.env.MOVIEGLU_TERRITORY || 'XX';
+  const isSandbox = territory === 'XX';
+  
+  return {
+    client: process.env.MOVIEGLU_CLIENT || 'VIIL',
+    apiKey: process.env.MOVIEGLU_API_KEY || (isSandbox 
+      ? 'JMR2brley32xry4DZdJLc3gGhJJW2leClK1YTFU2' 
+      : ''),
+    authorization: process.env.MOVIEGLU_AUTH || (isSandbox 
+      ? 'Basic VklJTF9YWDpLTUlsRzVkbzJwemk=' 
+      : ''),
+    territory,
+    defaultGeolocation: process.env.MOVIEGLU_GEOLOCATION || (isSandbox 
+      ? '-22.0;14.0' 
+      : '19.076;72.8777'),
+  };
 }
 
 function getHeaders(geolocation) {
