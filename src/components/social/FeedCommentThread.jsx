@@ -9,7 +9,7 @@ import { useToast } from '../Toast';
 import { addThreadComment, getThreadComments, nestComments } from '../../lib/feedThread';
 import { attachCommentLikes, toggleCommentUpvote } from '../../lib/feedLikes';
 import { getCachedComments, setCachedComments } from '../../lib/feedSessionCache';
-import { toPublicStorageUrl } from '../../lib/storagePublicUrl';
+import { toPublicStorageUrl, getAvatarUrl } from '../../lib/storagePublicUrl';
 
 const MAX_REPLY_DEPTH = 8;
 
@@ -241,7 +241,7 @@ function CommentNode({
           className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-[var(--color-surface-subtle)] overflow-hidden shrink-0 flex items-center justify-center text-[10px] sm:text-xs mt-0.5"
         >
           {comment.user?.avatarUrl ? (
-            <img src={comment.user.avatarUrl} alt="" className="w-full h-full object-cover" />
+            <img src={getAvatarUrl(comment.user.avatarUrl, 28)} alt="" className="w-full h-full object-cover" />
           ) : (
             comment.user?.avatar || '👤'
           )}

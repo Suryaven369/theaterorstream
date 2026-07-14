@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { getTrendingHashtags } from '../../lib/hashtagApi';
 import { getSuggestedUsersToFollow, toggleFollow } from '../../lib/db/social';
 import { useAuth } from '../../context/AuthContext';
+import { getAvatarUrl } from '../../lib/storagePublicUrl';
 
 function formatCount(num) {
   const n = Number(num) || 0;
@@ -139,7 +140,7 @@ export default function HomeSocialSidebar() {
                     <Link to={`/${u.username}/profile`} className="flex items-center gap-2.5 group min-w-0 flex-1">
                       <div className="w-8 h-8 rounded-lg bg-[var(--color-surface-subtle)] flex items-center justify-center text-xs overflow-hidden shrink-0">
                         {u.avatar_url ? (
-                          <img src={u.avatar_url} alt="" className="w-full h-full object-cover" />
+                          <img src={getAvatarUrl(u.avatar_url, 32)} alt="" className="w-full h-full object-cover" />
                         ) : (
                           '👤'
                         )}

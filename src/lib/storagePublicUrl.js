@@ -58,3 +58,32 @@ export function normalizeProfileMediaUrls(profile) {
     if (next.profile_header_url) next.profile_header_url = toPublicStorageUrl(next.profile_header_url);
     return next;
 }
+
+/**
+ * Transform a Supabase storage URL to use the render endpoint for optimized images.
+ * Adds width/height/quality params for crisp display at target size.
+ * @param {string} url - Original storage URL
+ * @param {object} options - { width, height, quality, resize }
+ * @returns {string} - Transformed URL or original if not a Supabase storage URL
+ */
+export function getOptimizedImageUrl(url, { width = 200, height = 200, quality = 85, resize = 'cover' } = {}) {
+    if (!url || typeof url !== 'string') return url || null;
+    
+    // Only transform Supabase storage URLs
+    const storageMatch = url.match(/^(https:\/\/[^/]+)\/storage\/v1\/object\/public\/([^?]+)/);
+    if (!storageMatch) return url;
+    
+    const [, baseUrl, path] = storageMatch;
+    // Use render endpoint for image transformations
+    return `${baseUrl}/storage/v1/render/image/public/${path}?width=${width}&height=${height}&quality=${quality}&resize=${resize}`;
+}
+
+/**
+ * Get avatar URL optimized for display size.
+ * Uses 2x resolution for retina displays.
+ */
+export function getAvatarUrl(url, displaySize = 32) {
+    // Request 2x for retina displays
+    const size = displaySize * 2;
+    return getOptimizedImageUrl(url, { width: size, height: size, quality: 90, resize: 'cover' });
+}

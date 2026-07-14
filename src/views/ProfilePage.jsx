@@ -40,6 +40,7 @@ import { FaUserPlus, FaUserCheck, FaEllipsisH, FaSearch, FaTimes, FaCamera, FaSt
 import SeoHead from '../components/SeoHead';
 import MovieMentionText from '../components/MovieMentionText';
 import VerifiedBadge from '../components/VerifiedBadge';
+import { getAvatarUrl } from '../lib/storagePublicUrl';
 
 // Avatar options
 const AVATARS = {
@@ -773,7 +774,7 @@ const ProfilePage = () => {
                             above the banner's gradient overlay where it overlaps up. */}
                         {avatarImageUrl ? (
                             <img
-                                src={avatarImageUrl}
+                                src={getAvatarUrl(avatarImageUrl, 96)}
                                 alt={displayProfile?.display_name || 'avatar'}
                                 className="relative z-20 w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover border-4 border-[#14181c] shadow-lg shrink-0 bg-[#14181c]"
                             />

@@ -5,6 +5,7 @@ import VerifiedBadge from '../VerifiedBadge';
 import { parseSummaryForDisplay, normalizeProseText } from '../../lib/articleSummary';
 import RedditActionBar from './RedditActionBar';
 import RedditMediaFrame from './RedditMediaFrame';
+import { getAvatarUrl } from '../../lib/storagePublicUrl';
 
 function formatWhen(publishedAt) {
   if (!publishedAt) return 'News';
@@ -142,7 +143,7 @@ export default function FeedArticleCard({
             <Link to={`/${official.username}/profile`} className="shrink-0" data-no-thread>
               {official.avatarUrl ? (
                 <img
-                  src={official.avatarUrl}
+                  src={getAvatarUrl(official.avatarUrl, 28)}
                   alt=""
                   className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg object-cover border border-[var(--color-border)]"
                 />

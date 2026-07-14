@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import VerifiedBadge from '../VerifiedBadge';
 import RedditActionBar from './RedditActionBar';
+import { getAvatarUrl } from '../../lib/storagePublicUrl';
 
 /**
  * Compact activity row (watchlist add, rating, etc.).
@@ -16,14 +17,14 @@ export default function FeedActivityCard({ item, onLike, onOpenComments, onOpenT
 
   return (
     <article
-      className={`bg-[#1a1d1f] rounded-lg border border-white/5 hover:border-white/10 transition-colors overflow-hidden ${onOpenThread ? 'cursor-pointer' : ''}`}
+      className={`bg-[var(--color-surface)] rounded-lg border border-[var(--color-border)] hover:border-[var(--color-text-muted)]/30 transition-colors overflow-hidden ${onOpenThread ? 'cursor-pointer' : ''}`}
       onClick={onOpenThread ? openThread : undefined}
       role={onOpenThread ? 'link' : undefined}
     >
       <div className="flex items-center gap-2 p-2.5">
-        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-xs shrink-0 overflow-hidden">
+        <div className="w-7 h-7 rounded-lg bg-[var(--color-surface-subtle)] flex items-center justify-center text-xs shrink-0 overflow-hidden">
           {item.user.avatarUrl ? (
-            <img src={item.user.avatarUrl} alt="" className="w-full h-full object-cover" />
+            <img src={getAvatarUrl(item.user.avatarUrl, 28)} alt="" className="w-full h-full object-cover" />
           ) : (
             item.user.avatar || '🎬'
           )}

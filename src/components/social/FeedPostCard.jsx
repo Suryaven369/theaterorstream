@@ -10,6 +10,7 @@ import MovieMentionText from '../MovieMentionText';
 import VerifiedBadge from '../VerifiedBadge';
 import RedditActionBar from './RedditActionBar';
 import RedditMediaFrame from './RedditMediaFrame';
+import { getAvatarUrl } from '../../lib/storagePublicUrl';
 
 const createSlug = (text) =>
   (text || '')
@@ -65,7 +66,7 @@ export default function FeedPostCard({
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-lg bg-[var(--color-surface-subtle)] flex items-center justify-center text-sm overflow-hidden shrink-0">
             {item.user.avatarUrl ? (
-              <img src={item.user.avatarUrl} alt="" className="w-full h-full object-cover" />
+              <img src={getAvatarUrl(item.user.avatarUrl, 36)} alt="" className="w-full h-full object-cover" />
             ) : (
               item.user.avatar || '🎬'
             )}

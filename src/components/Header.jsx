@@ -5,6 +5,7 @@ import { navigation } from "../constants/navigation";
 import { useAuth } from "../context/AuthContext";
 import ProfileMenu from "./ProfileMenu";
 import NotificationBell from "./NotificationBell";
+import { getAvatarUrl } from "../lib/storagePublicUrl";
 
 // Avatar lookup - solid colors per design rules
 const AVATARS = {
@@ -132,7 +133,7 @@ const Header = () => {
                   className={`w-10 h-10 rounded-lg overflow-hidden flex items-center justify-center text-lg transition-colors ${profile?.avatar_url ? 'bg-[var(--color-surface)]' : getUserAvatar().bg}`}
                 >
                   {profile?.avatar_url ? (
-                    <img src={profile.avatar_url} alt="avatar" className="w-full h-full object-cover" />
+                    <img src={getAvatarUrl(profile.avatar_url, 40)} alt="avatar" className="w-full h-full object-cover" />
                   ) : (
                     getUserAvatar().emoji
                   )}
