@@ -273,7 +273,7 @@ export default function FeedArticleCard({
                       <p className="text-[11px] sm:text-xs font-medium tracking-[0.14em] uppercase text-[var(--color-theater)] mb-1.5">
                         {s.entry.index} / {s.entry.total}
                       </p>
-                      <h4 className="text-[22px] sm:text-[28px] text-white leading-tight tracking-[-0.02em]">
+                      <h4 className="text-[18px] sm:text-[22px] text-white leading-tight tracking-[-0.01em]">
                         {s.entry.title}
                       </h4>
                     </div>
@@ -296,7 +296,7 @@ export default function FeedArticleCard({
                       <p className="text-[11px] sm:text-xs font-medium tracking-[0.14em] uppercase text-[var(--color-theater)] mb-1.5">
                         {s.entry.index} / {s.entry.total}
                       </p>
-                      <h4 className="text-[26px] sm:text-[34px] text-white leading-tight tracking-[-0.02em]">
+                      <h4 className="text-[18px] sm:text-[22px] text-white leading-tight tracking-[-0.01em]">
                         {s.entry.title}
                       </h4>
                     </div>
