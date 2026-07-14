@@ -12,7 +12,7 @@ function formatCount(num) {
 }
 
 const pillBase =
-  'inline-flex items-center gap-1 sm:gap-1.5 h-11 sm:h-9 min-h-[44px] sm:min-h-[34px] px-3 sm:px-3.5 rounded-lg bg-[var(--color-surface-subtle)] text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-border)] hover:text-[var(--color-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-theater)]/50 focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--color-surface)] shrink-0 touch-manipulation';
+  'inline-flex items-center gap-1 sm:gap-1.5 h-11 sm:h-9 min-h-[44px] sm:min-h-[34px] px-3 sm:px-3.5 rounded-lg bg-transparent text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-subtle)] hover:text-[var(--color-text-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-theater)]/50 shrink-0 touch-manipulation';
 
 /**
  * Reddit-style action pills: upvote · comment · share dropdown

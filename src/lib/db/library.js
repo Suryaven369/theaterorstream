@@ -2,6 +2,7 @@ import { MOVIES_LIBRARY_SELECT, MOVIE_DETAIL_SELECT, LIBRARY_UPSERT_SELECT } fro
 import { upsertMoviesViaAdminApi } from '../adminLibraryApi.js';
 import { dedupeLibraryRecords, upsertMoviesLibrary } from '../libraryDedupe.js';
 import { supabase } from '../supabaseClient.js';
+import { pickBestPosterPath } from '../../utils/imageHelper.js';
 
 const stripImagesBase64 = (images) => {
     if (!images || typeof images !== 'object' || Array.isArray(images)) return images;
@@ -407,7 +408,7 @@ export const saveFullMovieToLibrary = async (movieData, additionalData = {}) => 
         original_title: movieData.original_title || movieData.original_name,
         overview: movieData.overview,
         tagline: movieData.tagline,
-        poster_path: movieData.poster_path,
+        poster_path: pickBestPosterPath(movieData) || movieData.poster_path,
         backdrop_path: movieData.backdrop_path,
         release_date: movieData.release_date || movieData.first_air_date,
         status: movieData.status,

@@ -1,7 +1,7 @@
 import React from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { IoHome, IoSearch, IoPerson, IoFilm, IoGrid } from "react-icons/io5";
+import { IoHome, IoSearch, IoPerson, IoFilm, IoSparkles } from "react-icons/io5";
 
 const MobileNavigation = () => {
   const location = useLocation();
@@ -10,7 +10,7 @@ const MobileNavigation = () => {
   const navItems = [
     { href: "/", icon: IoHome, label: "Home", match: "home" },
     { href: "/?tab=explore", icon: IoFilm, label: "Explore", match: "explore" },
-    { href: "/boards", icon: IoGrid, label: "Boards", match: "boards" },
+    { href: "/?tab=watch", icon: IoSparkles, label: "Watch", match: "watch" },
     { href: "/search", icon: IoSearch, label: "Search", match: "search" },
   ];
 
@@ -42,11 +42,10 @@ const MobileNavigation = () => {
             if (nav.match === "explore") {
               isActive = location.search.includes("tab=explore")
                 || location.search.includes("tab=my-feed");
+            } else if (nav.match === "watch") {
+              isActive = location.pathname === "/" && location.search.includes("tab=watch");
             } else if (nav.match === "home") {
               isActive = location.pathname === "/" && !location.search.includes("tab=");
-            } else if (nav.match === "boards") {
-              isActive = location.pathname.startsWith("/boards")
-                || /\/[^/]+\/boards/.test(location.pathname);
             } else if (nav.match === "profile") {
               isActive = location.pathname.includes("/profile");
             } else if (nav.match === "search") {
@@ -59,7 +58,7 @@ const MobileNavigation = () => {
               <NavLink
                 key={nav.label}
                 to={nav.href}
-                className={`flex flex-col items-center justify-center flex-1 max-w-[72px] min-h-[48px] py-1.5 px-1 rounded-xl transition-all duration-200 tap-target ${
+                className={`flex flex-col items-center justify-center flex-1 min-w-0 min-h-[48px] py-1.5 px-0.5 rounded-xl transition-all duration-200 tap-target ${
                   isActive
                     ? "text-[var(--primary)]"
                     : "text-white/50 active:text-white active:scale-95"

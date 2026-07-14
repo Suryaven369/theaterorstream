@@ -7,6 +7,7 @@ import {
   toXStatusUrl,
 } from '../../lib/twitterRss';
 import RedditActionBar from './RedditActionBar';
+import { feedArticleClass } from './feedItemShell';
 
 const WIDGETS_SRC = 'https://platform.x.com/widgets.js';
 
@@ -128,7 +129,7 @@ function TweetFallbackCard({ handle, displayName, text, xUrl, whenLabel, avatarU
  * Official X embed for Twitter/Nitter RSS posts.
  * Shows a polished skeleton → fallback card → official embed (if loads).
  */
-export default function FeedTweetCard({ item, onOpenThread, onShare, onLike }) {
+export default function FeedTweetCard({ item, onOpenThread, onShare, onLike, variant = 'feed' }) {
   const mountRef = useRef(null);
   const [embedState, setEmbedState] = useState('loading'); // 'loading' | 'fallback' | 'embedded'
   const embedTimeoutRef = useRef(null);
@@ -210,7 +211,7 @@ export default function FeedTweetCard({ item, onOpenThread, onShare, onLike }) {
   if (!xUrl) return null;
 
   return (
-    <article className="overflow-hidden">
+    <article className={feedArticleClass(variant === 'thread')}>
       {/* Skeleton shown while loading */}
       {embedState === 'loading' && (
         <div className="py-2">

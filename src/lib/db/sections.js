@@ -1,6 +1,7 @@
 import { LIBRARY_CARD_SELECT } from '../moviesLibrarySelect.js';
 import { supabase } from '../supabaseClient.js';
 import { getBatchMovieRatings } from './ratings.js';
+import { pickBestPosterPath } from '../../utils/imageHelper.js';
 
 // =============================================
 // HOMEPAGE SECTIONS CMS
@@ -145,9 +146,11 @@ export const getHomepageSections = async (activeOnly = false, { mergeTv = false 
                 const globalMovie = movieMap.get(`${mt}:${rawMovie.tmdb_id}`) || movieMap.get(`*:${rawMovie.tmdb_id}`);
                 const tosRating = ratingsMap.get(String(rawMovie.tmdb_id));
                 if (globalMovie) {
+                    const bestPoster = pickBestPosterPath(globalMovie) || globalMovie.poster_path || rawMovie.poster_path;
                     return {
                         ...rawMovie,
                         ...globalMovie,
+                        poster_path: bestPoster,
                         media_type: globalMovie.media_type || mt,
                         release_date: globalMovie.release_date || globalMovie.first_air_date || rawMovie.release_date,
                         tos_rating: tosRating || null,

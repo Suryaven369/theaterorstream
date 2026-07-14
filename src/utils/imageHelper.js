@@ -1,5 +1,34 @@
 export const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/';
 
+const TMDB_SIZE_PATTERN = /\/t\/p\/w\d+\//;
+
+/**
+ * Pick the highest-voted poster from TMDB images, falling back to poster_path.
+ */
+export function pickBestPosterPath(movieData) {
+    if (!movieData) return null;
+
+    const posters = movieData.images?.posters;
+    if (Array.isArray(posters) && posters.length > 0) {
+        const ranked = [...posters]
+            .filter((p) => p?.file_path)
+            .sort((a, b) => {
+                const langScore = (p) => {
+                    const lang = p.iso_639_1;
+                    if (lang === null || lang === 'en') return 2;
+                    if (lang === 'hi') return 1;
+                    return 0;
+                };
+                const scoreDiff = langScore(b) - langScore(a);
+                if (scoreDiff !== 0) return scoreDiff;
+                return (b.vote_count || 0) - (a.vote_count || 0);
+            });
+        if (ranked[0]?.file_path) return ranked[0].file_path;
+    }
+
+    return movieData.poster_path || null;
+}
+
 export const convertImageToBase64 = async (imageUrl) => {
     if (!imageUrl) return null;
 
@@ -46,11 +75,8 @@ export const resolveTmdbImageUrl = (path, options = {}) => {
     if (path) {
         if (path.startsWith('data:')) return path;
         if (path.startsWith('http')) {
-            if (size !== 'original') {
-                return path
-                    .replace('/original/', `/${size}/`)
-                    .replace('/w780/', `/${size}/`)
-                    .replace('/w500/', `/${size}/`);
+            if (TMDB_SIZE_PATTERN.test(path)) {
+                return path.replace(TMDB_SIZE_PATTERN, `/t/p/${size}/`);
             }
             return path;
         }

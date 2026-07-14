@@ -61,9 +61,9 @@ const Header = () => {
 
   return (
     <header
-      className={`fixed top-0 w-full z-50 safe-area-top transition-colors duration-200 ${isScrolled
-        ? "bg-[var(--color-surface)] border-b border-[var(--color-border)] py-2.5 sm:py-3"
-        : "bg-transparent py-3 sm:py-5"
+      className={`fixed top-0 w-full z-50 transition-colors duration-200 pt-[calc(env(safe-area-inset-top,0px)+0.625rem)] sm:pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] ${isScrolled
+        ? "bg-[var(--color-surface)] border-b border-[var(--color-border)] pb-2.5 sm:pb-3"
+        : "bg-transparent pb-3 sm:pb-4"
         }`}
     >
       <div className="container mx-auto px-4 sm:px-6 flex items-center justify-between">
@@ -72,7 +72,7 @@ const Header = () => {
           <img
             src="https://res.cloudinary.com/ddhhlkyut/image/upload/v1768226006/a78a29523128c4555fdd178b6c612ac6_dbtyqp.jpg"
             alt="TheaterOrStream Logo"
-            className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg object-cover"
+            className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover shrink-0"
           />
           <span className="text-base sm:text-lg font-semibold tracking-tight hidden sm:block">
             <span className="text-[var(--color-theater)]">Theater</span>

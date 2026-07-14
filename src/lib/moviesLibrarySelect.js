@@ -71,7 +71,7 @@ export const MOVIES_LIBRARY_OPTIONAL_COLUMNS = [
 ];
 
 export const LIBRARY_CARD_SELECT =
-    'tmdb_id, title, poster_path, backdrop_path, media_type, release_date, first_air_date, vote_average, overview, genres, runtime, number_of_seasons, number_of_episodes';
+    'tmdb_id, title, poster_path, backdrop_path, media_type, release_date, first_air_date, vote_average, overview, genres, runtime, number_of_seasons, number_of_episodes, images';
 
 /** Safe columns for upsert RETURNING — avoids heavy JSONB / vector serialization issues */
 export const LIBRARY_UPSERT_SELECT =

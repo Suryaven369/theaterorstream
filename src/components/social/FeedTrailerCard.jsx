@@ -4,6 +4,7 @@ import { FaPlay } from 'react-icons/fa';
 import { generateSlugWithId } from '../../lib/slugUtils';
 import VerifiedBadge from '../VerifiedBadge';
 import RedditActionBar from './RedditActionBar';
+import { feedArticleClass } from './feedItemShell';
 import RedditMediaFrame from './RedditMediaFrame';
 
 function formatAgo(publishedAt) {
@@ -39,7 +40,7 @@ export default function FeedTrailerCard({ item, onOpenThread, onShare, onLike, v
 
   return (
     <article
-      className={`bg-[#1a1d1f] ${isThread ? 'rounded-none sm:rounded-t-xl border-0' : 'rounded-lg border border-white/5'} overflow-hidden hover:border-white/10 transition-colors ${onOpenThread ? 'cursor-pointer' : ''}`}
+      className={feedArticleClass(isThread, onOpenThread ? 'cursor-pointer' : '')}
       onClick={onOpenThread ? openThread : undefined}
       role={onOpenThread ? 'link' : undefined}
     >

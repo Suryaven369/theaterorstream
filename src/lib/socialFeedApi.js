@@ -1,5 +1,12 @@
 import { supabase } from './supabase';
 import { publicUrlForStorageObject, toPublicStorageUrl } from './storagePublicUrl.js';
+import { getPlainTextLength } from './movieMentions.js';
+
+function hasPostContent(content) {
+    if (!content?.trim()) return false;
+    if (getPlainTextLength(content) > 0) return true;
+    return /\[\[(movie|user|person)\|/.test(content);
+}
 
 async function getAccessToken() {
     const { data: { session } } = await supabase.auth.getSession();
@@ -276,7 +283,124 @@ export async function deleteComment(commentId, userId) {
 // user's own folder (<uid>/...) which the storage RLS policy requires.
 // ---------------------------------------------------------------------------
 export const POST_IMAGE_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+export const POST_IMAGE_MAX_COUNT = 10;
 const POST_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+function parseMediaCarousel(raw) {
+    if (!raw) return { items: [], caption: '' };
+
+    if (raw.slides && Array.isArray(raw.slides)) {
+        const items = raw.slides
+            .filter((slide) => slide?.url)
+            .map((slide) => ({ url: toPublicStorageUrl(slide.url) || slide.url }));
+        return { items, caption: (raw.caption || '').trim() };
+    }
+
+    if (Array.isArray(raw)) {
+        const items = raw
+            .filter((item) => item?.url)
+            .map((item) => ({ url: toPublicStorageUrl(item.url) || item.url }));
+        const caption = raw.map((item) => (item.caption || '').trim()).find(Boolean) || '';
+        return { items, caption };
+    }
+
+    return { items: [], caption: '' };
+}
+
+export function parseMediaCarouselForFeed(raw) {
+    return parseMediaCarousel(raw);
+}
+
+function buildCarouselDbPayload(slides, caption = '') {
+    return {
+        slides: slides.map((slide) => ({ url: slide.url })),
+        caption: (caption || '').trim(),
+    };
+}
+
+function normalizeCarouselInput(mediaItems, imageUrl = null) {
+    if (mediaItems?.slides && Array.isArray(mediaItems.slides)) {
+        const slides = mediaItems.slides.filter((slide) => slide?.url);
+        const caption = (mediaItems.caption || '').trim();
+        return {
+            isCarousel: slides.length >= 2,
+            primaryImage: imageUrl || slides[0]?.url || null,
+            dbPayload: slides.length >= 2 ? buildCarouselDbPayload(slides, caption) : null,
+        };
+    }
+
+    if (Array.isArray(mediaItems)) {
+        const slides = mediaItems.filter((item) => item?.url);
+        const caption = slides.map((item) => (item.caption || '').trim()).find(Boolean) || '';
+        return {
+            isCarousel: slides.length >= 2,
+            primaryImage: imageUrl || slides[0]?.url || null,
+            dbPayload: slides.length >= 2 ? buildCarouselDbPayload(slides, caption) : null,
+        };
+    }
+
+    return {
+        isCarousel: false,
+        primaryImage: imageUrl || null,
+        dbPayload: null,
+    };
+}
+
+function mapPollData(raw) {
+    if (!raw?.options || !Array.isArray(raw.options)) return null;
+    const options = raw.options
+        .slice(0, 2)
+        .map((o) => ({ text: o.text || '', votes: Number(o.votes) || 0 }));
+    return options.length === 2 ? { options } : null;
+}
+
+function mapFeedPostRow(post, { author, isLiked = false, isSaved = false, userPollVote = null } = {}) {
+    const { items: mediaItems, caption: carouselCaption } = parseMediaCarousel(post.media_items);
+    const primaryImage = toPublicStorageUrl(post.image_url) || mediaItems[0]?.url || null;
+    const pollData = post.post_type === 'poll' ? mapPollData(post.poll_data) : null;
+
+    return {
+        id: post.id,
+        type: post.post_type === 'activity' ? 'activity' : 'post',
+        postType: post.post_type || 'post',
+        content: post.content,
+        movieTitle: post.movie_title || null,
+        image: primaryImage,
+        mediaItems,
+        carouselCaption,
+        isCarousel: mediaItems.length >= 2,
+        pollData,
+        userPollVote,
+        likes: post.likes_count || 0,
+        comments: post.comments_count || 0,
+        shares: post.shares_count || 0,
+        time: formatTimeAgo(post.created_at),
+        createdAt: post.created_at,
+        publishedAt: post.created_at,
+        hasImage: !!post.has_image || mediaItems.length > 0 || !!primaryImage,
+        isLiked,
+        isSaved,
+        user: {
+            id: post.user_id,
+            name: author?.display_name || author?.username || 'User',
+            username: author?.username || 'user',
+            avatar: '🎬',
+            avatarUrl: toPublicStorageUrl(author?.avatar_url) || null,
+            isVerified: !!author?.is_verified,
+        },
+        movie: post.tmdb_id
+            ? {
+                title: post.movie_title,
+                poster: post.movie_poster,
+                backdrop: post.movie_backdrop,
+                year: post.movie_year,
+            }
+            : null,
+        rating: post.movie_rating,
+        editCount: Number(post.edit_count) || 0,
+        canEdit: (Number(post.edit_count) || 0) < 1,
+    };
+}
 
 export async function uploadPostImage(file, userId) {
     if (!userId) return { ok: false, error: 'not_signed_in' };
@@ -319,31 +443,89 @@ export async function createPost({
     movieYear,
     movieRating,
     postType = 'post',
-    imageUrl = null
+    imageUrl = null,
+    mediaItems = null,
+    pollData = null,
 }) {
     if (!userId) return { ok: false, error: 'not_signed_in' };
-    if (!content?.trim() && !imageUrl) return { ok: false, error: 'empty_content' };
+
+    const carousel = normalizeCarouselInput(mediaItems, imageUrl);
+    const isCarousel = carousel.isCarousel;
+    const isPoll = pollData?.options?.length === 2
+        && pollData.options.every((o) => (o.text || '').trim());
+    const hasMedia = !!carousel.primaryImage;
+
+    if (!hasPostContent(content) && !hasMedia && !isPoll) return { ok: false, error: 'empty_content' };
+    if (isPoll && !hasPostContent(content)) return { ok: false, error: 'poll_needs_question' };
+
+    const primaryImage = carousel.primaryImage;
+    const resolvedPostType = isPoll ? 'poll' : postType;
+
+    const insertPayload = {
+        user_id: userId,
+        content: (content || '').trim(),
+        tmdb_id: tmdbId,
+        media_type: mediaType,
+        movie_title: movieTitle,
+        movie_poster: moviePoster,
+        movie_backdrop: movieBackdrop,
+        movie_year: movieYear,
+        movie_rating: movieRating,
+        post_type: resolvedPostType,
+        has_image: !!primaryImage,
+        image_url: primaryImage,
+    };
+
+    if (isCarousel && carousel.dbPayload) insertPayload.media_items = carousel.dbPayload;
+    if (isPoll) {
+        insertPayload.poll_data = {
+            options: pollData.options.map((o) => ({
+                text: o.text.trim(),
+                votes: 0,
+            })),
+        };
+    }
 
     const { data, error } = await supabase
         .from('feed_posts')
-        .insert({
-            user_id: userId,
-            content: (content || '').trim(),
-            tmdb_id: tmdbId,
-            media_type: mediaType,
-            movie_title: movieTitle,
-            movie_poster: moviePoster,
-            movie_backdrop: movieBackdrop,
-            movie_year: movieYear,
-            movie_rating: movieRating,
-            post_type: postType,
-            has_image: !!imageUrl,
-            image_url: imageUrl,
-        })
+        .insert(insertPayload)
         .select()
         .single();
 
     if (error) {
+        const msg = (error.message || '').toLowerCase();
+        const missingMedia = msg.includes('media_items');
+        const missingPoll = msg.includes('poll_data');
+
+        if (missingMedia && isCarousel && primaryImage) {
+            const fallback = { ...insertPayload };
+            delete fallback.media_items;
+            fallback.post_type = 'post';
+            const retry = await supabase.from('feed_posts').insert(fallback).select().single();
+            if (!retry.error) {
+                try {
+                    const { ensureHashtagsFromContent } = await import('./hashtagApi.js');
+                    await ensureHashtagsFromContent(retry.data.content, {
+                        contentType: 'post',
+                        contentId: retry.data.id,
+                        userId,
+                    });
+                } catch { /* non-fatal */ }
+                return {
+                    ok: true,
+                    post: retry.data,
+                    warning: 'Carousel saved as a single image. Apply the latest Supabase migration for multi-image posts.',
+                };
+            }
+        }
+
+        if (missingPoll && isPoll) {
+            return {
+                ok: false,
+                error: 'Polls need the latest database migration. Run supabase/migrations/20260725000000_feed_post_carousel_polls.sql',
+            };
+        }
+
         console.error('[createPost]', error);
         return { ok: false, error: error.message };
     }
@@ -362,11 +544,52 @@ export async function createPost({
 }
 
 // ---------------------------------------------------------------------------
+// Vote on a 2-option poll (one vote per user)
+// ---------------------------------------------------------------------------
+export async function votePoll(postId, userId, optionIndex) {
+    if (!userId) return { ok: false, error: 'not_signed_in' };
+    if (!postId) return { ok: false, error: 'missing_post' };
+    if (optionIndex !== 0 && optionIndex !== 1) return { ok: false, error: 'invalid_option' };
+
+    const { error } = await supabase
+        .from('post_poll_votes')
+        .upsert(
+            { post_id: postId, user_id: userId, option_index: optionIndex },
+            { onConflict: 'post_id,user_id' }
+        );
+
+    if (error) {
+        console.error('[votePoll]', error);
+        return { ok: false, error: error.message };
+    }
+    return { ok: true, optionIndex };
+}
+
+// ---------------------------------------------------------------------------
 // Edit / Delete a post (RLS already restricts these to the owner)
 // ---------------------------------------------------------------------------
 export async function updatePost(postId, userId, { content }) {
     if (!userId) return { ok: false, error: 'not_signed_in' };
     if (!content?.trim()) return { ok: false, error: 'empty_content' };
+
+    const { data: existing, error: fetchError } = await supabase
+        .from('feed_posts')
+        .select('id, edit_count, content')
+        .eq('id', postId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    if (fetchError) {
+        console.error('[updatePost] fetch', fetchError);
+        return { ok: false, error: fetchError.message };
+    }
+    if (!existing) return { ok: false, error: 'post_not_found' };
+    if ((existing.edit_count || 0) >= 1) {
+        return { ok: false, error: 'You can only edit a post once.' };
+    }
+    if (existing.content?.trim() === content.trim()) {
+        return { ok: true, post: existing };
+    }
 
     const { data, error } = await supabase
         .from('feed_posts')
@@ -378,6 +601,10 @@ export async function updatePost(postId, userId, { content }) {
 
     if (error) {
         console.error('[updatePost]', error);
+        const msg = (error.message || '').toLowerCase();
+        if (msg.includes('post_already_edited')) {
+            return { ok: false, error: 'You can only edit a post once.' };
+        }
         return { ok: false, error: error.message };
     }
 
@@ -440,41 +667,25 @@ export async function getFeedPostById(postId, userId = null) {
     ]);
 
     const author = profileRes.data;
+    let userPollVote = null;
+    if (userId && post.post_type === 'poll') {
+        const { data: voteRow } = await supabase
+            .from('post_poll_votes')
+            .select('option_index')
+            .eq('post_id', post.id)
+            .eq('user_id', userId)
+            .maybeSingle();
+        if (voteRow) userPollVote = voteRow.option_index;
+    }
+
     return {
         ok: true,
-        item: {
-            id: post.id,
-            type: post.post_type === 'activity' ? 'activity' : 'post',
-            postType: post.post_type || 'post',
-            content: post.content,
-            movieTitle: post.movie_title || null,
-            image: toPublicStorageUrl(post.image_url) || null,
-            likes: post.likes_count || 0,
-            comments: post.comments_count || 0,
-            shares: post.shares_count || 0,
-            time: formatTimeAgo(post.created_at),
-            createdAt: post.created_at,
-            hasImage: !!post.has_image,
+        item: mapFeedPostRow(post, {
+            author,
             isLiked: !!likeRes.data,
             isSaved: !!saveRes.data,
-            user: {
-                id: post.user_id,
-                name: author?.display_name || author?.username || 'User',
-                username: author?.username || 'user',
-                avatar: '🎬',
-                avatarUrl: toPublicStorageUrl(author?.avatar_url) || null,
-                isVerified: !!author?.is_verified,
-            },
-            movie: post.tmdb_id
-                ? {
-                    title: post.movie_title,
-                    poster: post.movie_poster,
-                    backdrop: post.movie_backdrop,
-                    year: post.movie_year,
-                }
-                : null,
-            rating: post.movie_rating,
-        },
+            userPollVote,
+        }),
     };
 }
 
@@ -577,39 +788,27 @@ export async function getFeedPosts({ limit = 20, offset = 0, userId = null, mode
     const userLikes = new Set((likesRes.data || []).map((l) => l.post_id));
     const userSaves = new Set((savesRes.data || []).map((s) => s.post_id));
 
+    const pollPostIds = rows.filter((p) => p.post_type === 'poll').map((p) => p.id);
+    const pollVoteMap = new Map();
+    if (userId && pollPostIds.length) {
+        const { data: pollVotes } = await supabase
+            .from('post_poll_votes')
+            .select('post_id, option_index')
+            .eq('user_id', userId)
+            .in('post_id', pollPostIds);
+        for (const row of pollVotes || []) {
+            pollVoteMap.set(row.post_id, row.option_index);
+        }
+    }
+
     const items = rows.map((post) => {
         const author = profileMap.get(post.user_id);
-        return {
-            id: post.id,
-            type: post.post_type === 'activity' ? 'activity' : 'post',
-            postType: post.post_type || 'post',
-            content: post.content,
-            movieTitle: post.movie_title || null,
-            image: toPublicStorageUrl(post.image_url) || null,
-            likes: post.likes_count || 0,
-            comments: post.comments_count || 0,
-            shares: post.shares_count || 0,
-            time: formatTimeAgo(post.created_at),
-            createdAt: post.created_at,
-            hasImage: !!post.has_image,
+        return mapFeedPostRow(post, {
+            author,
             isLiked: userLikes.has(post.id),
             isSaved: userSaves.has(post.id),
-            user: {
-                id: post.user_id,
-                name: author?.display_name || author?.username || 'User',
-                username: author?.username || 'user',
-                avatar: '🎬',
-                avatarUrl: toPublicStorageUrl(author?.avatar_url) || null,
-                isVerified: !!author?.is_verified,
-            },
-            movie: post.tmdb_id ? {
-                title: post.movie_title,
-                poster: post.movie_poster,
-                backdrop: post.movie_backdrop,
-                year: post.movie_year,
-            } : null,
-            rating: post.movie_rating,
-        };
+            userPollVote: pollVoteMap.get(post.id) ?? null,
+        });
     });
 
     return { ok: true, items };
@@ -664,38 +863,25 @@ export async function getFeedPostsByAuthor(authorId, { limit = 20, viewerId = nu
     const author = profileRes.data;
     const liked = new Set((likesRes.data || []).map((r) => r.post_id));
 
+    const pollPostIds = data.filter((p) => p.post_type === 'poll').map((p) => p.id);
+    const pollVoteMap = new Map();
+    if (viewerId && pollPostIds.length) {
+        const { data: pollVotes } = await supabase
+            .from('post_poll_votes')
+            .select('post_id, option_index')
+            .eq('user_id', viewerId)
+            .in('post_id', pollPostIds);
+        for (const row of pollVotes || []) {
+            pollVoteMap.set(row.post_id, row.option_index);
+        }
+    }
+
     return {
         ok: true,
-        items: data.map((post) => ({
-            id: post.id,
-            type: post.post_type === 'activity' ? 'activity' : 'post',
-            postType: post.post_type || 'post',
-            content: post.content,
-            movieTitle: post.movie_title || null,
-            image: toPublicStorageUrl(post.image_url) || null,
-            likes: post.likes_count || 0,
-            comments: post.comments_count || 0,
-            time: formatTimeAgo(post.created_at),
-            createdAt: post.created_at,
-            hasImage: !!post.has_image,
+        items: data.map((post) => mapFeedPostRow(post, {
+            author,
             isLiked: liked.has(post.id),
-            user: {
-                id: authorId,
-                name: author?.display_name || author?.username || 'User',
-                username: author?.username || null,
-                avatar: author?.avatar_id || 'avatar_1',
-                avatarUrl: toPublicStorageUrl(author?.avatar_url) || null,
-                isVerified: !!author?.is_verified,
-            },
-            movie: post.tmdb_id
-                ? {
-                    id: post.tmdb_id,
-                    title: post.movie_title,
-                    poster: post.movie_poster,
-                    year: post.movie_year,
-                    rating: post.movie_rating,
-                }
-                : null,
+            userPollVote: pollVoteMap.get(post.id) ?? null,
         })),
     };
 }

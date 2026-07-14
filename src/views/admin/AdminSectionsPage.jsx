@@ -14,6 +14,24 @@ import {
 import { useToast } from "../../components/Toast";
 import { REGIONS } from "../../constants/regions";
 import { invalidateHomepageSections } from "../../store/movieSlice";
+import { pickBestPosterPath } from "../../utils/imageHelper";
+import { detectHotTags, formatHotTagLabel, checkRecentAnnouncement } from "../../utils/hotContentTags";
+
+function isLiveHotSection(section) {
+    return section.api_source === 'trending_live';
+}
+
+const API_SOURCE_LABELS = {
+    trending: 'Trending (Movies + Series)',
+    trending_live: 'Hot Right Now — 24h Trailers & Announcements',
+    trending_movies: 'Trending Movies',
+    trending_tv: 'Trending Series',
+    now_playing: 'In Theaters',
+    popular: 'Popular',
+    top_rated: 'Top Rated',
+    upcoming: 'Upcoming',
+    coming_soon: 'Coming Soon',
+};
 
 // Language codes by region for discover API
 const REGION_LANGUAGES = {
@@ -31,7 +49,8 @@ const REGION_LANGUAGES = {
 
 // API endpoints for fetching movies based on section type
 const API_ENDPOINTS = {
-    trending: "/trending/all/week",
+    trending: "/trending/movie/week",
+    trending_live: "/trending/movie/week",
     trending_movies: "/trending/movie/week",
     trending_tv: "/trending/tv/week",
     now_playing: "/movie/now_playing", // Needs region parameter
@@ -187,10 +206,23 @@ const AdminSectionsPage = () => {
                 endpoint = API_ENDPOINTS[section.api_source] || "/trending/movie/week";
 
                 if (section.api_source === 'now_playing' || section.api_source === 'on_the_air') {
-                    // In Theaters = theatrical movies only (no series)
-                    endpoint = "/movie/now_playing";
-                    baseParams = { region: regionCode };
+                    // In Theaters = ALL movies currently in cinemas for the region
+                    // Use discover with regional release dates for accurate results
+                    const today = new Date();
+                    const fiveWeeksAgo = new Date(today);
+                    fiveWeeksAgo.setDate(fiveWeeksAgo.getDate() - 35); // ~5 weeks theatrical window
+                    
+                    endpoint = "/discover/movie";
+                    baseParams = {
+                        region: regionCode,
+                        'release_date.gte': fiveWeeksAgo.toISOString().split('T')[0],
+                        'release_date.lte': todayStr,
+                        'with_release_type': '2|3', // Theatrical releases
+                        sort_by: 'popularity.desc',
+                        'vote_count.gte': 10, // Filter out obscure releases
+                    };
                     tvCompanion = null;
+                    console.log(`🎬 In Theaters (${regionCode}): ${fiveWeeksAgo.toISOString().split('T')[0]} to ${todayStr}, sorted by popularity`);
                 } else if (section.api_source === 'upcoming') {
                     baseParams = { region: regionCode };
                     tvCompanion = {
@@ -240,6 +272,7 @@ const AdminSectionsPage = () => {
                     };
                 } else if (
                     section.api_source === 'trending'
+                    || section.api_source === 'trending_live'
                     || section.api_source === 'trending_movies'
                     || section.api_source === 'trending_tv'
                     || !section.api_source
@@ -256,8 +289,19 @@ const AdminSectionsPage = () => {
                     };
                 } else if (section.api_source === 'airing_today') {
                     // Remap legacy airing_today → In Theaters (movies only)
-                    endpoint = "/movie/now_playing";
-                    baseParams = { region: regionCode };
+                    const today = new Date();
+                    const fiveWeeksAgo = new Date(today);
+                    fiveWeeksAgo.setDate(fiveWeeksAgo.getDate() - 35);
+                    
+                    endpoint = "/discover/movie";
+                    baseParams = {
+                        region: regionCode,
+                        'release_date.gte': fiveWeeksAgo.toISOString().split('T')[0],
+                        'release_date.lte': todayStr,
+                        'with_release_type': '2|3',
+                        sort_by: 'popularity.desc',
+                        'vote_count.gte': 10,
+                    };
                     tvCompanion = null;
                 }
             }
@@ -272,7 +316,10 @@ const AdminSectionsPage = () => {
                 ? OTT_MOVIE_COUNT + OTT_SERIES_COUNT
                 : (section.max_movies || 10);
             const isUpcomingFilter = section.api_source === 'upcoming' || section.api_source === 'coming_soon';
-            const pagesToFetch = Math.min(10, Math.ceil(desiredCount / 20) + (isUpcomingFilter ? 1 : 0));
+            const isLiveHot = isLiveHotSection(section);
+            const pagesToFetch = Math.min(10, Math.ceil(
+                (isLiveHot && !isOttProvider ? desiredCount + 8 : desiredCount) / 20
+            ) + (isUpcomingFilter ? 1 : 0));
 
             console.log(`🔄 Fetching ${section.api_source} from: ${endpoint} (+ TV companion), ${pagesToFetch} page(s)`, baseParams);
 
@@ -340,6 +387,42 @@ const AdminSectionsPage = () => {
                 || section.api_source === 'on_the_air'
                 || section.api_source === 'airing_today';
 
+            // Live Hot Right Now: also pull freshly announced / trailer drops (last 24h only)
+            const trendingIds = new Set(items.map((i) => `${i.media_type || 'movie'}:${i.id}`));
+            if (isLiveHot && !isOttProvider && !isTheaterSection) {
+                try {
+                    const announcedMovieParams = {
+                        region: regionCode,
+                        'primary_release_date.gte': todayStr,
+                        sort_by: 'popularity.desc',
+                    };
+                    const announcedTvParams = {
+                        'first_air_date.gte': todayStr,
+                        sort_by: 'popularity.desc',
+                        with_original_language: regionLanguages,
+                    };
+
+                    const [announcedMovies, announcedTv] = await Promise.all([
+                        fetchPages('/discover/movie', announcedMovieParams, 1),
+                        fetchPages('/discover/tv', announcedTvParams, 1),
+                    ]);
+
+                    const seen = new Set(trendingIds);
+                    for (const item of [...announcedMovies, ...announcedTv]) {
+                        const mt = item.media_type || (item.first_air_date && !item.release_date ? 'tv' : 'movie');
+                        const key = `${mt}:${item.id}`;
+                        if (!seen.has(key)) {
+                            seen.add(key);
+                            items.push({ ...item, media_type: mt, _announcedCandidate: true });
+                        }
+                    }
+                    items.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+                    console.log(`🔥 Hot section: checking ${announcedMovies.length + announcedTv.length} announced candidates (24h filter applied after detail fetch)`);
+                } catch (announcedErr) {
+                    console.warn('Announced content fetch failed for hot section', announcedErr);
+                }
+            }
+
             // In Theaters: movies only — drop any series
             if (isTheaterSection) {
                 items = items
@@ -360,7 +443,8 @@ const AdminSectionsPage = () => {
             }
 
             if (!isOttProvider) {
-                items = items.slice(0, desiredCount);
+                const limit = isLiveHot ? Math.max(desiredCount, Math.min(items.length, desiredCount + 8)) : desiredCount;
+                items = items.slice(0, limit);
             }
 
             console.log(`📦 Found ${items.length} titles for ${section.name}`);
@@ -374,6 +458,11 @@ const AdminSectionsPage = () => {
                         params: { append_to_response: 'credits,videos,images,release_dates,keywords,similar,recommendations,reviews' }
                     });
                     const fullData = detailResponse.data;
+                    let hotTags = [];
+                    if (isLiveHot) {
+                        const announcedRecently = await checkRecentAnnouncement(tmdbApi, mediaType, item.id);
+                        hotTags = detectHotTags(fullData, { announcedRecently });
+                    }
 
                     // Save to library with correct media_type
                     await saveFullMovieToLibrary(fullData, { media_type: mediaType });
@@ -381,7 +470,7 @@ const AdminSectionsPage = () => {
                     return {
                         tmdb_id: item.id,
                         title: fullData.title || fullData.name,
-                        poster_path: fullData.poster_path,
+                        poster_path: pickBestPosterPath(fullData) || fullData.poster_path,
                         backdrop_path: fullData.backdrop_path,
                         media_type: mediaType,
                         release_date: fullData.release_date || fullData.first_air_date,
@@ -393,6 +482,7 @@ const AdminSectionsPage = () => {
                         runtime: fullData.runtime || fullData.episode_run_time?.[0],
                         number_of_seasons: fullData.number_of_seasons,
                         number_of_episodes: fullData.number_of_episodes,
+                        hot_tags: hotTags,
                         order: items.indexOf(item) + 1
                     };
                 } catch (err) {
@@ -406,12 +496,24 @@ const AdminSectionsPage = () => {
                         release_date: item.release_date || item.first_air_date,
                         vote_average: item.vote_average,
                         overview: item.overview,
+                        hot_tags: [],
                         order: items.indexOf(item) + 1
                     };
                 }
             });
 
-            const itemData = await Promise.all(itemDataPromises);
+            let itemData = await Promise.all(itemDataPromises);
+
+            // Live Hot: keep trending titles always; announced extras only if tagged in last 24h
+            if (isLiveHot) {
+                itemData = itemData.filter((row) => {
+                    const key = `${row.media_type || 'movie'}:${row.tmdb_id}`;
+                    if (trendingIds.has(key)) return true;
+                    return row.hot_tags?.length > 0;
+                });
+                itemData = itemData.map((row, idx) => ({ ...row, order: idx + 1 }));
+                console.log(`🔥 Hot section after 24h filter: ${itemData.length} titles (${itemData.filter((r) => r.hot_tags?.length).length} tagged)`);
+            }
 
             // Build the region payload and persist immediately (Fetch = publish for this region)
             const existingMoviesByRegion = section.movies_by_region || {};
@@ -538,7 +640,7 @@ const AdminSectionsPage = () => {
             const newMovie = {
                 tmdb_id: movie.id,
                 title: fullData.title || fullData.name,
-                poster_path: fullData.poster_path,
+                poster_path: pickBestPosterPath(fullData) || fullData.poster_path,
                 backdrop_path: fullData.backdrop_path,
                 media_type: mediaType,
                 release_date: fullData.release_date || fullData.first_air_date,
@@ -839,6 +941,8 @@ const AdminSectionsPage = () => {
                 <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs text-white/50">
                     Tip: pick a region → open a section → <span className="text-purple-300">Fetch Movies + Series</span> →
                     Save & Publish. Hot / OTT mix movies + series; In Theaters is movies only.
+                    <span className="text-amber-400/90 ml-1">Hot Right Now — 24h</span> uses the live API source for trailers &amp; announcements from the last 24 hours.
+                    Use <span className="text-white/70">Trending (Movies + Series)</span> for the normal weekly fetch.
                 </div>
             </div>
 
@@ -874,7 +978,8 @@ const AdminSectionsPage = () => {
                             onChange={(e) => setNewSection({ ...newSection, api_source: e.target.value })}
                             className="bg-black/30 rounded-lg px-4 py-2 text-sm text-white border border-white/10 outline-none"
                         >
-                            <option value="trending">Hot / Trending (Movies + Series)</option>
+                            <option value="trending">Trending (Movies + Series)</option>
+                            <option value="trending_live">Hot Right Now — 24h Trailers &amp; Announcements</option>
                             <option value="now_playing">In Theaters (movies only)</option>
                             <option value="popular">Popular (Movies + Series)</option>
                             <option value="top_rated">Top Rated (Movies + Series)</option>
@@ -976,8 +1081,10 @@ const AdminSectionsPage = () => {
                                         {section.is_system && (
                                             <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 text-[10px] font-medium">SYSTEM</span>
                                         )}
-                                        <span className="px-2 py-0.5 rounded bg-white/10 text-white/50 text-[10px]">
-                                            {section.section_type === 'api' ? `API: ${section.api_source}` : 'Manual'}
+                                        <span className={`px-2 py-0.5 rounded text-[10px] ${section.api_source === 'trending_live' ? 'bg-amber-500/20 text-amber-400' : 'bg-white/10 text-white/50'}`}>
+                                            {section.section_type === 'api'
+                                                ? (API_SOURCE_LABELS[section.api_source] || `API: ${section.api_source}`)
+                                                : 'Manual'}
                                         </span>
                                     </div>
                                     {/* Region movie counts */}
@@ -1086,8 +1193,20 @@ const AdminSectionsPage = () => {
                                                                 }`}
                                                         />
                                                         <span className={`absolute bottom-1 left-1 right-1 text-center text-[9px] font-bold rounded px-0.5 ${movie.media_type === 'tv' ? 'bg-purple-600/90 text-white' : 'bg-black/70 text-white/80'}`}>
-                                                            {movie.media_type === 'tv' ? 'TV' : 'Movie'}
+                                                            {movie.media_type === 'tv' ? 'Series' : 'Movie'}
                                                         </span>
+                                                        {movie.hot_tags?.length > 0 && (
+                                                            <div className="absolute top-1 left-1 flex flex-col gap-0.5">
+                                                                {movie.hot_tags.map((tag) => (
+                                                                    <span
+                                                                        key={tag}
+                                                                        className={`text-[8px] font-bold rounded px-1 py-0.5 ${tag === 'announcement' ? 'bg-amber-500/90 text-black' : 'bg-blue-500/90 text-white'}`}
+                                                                    >
+                                                                        {formatHotTagLabel(tag)}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        )}
 
                                                         {/* Drag indicator overlay */}
                                                         {editingSection === section.id && (
@@ -1192,7 +1311,8 @@ const AdminSectionsPage = () => {
                                                         }}
                                                         className="w-full bg-black/30 rounded px-3 py-2 text-sm text-white border border-white/10 focus:border-orange-500/50 outline-none"
                                                     >
-                                                        <option value="trending">Hot / Trending (Movies + Series)</option>
+                                                        <option value="trending">Trending (Movies + Series)</option>
+                                                        <option value="trending_live">Hot Right Now — 24h Trailers &amp; Announcements</option>
                                                         <option value="now_playing">In Theaters (movies only)</option>
                                                         <option value="popular">Popular (Movies + Series)</option>
                                                         <option value="top_rated">Top Rated (Movies + Series)</option>

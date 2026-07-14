@@ -4,15 +4,14 @@ import moment from "moment";
 import { Link } from "react-router-dom";
 import { FaStar } from "react-icons/fa";
 import { generateSlugWithId } from "../lib/slugUtils";
+import { pickBestPosterPath, resolveTmdbImageUrl } from "../utils/imageHelper";
+import { formatHotTagLabel } from "../utils/hotContentTags";
 import PosterQuickActions from "./PosterQuickActions";
 
-// Fallback TMDB image URL if Redux store hasn't loaded yet
-const FALLBACK_IMAGE_URL = "https://image.tmdb.org/t/p/original";
+const POSTER_SIZE = 'w500';
 
 const Card = ({ data, trending, index, media_type }) => {
-  const reduxImageURL = useSelector((state) => state.movieData.imageURL);
   const userRatedMovieIds = useSelector((state) => state.movieData.userRatedMovieIds);
-  const imageURL = reduxImageURL || FALLBACK_IMAGE_URL;
   const mediaType = data.media_type ?? media_type;
 
   const movieId = String(data.id ?? data.tmdb_id ?? "");
@@ -34,22 +33,11 @@ const Card = ({ data, trending, index, media_type }) => {
   const displayRating = tosRating ? tosRating.score : (data.vote_average || 0);
   const isTosRating = tosRating !== null;
 
-  // Construct image source with proper fallbacks
-  const getImageSrc = () => {
-    if (data.poster_path) {
-      if (data.poster_path.startsWith('http')) {
-        return data.poster_path;
-      }
-      return `${imageURL}${data.poster_path}`;
-    }
-    // Legacy fallback for older library rows
-    if (data.images?.poster_base64) {
-      return data.images.poster_base64;
-    }
-    return null;
-  };
+  const posterPath = pickBestPosterPath(data);
 
-  const imageSrc = getImageSrc();
+  // Construct image source with proper fallbacks
+  const imageSrc = resolveTmdbImageUrl(posterPath, { size: POSTER_SIZE })
+    || (data.images?.poster_base64?.startsWith('data:image') ? data.images.poster_base64 : null);
 
   return (
     <Link
@@ -65,7 +53,7 @@ const Card = ({ data, trending, index, media_type }) => {
         <PosterQuickActions
           movieId={movieId}
           movieTitle={data?.title || data?.name}
-          posterPath={data.poster_path}
+          posterPath={posterPath || data.poster_path}
           mediaType={mediaType}
         />
       </div>
@@ -125,6 +113,24 @@ const Card = ({ data, trending, index, media_type }) => {
           </div>
         )}
 
+        {/* Content tags (Trailer / Announcement) */}
+        {data.hot_tags?.length > 0 && (
+          <div className="absolute bottom-2 left-2 right-2 flex flex-wrap gap-1 z-10">
+            {data.hot_tags.map((tag) => (
+              <span
+                key={tag}
+                className={`px-1.5 py-0.5 rounded text-[9px] font-medium backdrop-blur-sm ${
+                  tag === 'announcement'
+                    ? 'bg-[var(--color-theater)]/90 text-[var(--color-background)]'
+                    : 'bg-black/75 text-white/90'
+                }`}
+              >
+                {formatHotTagLabel(tag)}
+              </span>
+            ))}
+          </div>
+        )}
+
         {/* Hover overlay with details */}
         <div className="absolute bottom-0 left-0 right-0 p-3 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
           <p className="text-[11px] text-white/70 line-clamp-2 leading-relaxed">
@@ -140,7 +146,7 @@ const Card = ({ data, trending, index, media_type }) => {
         </h3>
         <p className="text-xs text-white/40 mt-0.5">
           {moment(data.release_date || data.first_air_date).format("YYYY")}
-          {data.media_type === "tv" && " • TV"}
+          {data.media_type === "tv" && " • Series"}
         </p>
       </div>
     </Link>

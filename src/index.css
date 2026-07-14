@@ -383,6 +383,11 @@ input[type="range"]::-moz-range-thumb {
   padding-top: env(safe-area-inset-top, 0);
 }
 
+/* Offset below fixed header on mobile (bottom nav uses .pb-nav on main) */
+.page-below-header {
+  padding-top: calc(4.25rem + env(safe-area-inset-top, 0px));
+}
+
 /* Bottom padding for pages above the fixed mobile tab bar */
 .pb-nav {
   padding-bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));

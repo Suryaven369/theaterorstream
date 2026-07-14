@@ -5,6 +5,7 @@ import VerifiedBadge from '../VerifiedBadge';
 import { parseSummaryForDisplay, normalizeProseText } from '../../lib/articleSummary';
 import RedditActionBar from './RedditActionBar';
 import RedditMediaFrame from './RedditMediaFrame';
+import { feedArticleClass } from './feedItemShell';
 import { getAvatarUrl } from '../../lib/storagePublicUrl';
 
 function formatWhen(publishedAt) {
@@ -128,11 +129,7 @@ export default function FeedArticleCard({
 
   return (
     <article
-      className={`${
-        isThread
-          ? 'bg-transparent rounded-none border-0'
-          : 'bg-[var(--color-surface)] rounded-lg border border-[var(--color-border)] hover:border-[var(--color-text-muted)]/30'
-      } overflow-hidden transition-colors ${onOpenThread ? 'cursor-pointer' : ''}`}
+      className={feedArticleClass(isThread, onOpenThread ? 'cursor-pointer' : '')}
       onClick={onOpenThread ? openThread : undefined}
       role={onOpenThread ? 'link' : undefined}
     >

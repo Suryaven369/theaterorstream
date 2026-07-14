@@ -2,11 +2,57 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 2026 · HEAD `5dfb82a` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 2026 · HEAD `ae34bba` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
 
 ---
 
-## Session: Jul 14, 2026 — Listicle Carousel Integration
+## Session: Jul 15, 2026 — Feed composer, flat layout, mobile UX
+
+### Twitter-style feed composer + carousel & polls ✅
+
+**Problem:** Home post composer was basic; no multi-image carousel, polls, or single-edit limit; feed used chunky card boxes.
+
+**Files changed:**
+- `src/components/social/FeedComposer.jsx` — X-style composer; grey toolbar icons; brand-yellow Post button; carousel (2+ images) with global caption; 2-option polls
+- `src/components/social/PostMediaCarousel.jsx` — carousel display component
+- `src/components/social/FeedPoll.jsx` — poll voting UI
+- `src/components/social/FeedPostCard.jsx` — carousel/poll render, single-edit UI, flat row padding
+- `src/components/social/feedItemShell.js` — shared flat feed row classes
+- `src/components/social/FeedArticleCard.jsx`, `FeedTrailerCard.jsx`, `FeedActivityCard.jsx`, `FeedTweetCard.jsx`, `RedditActionBar.jsx` — flat divider styling
+- `src/lib/socialFeedApi.js` — `createPost` media_items, `votePoll`, single-edit in `updatePost`
+- `src/views/Home.jsx`, `src/views/ThreadPage.jsx` — poll handlers, flat `divide-y` feed column
+- `supabase/migrations/20260725000000_feed_post_carousel_polls.sql` — `media_items`, `poll_data`, `post_poll_votes`
+- `supabase/migrations/20260725100000_feed_post_single_edit.sql` — `edit_count` + trigger (one content edit max)
+
+**Behavior:** Users post text, images (carousel when 2+), or polls; feed rows use line dividers; posts editable once after publish.
+
+### Mobile navigation & header polish ✅
+
+**Problem:** Duplicate Home/Explore/Watch tabs on mobile; bottom nav had Boards; header too high; logo not circular.
+
+**Files changed:**
+- `src/components/MobileNavigation.jsx` — Boards → Watch (`/?tab=watch`); active states
+- `src/components/Header.jsx` — `rounded-full` logo; safe-area top padding
+- `src/views/Home.jsx` — hide top tabs on mobile (`lg:block`); full-width feed; Everyone/Following above composer
+- `src/index.css` — `.page-below-header` utility
+
+**Behavior:** Mobile uses bottom nav only; header sits below notch; feed uses full screen width.
+
+### Admin Hot Right Now vs Trending ✅
+
+**Files changed:**
+- `src/views/admin/AdminSectionsPage.jsx` — `trending` vs `trending_live` (24h trailers/announcements)
+- `src/components/home/HomeBrowseTab.jsx` — `trending_live` hot rail
+- `src/utils/hotContentTags.js` — hot content tag helpers
+
+**Behavior:** Admin can configure normal weekly trending separately from live 24h hot rail.
+
+### Removed MovieGlu / Now in Theaters ✅
+
+**Files changed:** Deleted `api/_lib/movieglu-server.js`, `api/theaters/[action].js`, `src/lib/theatersApi.js`, `src/components/home/NowInTheaters.jsx`; related cleanup in `Card.jsx`, `HomeSocialSidebar.jsx`, library/sections DB helpers.
+
+**Next recommended:** Run both new feed SQL migrations in Supabase (`20260725000000`, `20260725100000`); switch existing hot sections from `trending` to `trending_live` in admin if needed.
+
 
 ### Integrated listicle carousel extraction into News Intelligence publisher ✅
 
@@ -894,6 +940,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `PLACEHOLDER` | Jul 2026 | Feed carousel/polls, flat layout, mobile nav Watch, admin trending_live |
 | `138b5a9` | Jul 2026 | Fix profile avatar/banner URLs saved via Vite supabase-proxy |
 | `e5a2d32` | Jul 2026 | Explore in-page Collections/Boards/Blogs, Coming Soon Feed-only, mobile/iPad |
 | `dd05fdb` | Jul 2026 | Official profile connect, username rules, Explore tab, feed avatars |

@@ -37,7 +37,7 @@ function browseSectionKind(section) {
     return 'editors';
   }
   // Hot Right Now — avoid matching Hotstar (already handled as ott)
-  if (/\bhot\b|right.?now|trend/.test(blob) || api === 'trending' || api === 'popular') {
+  if (/\bhot\b|right.?now|trend/.test(blob) || api === 'trending' || api === 'trending_live' || api === 'popular') {
     return 'hot';
   }
   return 'other';
@@ -291,6 +291,8 @@ export default function HomeBrowseTab({
                                     genres: movie.genres,
                                     runtime: movie.runtime,
                                     tos_rating: movie.tos_rating,
+                                    images: movie.images,
+                                    hot_tags: movie.hot_tags,
                                   }}
                                   media_type={movie.media_type || 'movie'}
                                   index={index}

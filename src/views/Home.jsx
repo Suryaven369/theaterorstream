@@ -20,7 +20,7 @@ import { getAllUserRatings, getHomepageSections, getOfficialProfile } from "../l
 import { computeOverallFromRatingRow } from "../lib/ratingUtils";
 import { setHomepageSections, setUserRatedMovies, invalidateHomepageSections } from "../store/movieSlice";
 import { useAuth } from "../context/AuthContext";
-import { savePost, unsavePost, getFeedPosts, updatePost, deletePost } from "../lib/socialFeedApi";
+import { savePost, unsavePost, getFeedPosts, updatePost, deletePost, votePoll } from "../lib/socialFeedApi";
 import { attachFeedItemLikes, syncLocalFeedLikesToServer, toggleFeedUpvote } from "../lib/feedLikes";
 import { attachFeedItemCommentCounts, threadPathForItem } from "../lib/feedThread";
 import {
@@ -46,29 +46,26 @@ const SECTIONS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const SECTIONS_REV_KEY = 'homepage_sections_rev';
 
 const FeedSkeleton = ({ count = 5 }) => (
-  <div className="space-y-3" aria-hidden="true">
+  <div className="divide-y divide-[var(--color-border)]" aria-hidden="true">
     {Array.from({ length: count }, (_, i) => {
       const thumb = i % 2 === 0;
       const lines = thumb ? 2 : 3;
       return (
-        <div
-          key={i}
-          className="bg-[#1a1d1f] rounded-lg border border-white/5 overflow-hidden"
-        >
-          <div className="flex items-center gap-2 p-3 pb-2">
+        <div key={i} className="px-3 sm:px-4 py-2.5 sm:py-3">
+          <div className="flex items-center gap-2 pb-2">
             <div className="w-8 h-8 rounded-full bg-white/[0.07] animate-pulse shrink-0" />
             <div className="flex-1 space-y-1.5">
               <div className="h-3 bg-white/[0.07] animate-pulse rounded w-28" />
               <div className="h-2.5 bg-white/[0.04] animate-pulse rounded w-20" />
             </div>
           </div>
-          {thumb && <div className="aspect-video bg-white/[0.05] animate-pulse" />}
-          <div className="px-3 py-2.5 space-y-2">
+          {thumb && <div className="aspect-video bg-white/[0.05] animate-pulse rounded-lg mb-2" />}
+          <div className="space-y-2 py-1">
             {Array.from({ length: lines }, (_, j) => (
               <div key={j} className={`h-3 bg-white/[0.06] animate-pulse rounded ${j === lines - 1 ? 'w-3/5' : 'w-full'}`} />
             ))}
           </div>
-          <div className="px-3 pb-2.5 flex gap-3">
+          <div className="pt-2 flex gap-3">
             <div className="h-4 w-12 bg-white/[0.05] animate-pulse rounded-full" />
             <div className="h-4 w-12 bg-white/[0.05] animate-pulse rounded-full" />
           </div>
@@ -128,6 +125,7 @@ const Home = () => {
   const [savingEdit, setSavingEdit] = useState(false);
   const [postToDelete, setPostToDelete] = useState(null);
   const [deletingPost, setDeletingPost] = useState(false);
+  const [pollVotingId, setPollVotingId] = useState(null);
 
   const [selectedRegion, setSelectedRegion] = useState(getSavedRegion);
   const [cmsSections, setCmsSections] = useState(cachedSections || []);
@@ -471,6 +469,10 @@ const Home = () => {
 
   // ---- Edit / delete own posts ----
   const startEditPost = (item) => {
+    if (item.canEdit === false || (item.editCount ?? 0) >= 1) {
+      toast.error('You can only edit a post once.');
+      return;
+    }
     setOpenMenuId(null);
     setEditingId(item.id);
     setEditText(item.content || '');
@@ -487,8 +489,21 @@ const Home = () => {
     setSavingEdit(true);
     const res = await updatePost(item.id, user?.id, { content: editText });
     if (res.ok) {
-      setFeedItems((prev) => prev.map((p) => (p.id === item.id ? { ...p, content: editText.trim() } : p)));
+      setFeedItems((prev) =>
+        prev.map((p) =>
+          p.id === item.id
+            ? {
+                ...p,
+                content: editText.trim(),
+                editCount: Math.max(p.editCount ?? 0, 1),
+                canEdit: false,
+              }
+            : p,
+        ),
+      );
       cancelEditPost();
+    } else {
+      toast.error(res.error || 'Could not save edit.');
     }
     setSavingEdit(false);
   };
@@ -604,6 +619,42 @@ const Home = () => {
     setShareModalPost(post);
   };
 
+  const handlePollVote = async (item, optionIndex) => {
+    if (!isAuthenticated) {
+      requireSignIn('Sign in to vote on polls.');
+      return;
+    }
+    if (item.userPollVote !== null && item.userPollVote !== undefined) return;
+    if (pollVotingId) return;
+
+    setPollVotingId(item.id);
+    const res = await votePoll(item.id, user.id, optionIndex);
+    if (res.ok) {
+      setFeedItems((prev) =>
+        prev.map((p) => {
+          if (p.id !== item.id || !p.pollData?.options) return p;
+          const options = p.pollData.options.map((opt, i) => ({
+            ...opt,
+            votes: (opt.votes || 0) + (i === optionIndex ? 1 : 0),
+          }));
+          return { ...p, pollData: { options }, userPollVote: optionIndex };
+        }),
+      );
+      patchCachedFeedItem(item.id, {
+        pollData: {
+          options: item.pollData.options.map((opt, i) => ({
+            ...opt,
+            votes: (opt.votes || 0) + (i === optionIndex ? 1 : 0),
+          })),
+        },
+        userPollVote: optionIndex,
+      });
+    } else {
+      toast.error(res.error || 'Could not record vote.');
+    }
+    setPollVotingId(null);
+  };
+
   const openComments = (post) => {
     setCommentModalPost(post);
   };
@@ -715,14 +766,16 @@ const Home = () => {
         onShare={handleShare}
         onOpenComments={openComments}
         onOpenThread={openThread}
+        onVotePoll={handlePollVote}
+        pollVotingId={pollVotingId}
       />
     );
   };
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)]">
-      {/* Main Tabs - At the top */}
-      <section className="pt-[calc(4.5rem+env(safe-area-inset-top,0px))] sm:pt-24 px-3 sm:px-8 md:px-8 lg:pl-16">
+      {/* Main Tabs — desktop only (mobile uses bottom nav) */}
+      <section className="hidden lg:block pt-24 px-3 sm:px-8 md:px-8 lg:pl-16">
         <div className="container mx-auto">
           <div className="flex items-center gap-1 sm:gap-2 border-b border-white/10 overflow-x-auto scrollbar-hide -mx-1 px-1">
             <button
@@ -764,22 +817,34 @@ const Home = () => {
 
       {/* Tab Content */}
       {activeTab === 'watch' ? (
-        /* ============================================ */
-        /* WATCH - Personalized recommendation engine  */
-        /* ============================================ */
-        <WatchPage embedded />
+        <div className="pt-[calc(4rem+env(safe-area-inset-top,0px))] lg:pt-0">
+          <WatchPage embedded />
+        </div>
       ) : activeTab === 'home' ? (
-        /* ============================================ */
-        /* HOME - Social Feed (Reddit/Instagram Style) */
-        /* ============================================ */
-        <section className="px-3 sm:px-8 py-4 sm:py-6">
+        <section className="pt-[calc(4rem+env(safe-area-inset-top,0px))] lg:pt-0 px-0 sm:px-8 py-2 sm:py-6">
           <div className="max-w-7xl mx-auto">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               {/* Left Spacer */}
               <div className="hidden lg:block lg:col-span-2" />
               
-              {/* Main Feed — phone/iPad centered column feels more app-like */}
-              <div className="lg:col-span-6 space-y-3 max-w-xl mx-auto lg:max-w-none w-full">
+              {/* Main Feed — flat column with line dividers (X / Reddit style) */}
+              <div className="lg:col-span-6 max-w-xl mx-auto lg:max-w-none w-full lg:border-x lg:border-[var(--color-border)]">
+                {/* Scope toggle: Everyone vs the people you follow */}
+                {user?.id && (
+                  <div className="flex items-center gap-1.5 px-3 sm:px-4 py-2 border-b border-[var(--color-border)]">
+                    {[['all', 'Everyone'], ['following', 'Following']].map(([s, label]) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setFeedScope(s)}
+                        className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-colors ${feedScope === s ? 'bg-[var(--accent-green)] text-[#14181c]' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface)]/40'}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 <FeedComposer
                   isAuthenticated={isAuthenticated}
                   user={user}
@@ -790,24 +855,12 @@ const Home = () => {
                   onFeedReload={handleComposerFeedReload}
                 />
 
-                {/* Scope toggle: Everyone vs the people you follow */}
-                {user?.id && (
-                  <div className="flex items-center gap-1.5 bg-[#1a1d1f] rounded-full border border-white/5 p-1 w-fit">
-                    {[['all', 'Everyone'], ['following', 'Following']].map(([s, label]) => (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => setFeedScope(s)}
-                        className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-colors ${feedScope === s ? 'bg-[var(--accent-green)] text-[#14181c]' : 'text-white/60 hover:text-white'}`}
-                      >
-                        {label}
-                      </button>
-                    ))}
+                {/* Topics you follow (directors / genres / franchises) — new releases */}
+                {feedScope === 'following' && (
+                  <div className="border-b border-[var(--color-border)] px-3 sm:px-4 py-3">
+                    <FollowingFeed />
                   </div>
                 )}
-
-                {/* Topics you follow (directors / genres / franchises) — new releases */}
-                {feedScope === 'following' && <FollowingFeed />}
 
                 {/* Feed Items — skeleton only when no cached data and still loading */}
                 {feedInitialLoading && feedItems.length === 0 ? (
@@ -815,40 +868,42 @@ const Home = () => {
                 ) : (
                   <>
                     {feedScope === 'following' && feedItems.length === 0 && !loadingMoreFeed && (
-                      <div className="text-center py-12 rounded-xl border border-dashed border-white/10 bg-[#1a1d1f]">
-                        <p className="text-sm text-white/60">Nothing from people or tags you follow yet.</p>
-                        <p className="text-xs text-white/40 mt-1">
+                      <div className="text-center py-12 px-4 border-b border-[var(--color-border)]">
+                        <p className="text-sm text-[var(--color-text-secondary)]">Nothing from people or tags you follow yet.</p>
+                        <p className="text-xs text-[var(--color-text-muted)] mt-1">
                           Follow users or{' '}
-                          <a href="/tags" className="text-orange-400 hover:underline">hashtags</a>
+                          <a href="/tags" className="text-[var(--color-theater)] hover:underline">hashtags</a>
                           {' '}to see matching posts here.
                         </p>
                       </div>
                     )}
-                    {feedItems.map((item, index) => {
-                      const isNew = !appearedIds.current.has(item.id);
-                      if (isNew) appearedIds.current.add(item.id);
-                      return (
-                        <div
-                          key={item.id}
-                          style={isNew ? {
-                            animation: 'feed-in 0.38s ease both',
-                            animationDelay: `${Math.min(index, 8) * 65}ms`,
-                          } : undefined}
-                        >
-                          {renderFeedItem(item)}
-                        </div>
-                      );
-                    })}
+                    <div className="divide-y divide-[var(--color-border)]">
+                      {feedItems.map((item, index) => {
+                        const isNew = !appearedIds.current.has(item.id);
+                        if (isNew) appearedIds.current.add(item.id);
+                        return (
+                          <div
+                            key={item.id}
+                            style={isNew ? {
+                              animation: 'feed-in 0.38s ease both',
+                              animationDelay: `${Math.min(index, 8) * 65}ms`,
+                            } : undefined}
+                          >
+                            {renderFeedItem(item)}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </>
                 )}
 
                 {/* Infinite scroll sentinel — loads the next page of posts as it scrolls into view */}
                 {!feedInitialLoading && hasMoreFeed && feedItems.length > 0 ? (
-                  <div ref={loadMoreSentinelRef} className="py-2">
+                  <div ref={loadMoreSentinelRef} className="py-2 border-t border-[var(--color-border)]">
                     {loadingMoreFeed && <FeedSkeleton count={2} />}
                   </div>
                 ) : !feedInitialLoading && !hasMoreFeed && feedItems.length > 0 ? (
-                  <p className="text-center text-xs text-white/30 py-6">You're all caught up</p>
+                  <p className="text-center text-xs text-[var(--color-text-muted)] py-6 border-t border-[var(--color-border)]">You're all caught up</p>
                 ) : null}
               </div>
 
@@ -857,12 +912,14 @@ const Home = () => {
           </div>
         </section>
       ) : (
-        <HomeBrowseTab
-          selectedRegion={selectedRegion}
-          onRegionSelect={handleRegionSelect}
-          cmsSections={cmsSections}
-          loadingSections={loadingSections}
-        />
+        <section className="pt-[calc(4rem+env(safe-area-inset-top,0px))] lg:pt-0 px-3 sm:px-8 py-4 sm:py-6">
+          <HomeBrowseTab
+            selectedRegion={selectedRegion}
+            onRegionSelect={handleRegionSelect}
+            cmsSections={cmsSections}
+            loadingSections={loadingSections}
+          />
+        </section>
       )}
 
       {commentModalPost && (

@@ -10,6 +10,9 @@ import MovieMentionText from '../MovieMentionText';
 import VerifiedBadge from '../VerifiedBadge';
 import RedditActionBar from './RedditActionBar';
 import RedditMediaFrame from './RedditMediaFrame';
+import PostMediaCarousel from './PostMediaCarousel';
+import FeedPoll from './FeedPoll';
+import { feedArticleClass } from './feedItemShell';
 import { getAvatarUrl } from '../../lib/storagePublicUrl';
 
 const createSlug = (text) =>
@@ -41,6 +44,8 @@ export default function FeedPostCard({
   onShare,
   onOpenComments,
   onOpenThread,
+  onVotePoll,
+  pollVotingId = null,
   variant = 'feed',
 }) {
   const isOwner = item.user?.id && currentUserId === item.user.id;
@@ -58,13 +63,13 @@ export default function FeedPostCard({
 
   return (
     <article
-      className={`bg-[var(--color-surface)] ${isThread ? 'rounded-none sm:rounded-t-xl border-0' : 'rounded-lg border border-[var(--color-border)]'} overflow-hidden hover:border-[var(--color-text-muted)]/30 transition-colors ${onOpenThread ? 'cursor-pointer' : ''}`}
+      className={feedArticleClass(isThread, onOpenThread ? 'cursor-pointer' : '')}
       onClick={onOpenThread ? openThread : undefined}
       role={onOpenThread ? 'link' : undefined}
     >
-      <div className="flex items-center justify-between p-3 pb-2">
+      <div className={`flex items-center justify-between ${isThread ? 'p-3 pb-2' : 'px-3 sm:px-4 pt-2.5 sm:pt-3 pb-1.5'}`}>
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-lg bg-[var(--color-surface-subtle)] flex items-center justify-center text-sm overflow-hidden shrink-0">
+          <div className="w-9 h-9 rounded-full bg-[var(--color-surface-subtle)] flex items-center justify-center text-sm overflow-hidden shrink-0">
             {item.user.avatarUrl ? (
               <img src={getAvatarUrl(item.user.avatarUrl, 36)} alt="" className="w-full h-full object-cover" />
             ) : (
@@ -81,6 +86,9 @@ export default function FeedPostCard({
             </Link>
             <p className="text-[11px] text-[var(--color-text-muted)]">
               @{item.user.username} · {item.time}
+              {item.editCount > 0 && (
+                <span className="text-[var(--color-text-muted)]"> · Edited</span>
+              )}
             </p>
           </div>
         </div>
@@ -101,7 +109,7 @@ export default function FeedPostCard({
                   aria-label="Close menu"
                 />
                 <div className="absolute right-0 top-8 z-20 w-36 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-xl overflow-hidden">
-                  {item.postType !== 'log' && item.postType !== 'list' && (
+                  {item.postType !== 'log' && item.postType !== 'list' && item.canEdit !== false && (
                     <button
                       onClick={() => onStartEdit(item)}
                       className="w-full text-left px-3 py-2.5 text-xs text-[var(--color-text)] hover:bg-[var(--color-surface-subtle)]"
@@ -164,7 +172,7 @@ export default function FeedPostCard({
         </div>
       ) : (
         item.content && (
-          <div className={`px-3 ${isThread ? 'pb-3' : 'pb-2'}`}>
+          <div className={`px-3 sm:px-4 ${isThread ? 'pb-3' : 'pb-1.5'}`}>
             <MovieMentionText
               content={item.content}
               className={`${isThread ? 'text-[16px] sm:text-[17px]' : 'text-[13px]'} text-white leading-relaxed`}
@@ -173,22 +181,39 @@ export default function FeedPostCard({
         )
       )}
 
-      {item.image && (
+      {item.isCarousel && item.mediaItems?.length >= 2 ? (
+        <PostMediaCarousel
+          items={item.mediaItems}
+          caption={item.carouselCaption}
+          variant={isThread ? 'thread' : 'feed'}
+          onDoubleClick={() => onLike(item)}
+        />
+      ) : item.image && (
         isThread ? (
           <div className="px-3 pb-3">
             <RedditMediaFrame src={item.image} alt="" onDoubleClick={() => onLike(item)} />
           </div>
         ) : (
-          <div className="relative">
+          <div className="relative bg-black flex items-center justify-center max-h-[520px]">
             <img
               src={item.image}
               alt=""
-              className="w-full max-h-[520px] object-cover"
+              className="block max-w-full max-h-[520px] w-auto h-auto object-contain mx-auto"
               loading="lazy"
               onDoubleClick={() => onLike(item)}
             />
           </div>
         )
+      )}
+
+      {item.postType === 'poll' && item.pollData && (
+        <FeedPoll
+          pollData={item.pollData}
+          userVote={item.userPollVote}
+          voting={pollVotingId === item.id}
+          disabled={!currentUserId}
+          onVote={(optionIndex) => onVotePoll?.(item, optionIndex)}
+        />
       )}
 
       {item.movie && item.hasImage && (
@@ -277,7 +302,7 @@ export default function FeedPostCard({
         </div>
       )}
 
-      <div className="px-3 py-2.5" data-no-thread onClick={(e) => e.stopPropagation()}>
+      <div className="px-3 sm:px-4 py-2 sm:py-2.5" data-no-thread onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between gap-2">
           <RedditActionBar
             score={item.likes || 0}

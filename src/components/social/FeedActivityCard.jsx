@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import VerifiedBadge from '../VerifiedBadge';
 import RedditActionBar from './RedditActionBar';
+import { feedArticleClass } from './feedItemShell';
 import { getAvatarUrl } from '../../lib/storagePublicUrl';
 
 /**
@@ -17,7 +18,7 @@ export default function FeedActivityCard({ item, onLike, onOpenComments, onOpenT
 
   return (
     <article
-      className={`bg-[var(--color-surface)] rounded-lg border border-[var(--color-border)] hover:border-[var(--color-text-muted)]/30 transition-colors overflow-hidden ${onOpenThread ? 'cursor-pointer' : ''}`}
+      className={feedArticleClass(false, onOpenThread ? 'cursor-pointer' : '')}
       onClick={onOpenThread ? openThread : undefined}
       role={onOpenThread ? 'link' : undefined}
     >
