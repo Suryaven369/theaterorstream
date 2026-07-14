@@ -4,6 +4,7 @@ import { getTrendingHashtags } from '../../lib/hashtagApi';
 import { getSuggestedUsersToFollow, toggleFollow } from '../../lib/db/social';
 import { useAuth } from '../../context/AuthContext';
 import { getAvatarUrl } from '../../lib/storagePublicUrl';
+import NowInTheaters from './NowInTheaters';
 
 function formatCount(num) {
   const n = Number(num) || 0;
@@ -89,6 +90,9 @@ export default function HomeSocialSidebar() {
 
   return (
     <aside className="lg:col-span-4 space-y-4 hidden lg:block">
+      {/* Now in Theaters */}
+      <NowInTheaters limit={5} />
+      
       <div className="p-3 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)]">
         <h3 className="text-xs font-medium text-[var(--color-text)] mb-3">Trending Now</h3>
         <div className="space-y-2.5">
