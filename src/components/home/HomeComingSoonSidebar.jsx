@@ -1,6 +1,5 @@
 import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { FaCalendarAlt } from 'react-icons/fa';
 import { generateSlugWithId } from '../../lib/slugUtils';
 
 const FALLBACK_REGION_ORDER = ['IN', 'US', 'GB', 'CA', 'AU'];
@@ -11,7 +10,7 @@ function formatReleaseDate(dateStr) {
   const now = new Date();
   const diffDays = Math.ceil((date - now) / (1000 * 60 * 60 * 24));
   if (diffDays < 0) return 'Released';
-  if (diffDays === 0) return 'Today!';
+  if (diffDays === 0) return 'Today';
   if (diffDays === 1) return 'Tomorrow';
   if (diffDays <= 7) return `In ${diffDays} days`;
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -63,39 +62,73 @@ function MovieRow({ movie }) {
   return (
     <Link
       to={movieUrl}
-      className="flex items-start gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-all group"
+      className="flex items-center gap-3 px-4 py-3 hover:bg-[var(--color-surface-subtle)]/60 transition-colors group"
     >
-      <div className="flex-shrink-0 w-14 h-[5.25rem] rounded-lg overflow-hidden">
+      <div className="flex-shrink-0 w-11 h-[4.125rem] rounded-md overflow-hidden bg-[var(--color-surface-subtle)]">
         {movie.poster_path ? (
           <img
-            src={`https://image.tmdb.org/t/p/w185${movie.poster_path}`}
+            src={`https://image.tmdb.org/t/p/w92${movie.poster_path}`}
             alt={movie.title}
             className="w-full h-full object-cover"
             loading="lazy"
           />
         ) : (
-          <div className="w-full h-full bg-white/10 flex items-center justify-center text-xl">
-            🎬
-          </div>
+          <div className="w-full h-full flex items-center justify-center text-base opacity-40">🎬</div>
         )}
       </div>
-      <div className="flex-1 min-w-0 pt-0.5">
-        <h3 className="text-sm font-medium text-white group-hover:text-yellow-400 transition-colors line-clamp-2 leading-snug">
+      <div className="flex-1 min-w-0">
+        <p className="text-[13px] font-semibold text-[var(--color-text)] group-hover:text-[var(--color-theater)] transition-colors line-clamp-2 leading-snug">
           {movie.title}
-        </h3>
-        <div className="flex items-center gap-1.5 mt-1.5">
-          <FaCalendarAlt className="text-green-400 text-[10px]" />
-          <span className="text-xs text-green-400 font-medium">
-            {formatReleaseDate(movie.release_date)}
-          </span>
-        </div>
+        </p>
+        <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">
+          {formatReleaseDate(movie.release_date)}
+        </p>
       </div>
     </Link>
   );
 }
 
+function ComingSoonWidget({ movies, usedRegion, isFallback, selectedRegion, className = '' }) {
+  if (!movies.length) {
+    return (
+      <div className={`rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] overflow-hidden ${className}`}>
+        <h2 className="px-4 pt-3.5 pb-2 text-[15px] font-bold text-[var(--color-text)]">Coming Soon</h2>
+        <p className="px-4 pb-4 text-xs text-[var(--color-text-muted)]">
+          No upcoming titles for {selectedRegion.name}.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] overflow-hidden ${className}`}>
+      <div className="px-4 pt-3.5 pb-1">
+        <h2 className="text-[15px] font-bold text-[var(--color-text)]">Coming Soon</h2>
+        {isFallback && (
+          <p className="text-[10px] text-amber-400/80 mt-0.5">
+            Showing {usedRegion} (none for {selectedRegion.code})
+          </p>
+        )}
+      </div>
+
+      <div className="divide-y divide-[var(--color-border)]">
+        {movies.map((movie) => (
+          <MovieRow key={movie.tmdb_id} movie={movie} />
+        ))}
+      </div>
+
+      <Link
+        to="/upcoming"
+        className="block px-4 py-3 text-[13px] text-[var(--color-theater)] hover:bg-[var(--color-surface-subtle)]/60 transition-colors"
+      >
+        View all
+      </Link>
+    </div>
+  );
+}
+
 /**
- * Explore Coming Soon — desktop rail + mobile/tablet horizontal strip.
+ * Explore Coming Soon — desktop rail + mobile/tablet unified list widget.
  * placement: "rail" | "strip"
  */
 export default function HomeComingSoonSidebar({
@@ -110,127 +143,48 @@ export default function HomeComingSoonSidebar({
 
   if (placement === 'strip') {
     if (!comingSoonMovies.length) return null;
-
     return (
       <div className="lg:hidden">
-        <div className="flex items-center justify-between gap-3 mb-3">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="p-1.5 rounded-lg bg-green-500/10 shrink-0">
-              <FaCalendarAlt className="text-green-400 text-sm" />
-            </div>
-            <div className="min-w-0">
-              <h2 className="text-base font-semibold text-white">Coming Soon</h2>
-              {isFallback && (
-                <p className="text-[10px] text-amber-400/80">
-                  Showing {usedRegion} (none for {selectedRegion.code})
-                </p>
-              )}
-            </div>
-          </div>
-          <Link
-            to="/upcoming"
-            className="text-xs text-yellow-400 hover:text-yellow-300 shrink-0"
-          >
-            View all →
-          </Link>
-        </div>
-
-        <div className="-mx-1 overflow-x-auto scrollbar-hide">
-          <div className="flex gap-3 px-1 pb-1 min-w-0">
-            {comingSoonMovies.map((movie) => {
-              const year = movie.release_date?.split('-')[0] || '';
-              const slug = generateSlugWithId(movie.title, movie.tmdb_id, year);
-              const movieUrl = movie.media_type === 'tv' ? `/tv/${slug}` : `/movies/${slug}`;
-              return (
-                <Link
-                  key={movie.tmdb_id}
-                  to={movieUrl}
-                  className="shrink-0 w-[8rem] sm:w-[8.5rem] group"
-                >
-                  <div className="aspect-[2/3] rounded-xl overflow-hidden bg-white/5 border border-white/[0.06] mb-2">
-                    {movie.poster_path ? (
-                      <img
-                        src={`https://image.tmdb.org/t/p/w185${movie.poster_path}`}
-                        alt={movie.title}
-                        className="w-full h-full object-cover"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-2xl">🎬</div>
-                    )}
-                  </div>
-                  <p className="text-xs font-medium text-white line-clamp-2 group-active:text-yellow-400">
-                    {movie.title}
-                  </p>
-                  <p className="text-[10px] text-green-400 mt-0.5">
-                    {formatReleaseDate(movie.release_date)}
-                  </p>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
+        <ComingSoonWidget
+          movies={comingSoonMovies}
+          usedRegion={usedRegion}
+          isFallback={isFallback}
+          selectedRegion={selectedRegion}
+        />
       </div>
     );
   }
 
   return (
     <div className="hidden lg:block w-[16.5rem] xl:w-[18rem] shrink-0">
-      <div className="sticky top-24">
-        <div className="flex items-center gap-3 mb-5">
-          <div className="p-2 rounded-lg bg-green-500/10">
-            <FaCalendarAlt className="text-green-400" />
-          </div>
-          <div className="min-w-0">
-            <Link to="/upcoming" className="text-lg font-semibold text-white hover:text-yellow-400 transition-colors">
+      <div className="sticky top-24 space-y-4">
+        <ComingSoonWidget
+          movies={comingSoonMovies}
+          usedRegion={usedRegion}
+          isFallback={isFallback}
+          selectedRegion={selectedRegion}
+        />
+
+        <div className="rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] overflow-hidden">
+          <h3 className="px-4 pt-3.5 pb-2 text-[15px] font-bold text-[var(--color-text)]">Quick Links</h3>
+          <div className="divide-y divide-[var(--color-border)]">
+            <Link
+              to="/upcoming"
+              className="block px-4 py-3 text-[13px] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-subtle)]/60 hover:text-[var(--color-theater)] transition-colors"
+            >
               Coming Soon
-            </Link>
-            {isFallback && (
-              <p className="text-[10px] text-amber-400/80 mt-0.5">
-                Showing {usedRegion} (none for {selectedRegion.code})
-              </p>
-            )}
-          </div>
-        </div>
-
-        {comingSoonMovies.length > 0 ? (
-          <div className="space-y-2.5">
-            {comingSoonMovies.map((movie) => (
-              <MovieRow key={movie.tmdb_id} movie={movie} />
-            ))}
-            <Link
-              to="/upcoming"
-              className="block text-center py-2 text-sm text-yellow-400 hover:text-yellow-300 transition-colors"
-            >
-              View All Coming Soon →
-            </Link>
-          </div>
-        ) : (
-          <div className="text-center py-8 text-white/30 text-sm">
-            <p>No coming soon movies for {selectedRegion.name}.</p>
-          </div>
-        )}
-
-        <div className="mt-6 xl:mt-8 p-3.5 xl:p-4 rounded-xl bg-gradient-to-br from-yellow-500/10 to-orange-500/10 border border-yellow-500/20">
-          <h3 className="text-sm font-semibold text-white mb-2.5">Quick Links</h3>
-          <div className="space-y-2">
-            <Link
-              to="/upcoming"
-              className="flex items-center gap-2 text-sm text-white/60 hover:text-yellow-400 transition-colors"
-            >
-              🎬 Coming Soon
             </Link>
             <Link
               to="/tags"
-              className="flex items-center gap-2 text-sm text-white/60 hover:text-yellow-400 transition-colors"
+              className="block px-4 py-3 text-[13px] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-subtle)]/60 hover:text-[var(--color-theater)] transition-colors"
             >
-              # Explore Hashtags
+              Explore Hashtags
             </Link>
             <Link
               to="/search"
-              className="flex items-center gap-2 text-sm text-white/60 hover:text-yellow-400 transition-colors"
+              className="block px-4 py-3 text-[13px] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-subtle)]/60 hover:text-[var(--color-theater)] transition-colors"
             >
-              🔍 Search Movies
+              Search Movies
             </Link>
           </div>
         </div>

@@ -480,7 +480,7 @@ export default function FeedComposer({
                 className="hidden"
               />
 
-              <div className="flex items-center justify-between pt-3 mt-2 border-t border-[var(--color-border)]">
+              <div className="flex items-center justify-between pt-2 mt-1">
                 <div className="flex items-center gap-0.5">
                   <button
                     type="button"

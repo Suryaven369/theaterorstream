@@ -88,7 +88,7 @@ export default function HomeSocialSidebar() {
   };
 
   return (
-    <aside className="lg:col-span-4 space-y-4 hidden lg:block">
+    <aside className="lg:col-span-4 space-y-4 hidden lg:block mt-10">
       <div className="p-3 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)]">
         <h3 className="text-xs font-medium text-[var(--color-text)] mb-3">Trending Now</h3>
         <div className="space-y-2.5">

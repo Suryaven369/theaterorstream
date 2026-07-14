@@ -53,6 +53,22 @@ Session log for production architecture Phase 1 work (DB-first performance + Ver
 
 **Next recommended:** Run both new feed SQL migrations in Supabase (`20260725000000`, `20260725100000`); switch existing hot sections from `trending` to `trending_live` in admin if needed.
 
+---
+
+## Session: Jul 15, 2026 — Home feed UI polish
+
+### Coming Soon + sidebar + composer tweaks ✅
+
+**Problem:** Coming Soon used per-poster highlight cards; composer had an extra divider under the text field; trending rail sat too high; search bar corners were too square.
+
+**Files changed:**
+- `src/components/home/HomeComingSoonSidebar.jsx` — X-style single widget with `divide-y` rows (desktop + mobile)
+- `src/components/social/FeedComposer.jsx` — removed toolbar `border-t` below “What’s happening?”
+- `src/components/home/HomeSocialSidebar.jsx` — `mt-10` to lower Trending Now rail
+- `src/components/Header.jsx` — search input `rounded-full`
+
+**Behavior:** Coming Soon is one bordered block with line dividers; composer toolbar flows without mid-line; trending aligns lower with feed; search bar is pill-shaped.
+
 
 ### Integrated listicle carousel extraction into News Intelligence publisher ✅
 

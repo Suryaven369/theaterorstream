@@ -108,7 +108,7 @@ const Header = () => {
             type="button"
             onClick={() => navigate('/search')}
             aria-label="Search movies and people"
-            className="hidden md:flex items-center gap-2.5 h-10 px-4 rounded-lg bg-[var(--color-surface-subtle)] border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:border-[var(--color-text-muted)]/30 transition-colors"
+            className="hidden md:flex items-center gap-2.5 h-10 px-4 rounded-full bg-[var(--color-surface-subtle)] border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:border-[var(--color-text-muted)]/30 transition-colors"
           >
             <IoSearchOutline className="text-lg shrink-0" />
             <span className="text-sm">Search movies, people…</span>
