@@ -44,6 +44,7 @@ export {
     updateMovieStreamingPlatforms,
     updateMovieVibes,
     updateMovieParentGuide,
+    getMoviesByParentGuide,
     updateMovieEditorReview,
     searchMoviesLibrary,
     getLibraryStats,
@@ -130,6 +131,7 @@ export {
     updateCollection,
     LIST_NAME_MAX,
     LIST_DESCRIPTION_MAX,
+    GATED_COLLECTION_TAGS,
     getUserCollections,
     createUserCollection,
     getCollectionBySlug,
@@ -140,6 +142,8 @@ export {
     getCollectionByName,
     addMoviesToCollection,
     deleteUserCollection,
+    getFranchiseModerationQueue,
+    setCollectionModerationStatus,
 } from './db/collections.js';
 
 export {

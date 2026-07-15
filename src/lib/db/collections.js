@@ -90,6 +90,9 @@ export const getUserCollections = async (userId) => {
 export const LIST_NAME_MAX = 70;
 export const LIST_DESCRIPTION_MAX = 200;
 
+/** Tags that require admin approval before Explore surfacing. */
+export const GATED_COLLECTION_TAGS = ['franchise'];
+
 const createSlug = (text) =>
     String(text || '')
         .toLowerCase()
@@ -98,16 +101,49 @@ const createSlug = (text) =>
         .replace(/-+/g, '-')
         .trim();
 
-export const createUserCollection = async (userId, name, description = '', isPublic = false) => {
+const normalizeTags = (tags) =>
+    [...new Set((Array.isArray(tags) ? tags : [])
+        .map((t) => String(t || '').toLowerCase().trim())
+        .filter(Boolean))];
+
+const hasFranchiseTag = (tags) => normalizeTags(tags).includes('franchise');
+
+export const createUserCollection = async (userId, name, description = '', isPublic = false, options = {}) => {
     if (!userId) return { success: false };
     const cleanName = name.trim().slice(0, LIST_NAME_MAX);
     const cleanDescription = (description || '').trim().slice(0, LIST_DESCRIPTION_MAX);
+    const tags = normalizeTags(options.tags);
+    const isFranchise = hasFranchiseTag(tags) || options.category === 'franchise';
 
-    const { data, error } = await supabase
+    const row = {
+        user_id: userId,
+        name: cleanName,
+        description: cleanDescription,
+        is_public: isPublic,
+        category: isFranchise ? 'franchise' : 'list',
+        tags: isFranchise ? [...new Set([...tags, 'franchise'])] : tags,
+        moderation_status: isFranchise ? 'pending' : 'none',
+    };
+
+    let { data, error } = await supabase
         .from('user_collections')
-        .insert({ user_id: userId, name: cleanName, description: cleanDescription, is_public: isPublic })
+        .insert(row)
         .select()
         .single();
+
+    // Pre-migration DBs may not have category / moderation_status / tags yet.
+    if (error && /(category|moderation_status|tags)/i.test(error.message || '')) {
+        ({ data, error } = await supabase
+            .from('user_collections')
+            .insert({
+                user_id: userId,
+                name: cleanName,
+                description: cleanDescription,
+                is_public: isPublic,
+            })
+            .select()
+            .single());
+    }
 
     if (!error && isPublic) {
         await supabase.from('activity_feed').insert({
@@ -179,10 +215,34 @@ export const getCollectionBySlug = async (slug, viewerUserId = null) => {
     if (collection.user_id) {
         const { data: profile } = await supabase
             .from('user_profiles')
-            .select('username, display_name, avatar_id, avatar_url')
+            .select('id, username, display_name, avatar_id, avatar_url, is_verified')
             .eq('id', collection.user_id)
             .maybeSingle();
         collection.user_profiles = profile || null;
+    }
+
+    // Collaborators (official account after franchise approve, etc.)
+    {
+        const { data: collabRows } = await supabase
+            .from('collection_collaborators')
+            .select('user_id, role')
+            .eq('collection_id', collection.id);
+        const collabIds = (collabRows || [])
+            .map((r) => r.user_id)
+            .filter((id) => id && id !== collection.user_id);
+        if (collabIds.length) {
+            const { data: collabProfiles } = await supabase
+                .from('user_profiles')
+                .select('id, username, display_name, avatar_id, avatar_url, is_verified')
+                .in('id', collabIds);
+            const roleByUser = new Map((collabRows || []).map((r) => [r.user_id, r.role]));
+            collection.collaborators = (collabProfiles || []).map((p) => ({
+                ...p,
+                role: roleByUser.get(p.id) || 'collaborator',
+            }));
+        } else {
+            collection.collaborators = [];
+        }
     }
 
     if (collection.collection_movies?.length) {
@@ -225,7 +285,7 @@ export const getCollectionBySlug = async (slug, viewerUserId = null) => {
 export const updateUserCollection = async (collectionId, updates) => {
     const { data: existing } = await supabase
         .from('user_collections')
-        .select('is_system, collection_kind')
+        .select('is_system, collection_kind, tags, category, moderation_status')
         .eq('id', collectionId)
         .maybeSingle();
 
@@ -235,6 +295,30 @@ export const updateUserCollection = async (collectionId, updates) => {
 
     if (updates.cover_image !== undefined) patch.cover_image = updates.cover_image;
     if (updates.banner_image !== undefined) patch.banner_image = updates.banner_image;
+
+    if (!existing?.is_system && updates.tags !== undefined) {
+        const tags = normalizeTags(updates.tags);
+        const isFranchise = hasFranchiseTag(tags);
+        patch.tags = isFranchise ? [...new Set([...tags, 'franchise'])] : tags.filter((t) => t !== 'franchise');
+        patch.category = isFranchise ? 'franchise' : 'list';
+        if (isFranchise && existing.moderation_status !== 'approved') {
+            patch.moderation_status = 'pending';
+        }
+        if (!isFranchise) {
+            patch.moderation_status = 'none';
+        }
+    } else if (!existing?.is_system && updates.franchise !== undefined) {
+        const tags = normalizeTags(existing.tags);
+        const isFranchise = !!updates.franchise;
+        patch.tags = isFranchise
+            ? [...new Set([...tags, 'franchise'])]
+            : tags.filter((t) => t !== 'franchise');
+        patch.category = isFranchise ? 'franchise' : 'list';
+        if (isFranchise && existing.moderation_status !== 'approved') {
+            patch.moderation_status = 'pending';
+        }
+        if (!isFranchise) patch.moderation_status = 'none';
+    }
 
     const { data, error } = await supabase
         .from('user_collections')
@@ -389,4 +473,60 @@ export const deleteUserCollection = async (collectionId, userId) => {
 
     if (error) console.error('Error deleting collection:', error);
     return { success: !error, error };
+};
+
+// =============================================
+// FRANCHISE TAG MODERATION (user tags → admin approve)
+// =============================================
+
+/** Admin queue: franchise-tagged collections (pending / approved / rejected). */
+export const getFranchiseModerationQueue = async ({ status = 'pending', limit = 80 } = {}) => {
+    let query = supabase
+        .from('user_collections')
+        .select('id, name, slug, description, user_id, is_public, created_at, category, tags, moderation_status, cover_image, collection_movies(movie_id, poster_path, movie_title)')
+        .eq('category', 'franchise')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+    if (status && status !== 'all') {
+        query = query.eq('moderation_status', status);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+        console.error('getFranchiseModerationQueue:', error);
+        return [];
+    }
+
+    const userIds = [...new Set((data || []).map((c) => c.user_id).filter(Boolean))];
+    const { data: profiles } = userIds.length
+        ? await supabase
+            .from('user_profiles')
+            .select('id, username, display_name, avatar_url, avatar_id')
+            .in('id', userIds)
+        : { data: [] };
+    const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
+
+    return (data || []).map((c) => ({
+        ...c,
+        owner: profileMap.get(c.user_id) || null,
+        collection_movies: sortCollectionMoviesNewestFirst(c.collection_movies),
+        movie_count: c.collection_movies?.length || 0,
+    }));
+};
+
+/** Admin: approve / reject a franchise-tagged collection. */
+export const setCollectionModerationStatus = async (collectionId, status) => {
+    if (!collectionId || !['approved', 'rejected', 'pending'].includes(status)) {
+        return { success: false, error: { message: 'Invalid request' } };
+    }
+    const { error } = await supabase.rpc('admin_set_collection_moderation', {
+        p_collection_id: collectionId,
+        p_status: status,
+    });
+    if (error) {
+        console.error('setCollectionModerationStatus:', error);
+        return { success: false, error };
+    }
+    return { success: true };
 };

@@ -132,13 +132,23 @@ export const deleteRssSource = async (id) => {
 };
 
 // status: 'pending' | 'approved' | 'rejected'
-export const getFeedArticles = async (status = 'pending', limit = 50, sourceId = null, daysBack = 0, sortOrder = 'desc') => {
+export const getFeedArticles = async (
+    status = 'pending',
+    limit = 50,
+    sourceId = null,
+    daysBack = 0,
+    sortOrder = 'desc',
+    offset = 0,
+) => {
+    const safeLimit = Math.max(1, Number(limit) || 50);
+    const safeOffset = Math.max(0, Number(offset) || 0);
+
     let query = supabase
         .from('feed_articles')
         .select('*')
         .eq('status', status)
         .order('published_at', { ascending: sortOrder === 'asc' })
-        .limit(limit);
+        .range(safeOffset, safeOffset + safeLimit - 1);
 
     // sourceId may be a single id (specific source) or an array (e.g. all sources
     // of one kind). An empty array means "no matching sources" → return nothing.
@@ -223,9 +233,13 @@ export const updateFeedArticleStatus = async (idOrArticle, status) => {
     }
 
     if (article?.tmdb_id) {
+        const now = new Date().toISOString();
         await supabase
             .from('trailer_posts')
-            .update({ is_active: status === 'approved' })
+            .update({
+                is_active: status === 'approved',
+                ...(status === 'approved' ? { updated_at: now } : {}),
+            })
             .eq('tmdb_id', String(article.tmdb_id))
             .eq('media_type', article.media_type || 'movie')
             .then(() => {}, () => {});
@@ -245,18 +259,32 @@ export const regenerateFeedArticleSummary = async (id) => {
 export const toggleFeedArticleActive = async (id) => {
     const { data: article } = await supabase
         .from('feed_articles')
-        .select('is_active')
+        .select('is_active, tmdb_id, media_type')
         .eq('id', id)
         .single();
 
     if (!article) return { success: false, error: 'Article not found' };
 
+    const nextActive = !article.is_active;
+    const now = new Date().toISOString();
     const { error } = await supabase
         .from('feed_articles')
-        .update({ is_active: !article.is_active, updated_at: new Date().toISOString() })
+        .update({ is_active: nextActive, updated_at: now })
         .eq('id', id);
 
     if (error) return { success: false, error };
+
+    if (article.tmdb_id) {
+        await supabase
+            .from('trailer_posts')
+            .update({
+                is_active: nextActive,
+                ...(nextActive ? { updated_at: now } : {}),
+            })
+            .eq('tmdb_id', String(article.tmdb_id))
+            .eq('media_type', article.media_type || 'movie')
+            .then(() => {}, () => {});
+    }
     return { success: true };
 };
 

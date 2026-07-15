@@ -53,12 +53,12 @@ const AdminSettingsPage = () => {
 
     if (loading) {
         return (
-            <div className="p-6 max-w-4xl text-white/50 text-sm">Loading settings…</div>
+            <div className="p-4 sm:p-6 max-w-4xl text-white/50 text-sm">Loading settings…</div>
         );
     }
 
     return (
-        <div className="p-6 max-w-4xl">
+        <div className="p-4 sm:p-6 max-w-4xl">
             <div className="mb-6">
                 <h1 className="text-2xl font-bold text-white">⚙️ Settings</h1>
                 <p className="text-white/50 text-sm">Site settings stored in Supabase (shared across devices)</p>

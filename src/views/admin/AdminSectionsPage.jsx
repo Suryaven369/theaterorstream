@@ -900,7 +900,7 @@ const AdminSectionsPage = () => {
     };
 
     return (
-        <div className="p-6 h-full overflow-auto" ref={containerRef}>
+        <div className="p-4 sm:p-6 h-full overflow-auto" ref={containerRef}>
             {/* Header */}
             <div className="mb-6 flex flex-col gap-4">
                 <div className="flex items-start justify-between">

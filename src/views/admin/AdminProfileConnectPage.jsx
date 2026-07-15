@@ -118,11 +118,11 @@ const AdminProfileConnectPage = () => {
     };
 
     if (loading) {
-        return <div className="p-6 max-w-3xl text-white/50 text-sm">Loading…</div>;
+        return <div className="p-4 sm:p-6 max-w-3xl text-white/50 text-sm">Loading…</div>;
     }
 
     return (
-        <div className="p-6 max-w-3xl">
+        <div className="p-4 sm:p-6 max-w-3xl">
             <Link
                 to="/admin/settings"
                 className="inline-flex items-center gap-2 text-sm text-white/50 hover:text-white mb-4"
@@ -268,6 +268,7 @@ const AdminProfileConnectPage = () => {
 
             <div className="mt-6 text-xs text-white/35 space-y-1">
                 <p>• Trailers and articles from Admin → Trailers / Articles appear as this account on the home feed.</p>
+                <p>• When you approve a Franchise-tagged list (Admin → List Moderation), this official account is added as collaborator on that collection.</p>
                 <p>• The profile gets a blue verified tick visible to everyone.</p>
                 <p>• Only one official account can be verified at a time.</p>
             </div>

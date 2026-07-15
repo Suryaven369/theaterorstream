@@ -2,7 +2,47 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 2026 · HEAD `f3e753c` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 2026 · HEAD `PENDING` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Jul 16, 2026 — Blogs feed, Franchise moderation, admin mobile
+
+### Public blogs → home feed + RSS approve-to-top ✅
+
+**Problem:** Published blogs weren’t in the Cinema Feed; approved RSS/trailers sorted by original publish date instead of approval time; Twitter embeds duplicated.
+
+**Files changed:**
+- `src/lib/blogs.js` — `syncBlogToHomeFeed` / `removeBlogFromHomeFeed`
+- `src/components/social/FeedBlogCard.jsx` — blog card in feed
+- `src/views/Home.jsx` — merge public blogs; sticky Explore tabs; feed sort
+- `src/components/social/FeedTweetCard.jsx` — official embed only; Strict Mode / status-id dedupe
+- `api/_lib/content-server.js`, `api/_lib/rss-server.js`, `src/lib/db/rss.js`, `src/lib/contentEdgeApi.js`, `src/lib/feedSessionCache.js` — approve bumps `updated_at`; short cache + invalidate
+- `src/views/admin/AdminArticlesPage.jsx` — Load more (offset); approve invalidation
+- `src/views/BlogsPage.jsx`, `BlogDetails.jsx` — delete + non-public read guard
+
+**Behavior:** Published blogs appear in Home; newly approved articles/trailers rise to top; tweets embed once.
+
+### Franchise collection tag + admin List Moderation ✅
+
+**Problem:** Franchise lists needed user tagging with admin approval before Explore → Franchise, plus official collaborator on approve.
+
+**Files changed:**
+- `supabase/migrations/20260726100000_collection_franchise_category.sql`
+- `supabase/migrations/20260726200000_collection_franchise_moderation.sql` — `moderation_status`, collaborators, `admin_set_collection_moderation`
+- `src/lib/db/collections.js`, `src/lib/db/social.js` — create/update tags; Explore filter `approved` only
+- `src/views/CollectionsPage.jsx`, `CollectionDetails.jsx` — Franchise pill; avatar stack (single hover `@username`); no “Franchise · pending” / “By @x + N” on cards
+- `src/views/admin/AdminFranchiseListsPage.jsx`, `AdminLayout.jsx`, `AdminDashboardPage.jsx`, `routes/index.jsx` — `/admin/franchise-lists` List Moderation
+- `src/components/home/ExplorePanels.jsx` — All / Franchise / Lists tabs
+- `AdminProfileConnectPage.jsx` — note that approve attaches official collaborator
+
+**Behavior:** Anyone can tag Franchise; list posts immediately; Explore Franchise waits for admin approve; approve adds official account as collaborator.
+
+### Admin mobile drawer + parent guide browse ✅
+
+**Files changed:** `AdminLayout.jsx` (hamburger drawer); `ParentGuide.jsx`, `parentGuide.js`, `ParentGuideBrowsePage.jsx`; assorted admin page padding; RichTextEditor / WriteBlogModal polish.
+
+**Next recommended:** Run Franchise SQL migrations in Supabase; connect official account in Admin → Profile Connect; smoke-test approve → Explore Franchise + avatar stack.
 
 ---
 

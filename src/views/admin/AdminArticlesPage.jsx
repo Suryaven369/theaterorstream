@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { FaCheck, FaTimes, FaTrash, FaToggleOn, FaToggleOff, FaSync, FaPlus, FaRss, FaGlobe, FaPen, FaYoutube, FaFilter, FaSortAmountDown, FaSortAmountUp } from "react-icons/fa";
+import { FaCheck, FaTimes, FaTrash, FaToggleOn, FaToggleOff, FaSync, FaPlus, FaRss, FaGlobe, FaPen, FaYoutube, FaFilter, FaSortAmountDown, FaSortAmountUp, FaBars } from "react-icons/fa";
 import {
     getRssSources,
     createRssSource,
@@ -18,6 +18,7 @@ import {
 import { triggerRssRefresh } from "../../lib/adminSyncApi";
 import { useToast } from "../../components/Toast";
 import ConfirmationModal from "../../components/ConfirmationModal";
+import { invalidateFeedCaches } from "../../lib/feedSessionCache";
 
 const STATUS_TABS = [
     { key: "pending", label: "Pending" },
@@ -33,6 +34,9 @@ const DAYS_BACK_OPTIONS = [
     { value: 30, label: "Last 30 days" },
     { value: 0, label: "All time" },
 ];
+
+const ARTICLE_PAGE_SIZE = 20;
+const RELATED_PAGE_SIZE = 5;
 
 /** News RSS candidates live in the browser until approve (never pending in DB). */
 const ARTICLE_INBOX_KEY = "tos:rss-article-inbox";
@@ -338,7 +342,59 @@ const GlobalFiltersModal = ({ open, onClose }) => {
     );
 };
 
-const ArticleDetailModal = ({ article, onClose, onRegenerate, regenerating }) => {
+const ArticleDetailModal = ({
+    article,
+    onClose,
+    onRegenerate,
+    regenerating,
+    status = "pending",
+    daysBack = 0,
+    sortOrder = "desc",
+    filterInbox,
+    onOpen,
+}) => {
+    const [related, setRelated] = useState([]);
+    const [hasMoreRelated, setHasMoreRelated] = useState(false);
+    const [loadingRelated, setLoadingRelated] = useState(false);
+
+    const loadRelated = useCallback(async ({ append = false, currentCount = 0 } = {}) => {
+        if (!article?.source_id) {
+            setRelated([]);
+            setHasMoreRelated(false);
+            return;
+        }
+        setLoadingRelated(true);
+        const offset = append ? currentCount : 0;
+        const sourceId = article.source_id;
+        const excludeId = article.id;
+        const excludeGuid = article.guid;
+        const notCurrent = (a) => a.id !== excludeId && a.guid !== excludeGuid;
+
+        let pool = [];
+        if (status === "pending" && typeof filterInbox === "function") {
+            const inbox = filterInbox(sourceId, daysBack, sortOrder).filter(notCurrent);
+            const fromDb = await getFeedArticles(status, 80, sourceId, daysBack, sortOrder, 0);
+            const seen = new Set(inbox.map((a) => a.guid || a.id));
+            const legacy = (fromDb || []).filter(
+                (a) => notCurrent(a) && !seen.has(a.guid) && !seen.has(a.id),
+            );
+            pool = [...inbox, ...legacy];
+        } else {
+            pool = (await getFeedArticles(status, 80, sourceId, daysBack, sortOrder, 0)).filter(notCurrent);
+        }
+
+        const page = pool.slice(offset, offset + RELATED_PAGE_SIZE);
+        setRelated((prev) => (append ? [...prev, ...page] : page));
+        setHasMoreRelated(offset + page.length < pool.length);
+        setLoadingRelated(false);
+    }, [article?.source_id, article?.id, article?.guid, status, daysBack, sortOrder, filterInbox]);
+
+    useEffect(() => {
+        setRelated([]);
+        setHasMoreRelated(false);
+        loadRelated({ append: false, currentCount: 0 });
+    }, [loadRelated]);
+
     if (!article) return null;
 
     const published = article.published_at
@@ -425,13 +481,57 @@ const ArticleDetailModal = ({ article, onClose, onRegenerate, regenerating }) =>
                         Open original ↗
                     </a>
                 )}
+
+                {article.source_id && (
+                    <div className="border-t border-white/10 pt-4 space-y-2">
+                        <p className="text-[10px] uppercase tracking-wider text-white/35">
+                            More from this feed
+                        </p>
+                        <p className="text-[11px] text-white/35">
+                            Same filters as the list (status, date range, sort).
+                        </p>
+                        {related.length > 0 && (
+                            <div className="space-y-1.5">
+                                {related.map((item) => (
+                                    <button
+                                        key={item.id}
+                                        type="button"
+                                        onClick={() => onOpen?.(item)}
+                                        className="w-full text-left px-2.5 py-2 rounded-lg bg-white/[0.03] hover:bg-white/[0.07] border border-white/5 transition-colors"
+                                    >
+                                        <p className="text-sm text-white/85 line-clamp-2">{item.title}</p>
+                                        <p className="text-[10px] text-white/35 mt-0.5">
+                                            {item.published_at
+                                                ? new Date(item.published_at).toLocaleDateString()
+                                                : "—"}
+                                        </p>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                        {hasMoreRelated || loadingRelated ? (
+                            <button
+                                type="button"
+                                onClick={() => loadRelated({ append: related.length > 0, currentCount: related.length })}
+                                disabled={loadingRelated}
+                                className="w-full text-sm px-3 py-2 rounded-md bg-white/5 border border-white/10 text-white/70 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-50"
+                            >
+                                {loadingRelated ? "Loading…" : "Load more articles"}
+                            </button>
+                        ) : (
+                            <p className="text-[11px] text-white/35 text-center py-1">
+                                {related.length ? "No more with these filters" : "No other articles with these filters"}
+                            </p>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );
 };
 
 const ArticleRow = ({ article, status, selected, onSelectToggle, onApprove, onReject, onToggle, onDelete, onOpen, acting }) => (
-    <div className={`relative flex items-center gap-3 p-3 rounded-xl bg-[#1a1a1a] border transition-colors ${selected ? "border-orange-500/50" : "border-white/10"} ${acting ? "opacity-70" : ""}`}>
+    <div className={`relative flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-3 p-3 rounded-xl bg-[#1a1a1a] border transition-colors ${selected ? "border-orange-500/50" : "border-white/10"} ${acting ? "opacity-70" : ""}`}>
         {acting && (
             <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-black/40 backdrop-blur-[1px]">
                 <FaSync className="text-orange-400 text-sm animate-spin" />
@@ -521,6 +621,8 @@ const AdminArticlesPage = () => {
     const [sortOrder, setSortOrder] = useState("desc"); // 'desc' = latest first, 'asc' = oldest first
     const [articles, setArticles] = useState([]);
     const [loadingArticles, setLoadingArticles] = useState(true);
+    const [loadingMoreArticles, setLoadingMoreArticles] = useState(false);
+    const [hasMoreArticles, setHasMoreArticles] = useState(false);
     const [message, setMessage] = useState(null);
     const [sourceToDelete, setSourceToDelete] = useState(null);
     const [selectedIds, setSelectedIds] = useState(new Set());
@@ -530,6 +632,7 @@ const AdminArticlesPage = () => {
     const [detailArticle, setDetailArticle] = useState(null);
     const [regeneratingId, setRegeneratingId] = useState(null);
     const [articleInbox, setArticleInbox] = useState(() => readArticleInbox());
+    const [sourcesOpen, setSourcesOpen] = useState(false);
 
     const persistInbox = useCallback((items) => {
         setArticleInbox(items);
@@ -573,23 +676,50 @@ const AdminArticlesPage = () => {
             const tb = new Date(b.published_at || 0).getTime();
             return sort === "asc" ? ta - tb : tb - ta;
         });
-        return list.slice(0, 50);
+        return list;
     }, []);
 
-    const loadArticles = useCallback(async (status, sourceId, days, sort, kind, { silent = false } = {}) => {
-        if (!silent) setLoadingArticles(true);
+    const loadArticles = useCallback(async (status, sourceId, days, sort, kind, { silent = false, append = false, currentCount = 0 } = {}) => {
+        if (append) setLoadingMoreArticles(true);
+        else if (!silent) setLoadingArticles(true);
+
+        const offset = append ? currentCount : 0;
+
         // News pending queue is primarily the local inbox (fetch no longer writes DB).
         // Still merge any legacy pending DB rows so older items remain reviewable.
         if (kind === "article" && status === "pending") {
             const inbox = filterInbox(sourceId, days, sort);
-            const fromDb = await getFeedArticles(status, 50, sourceId, days, sort);
+            const fromDb = await getFeedArticles(
+                status,
+                Math.max(200, offset + ARTICLE_PAGE_SIZE + 1),
+                sourceId,
+                days,
+                sort,
+                0,
+            );
             const seen = new Set(inbox.map((a) => a.guid || a.id));
             const legacy = (fromDb || []).filter((a) => !seen.has(a.guid) && !seen.has(a.id));
-            setArticles([...inbox, ...legacy].slice(0, 50));
+            const merged = [...inbox, ...legacy];
+            const page = merged.slice(offset, offset + ARTICLE_PAGE_SIZE);
+            setArticles((prev) => (append ? [...prev, ...page] : page));
+            setHasMoreArticles(offset + page.length < merged.length);
         } else {
-            setArticles(await getFeedArticles(status, 50, sourceId, days, sort));
+            const batch = await getFeedArticles(
+                status,
+                ARTICLE_PAGE_SIZE + 1,
+                sourceId,
+                days,
+                sort,
+                offset,
+            );
+            const hasMore = (batch || []).length > ARTICLE_PAGE_SIZE;
+            const page = (batch || []).slice(0, ARTICLE_PAGE_SIZE);
+            setArticles((prev) => (append ? [...prev, ...page] : page));
+            setHasMoreArticles(hasMore);
         }
-        if (!silent) setLoadingArticles(false);
+
+        if (append) setLoadingMoreArticles(false);
+        else if (!silent) setLoadingArticles(false);
     }, [filterInbox]);
 
     // Sources of the currently-selected kind (Articles vs Trailers).
@@ -627,9 +757,23 @@ const AdminArticlesPage = () => {
 
     const switchKind = (k) => { setActiveKind(k); setSelectedSourceId(null); };
 
+    const selectSource = (id) => {
+        setSelectedSourceId(id);
+        setSourcesOpen(false);
+    };
+
     const refreshAll = () => {
         loadSources();
         loadArticles(statusTab, articleSourceFilter, daysBack, sortOrder, activeKind);
+    };
+
+    const handleLoadMoreArticles = () => {
+        if (loadingMoreArticles || loadingArticles || !hasMoreArticles) return;
+        loadArticles(statusTab, articleSourceFilter, daysBack, sortOrder, activeKind, {
+            silent: true,
+            append: true,
+            currentCount: articles.length,
+        });
     };
 
     const openAddSource = () => { setEditingSource(null); setSourceFormOpen(true); };
@@ -727,6 +871,7 @@ const AdminArticlesPage = () => {
         if (result.success) {
             removeArticleFromList(article.id);
             refreshCounts();
+            invalidateFeedCaches();
             if (result.summary) {
                 toast.success("Approved — saved to DB with summary from full article page.");
             } else {
@@ -773,6 +918,7 @@ const AdminArticlesPage = () => {
         setArticles((prev) =>
             prev.map((a) => (a.id === article.id ? { ...a, is_active: !a.is_active } : a)),
         );
+        invalidateFeedCaches();
         setActingId(null);
     };
 
@@ -821,6 +967,7 @@ const AdminArticlesPage = () => {
         setSelectedIds(new Set());
         setArticles((prev) => prev.filter((a) => failedIds.has(a.id) || !okIds.includes(a.id)));
         refreshCounts();
+        if (okIds.length) invalidateFeedCaches();
         setBulkActing(false);
     };
 
@@ -850,21 +997,34 @@ const AdminArticlesPage = () => {
     const isTrailers = activeKind === "trailer";
 
     return (
-        <div className="flex h-screen overflow-hidden">
-            {/* Left: RSS sources sidebar */}
-            <aside className="w-72 shrink-0 border-r border-white/10 flex flex-col h-full">
+        <div className="flex flex-col lg:flex-row h-[calc(100dvh-3.5rem)] lg:h-screen overflow-hidden">
+            {/* Mobile sources drawer overlay */}
+            {sourcesOpen && (
+                <button
+                    type="button"
+                    aria-label="Close sources"
+                    className="lg:hidden fixed inset-0 z-30 bg-black/60"
+                    onClick={() => setSourcesOpen(false)}
+                />
+            )}
+
+            {/* Left: RSS sources sidebar — drawer on mobile */}
+            <aside
+                className={`fixed lg:static z-40 top-[calc(3.5rem+env(safe-area-inset-top,0px))] lg:top-0 bottom-0 left-0 w-[min(18rem,88vw)] lg:w-72 shrink-0 border-r border-white/10 bg-[#0a0a0a] lg:bg-transparent flex flex-col transition-transform duration-200
+                    ${sourcesOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0`}
+            >
                 <div className="p-4 border-b border-white/10 shrink-0">
                     {/* Articles vs Trailers space */}
                     <div className="flex gap-1 bg-white/5 rounded-lg p-1 mb-3">
                         <button
                             onClick={() => switchKind("article")}
-                            className={`flex-1 text-xs px-2 py-1.5 rounded-md flex items-center justify-center gap-1.5 transition-colors ${!isTrailers ? "bg-orange-500/20 text-orange-400" : "text-white/50 hover:text-white"}`}
+                            className={`flex-1 text-xs px-2 py-2 rounded-md flex items-center justify-center gap-1.5 transition-colors min-h-[40px] ${!isTrailers ? "bg-orange-500/20 text-orange-400" : "text-white/50 hover:text-white"}`}
                         >
                             <FaRss className="text-[10px]" /> Articles
                         </button>
                         <button
                             onClick={() => switchKind("trailer")}
-                            className={`flex-1 text-xs px-2 py-1.5 rounded-md flex items-center justify-center gap-1.5 transition-colors ${isTrailers ? "bg-red-500/20 text-red-400" : "text-white/50 hover:text-white"}`}
+                            className={`flex-1 text-xs px-2 py-2 rounded-md flex items-center justify-center gap-1.5 transition-colors min-h-[40px] ${isTrailers ? "bg-red-500/20 text-red-400" : "text-white/50 hover:text-white"}`}
                         >
                             <FaYoutube className="text-[11px]" /> Trailers
                         </button>
@@ -874,22 +1034,22 @@ const AdminArticlesPage = () => {
                         <button
                             onClick={handleRefreshAll}
                             disabled={refreshingAll}
-                            className="text-white/40 hover:text-white disabled:opacity-50"
+                            className="text-white/40 hover:text-white disabled:opacity-50 p-2"
                             title="Refresh all sources"
                         >
                             <FaSync className={refreshingAll ? "animate-spin" : ""} />
                         </button>
                     </div>
-                    <div className="mt-2 flex items-center gap-3">
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
                         <button
                             onClick={openAddSource}
-                            className="text-xs text-orange-400 hover:text-orange-300 flex items-center gap-1.5"
+                            className="text-xs text-orange-400 hover:text-orange-300 flex items-center gap-1.5 min-h-[36px]"
                         >
                             <FaPlus className="text-[10px]" /> {isTrailers ? "Add YouTube channel" : "Add source"}
                         </button>
                         <button
                             onClick={() => setFiltersOpen(true)}
-                            className="text-xs text-white/40 hover:text-white flex items-center gap-1.5"
+                            className="text-xs text-white/40 hover:text-white flex items-center gap-1.5 min-h-[36px]"
                             title="Global keyword filters (set once)"
                         >
                             <FaFilter className="text-[10px]" /> Filter Keywords
@@ -897,9 +1057,9 @@ const AdminArticlesPage = () => {
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-3 space-y-1">
+                <div className="flex-1 overflow-y-auto p-3 space-y-1 overscroll-contain">
                     <div
-                        onClick={() => setSelectedSourceId(null)}
+                        onClick={() => selectSource(null)}
                         className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${
                             selectedSourceId === null ? "bg-orange-500/15 border border-orange-500/30" : "border border-transparent hover:bg-white/5"
                         }`}
@@ -929,7 +1089,7 @@ const AdminArticlesPage = () => {
                                 active={selectedSourceId === source.id}
                                 pendingCount={countsView[source.id]?.pending || 0}
                                 refreshing={refreshingId === source.id}
-                                onSelect={setSelectedSourceId}
+                                onSelect={selectSource}
                                 onToggle={handleToggleSource}
                                 onRefresh={handleRefreshSource}
                                 onDelete={handleDeleteSource}
@@ -947,14 +1107,29 @@ const AdminArticlesPage = () => {
             </aside>
 
             {/* Center: articles for the selected source (or all) */}
-            <main className="flex-1 overflow-y-auto p-6">
+            <main className="flex-1 overflow-y-auto p-3 sm:p-6 min-w-0">
                 <div className="max-w-3xl mx-auto">
-                    <div className="mb-4 flex items-start justify-between gap-4">
-                        <div>
-                            <h2 className="text-lg font-bold text-white">
+                    <div className="mb-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                        <div className="min-w-0">
+                            <div className="flex items-center gap-2 mb-1 lg:hidden">
+                                <button
+                                    type="button"
+                                    onClick={() => setSourcesOpen(true)}
+                                    className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-md bg-white/5 border border-white/10 text-white/70 hover:text-white min-h-[40px]"
+                                >
+                                    <FaBars className="text-[11px]" />
+                                    Sources
+                                    {totalPending > 0 && (
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-400">
+                                            {totalPending}
+                                        </span>
+                                    )}
+                                </button>
+                            </div>
+                            <h2 className="text-base sm:text-lg font-bold text-white truncate">
                                 {selectedSource ? selectedSource.name : isTrailers ? "All Trailers" : "All Sources"}
                             </h2>
-                            <p className="text-sm text-white/40 mt-0.5">
+                            <p className="text-xs sm:text-sm text-white/40 mt-0.5">
                                 {isTrailers
                                     ? "Review fetched trailers/teasers before they go live."
                                     : "Review fetched articles before they go live on the Home feed."}
@@ -964,7 +1139,7 @@ const AdminArticlesPage = () => {
                             <button
                                 onClick={() => (selectedSource ? handleRefreshSource(selectedSource) : handleRefreshAll())}
                                 disabled={selectedSource ? refreshingId === selectedSource.id : refreshingAll}
-                                className="text-xs px-3 py-2 rounded-md bg-white/5 text-white/70 hover:bg-white/10 flex items-center gap-1.5 disabled:opacity-50"
+                                className="text-xs px-3 py-2 rounded-md bg-white/5 text-white/70 hover:bg-white/10 flex items-center gap-1.5 disabled:opacity-50 min-h-[40px]"
                             >
                                 <FaSync className={(selectedSource ? refreshingId === selectedSource.id : refreshingAll) ? "animate-spin" : ""} />
                                 Refresh
@@ -972,7 +1147,7 @@ const AdminArticlesPage = () => {
                             {selectedSource && (
                                 <button
                                     onClick={() => openEditSource(selectedSource)}
-                                    className="text-xs px-3 py-2 rounded-md bg-white/5 text-white/70 hover:bg-white/10 flex items-center gap-1.5"
+                                    className="text-xs px-3 py-2 rounded-md bg-white/5 text-white/70 hover:bg-white/10 flex items-center gap-1.5 min-h-[40px]"
                                 >
                                     <FaPen /> Edit
                                 </button>
@@ -986,13 +1161,13 @@ const AdminArticlesPage = () => {
                         </p>
                     )}
 
-                    <div className="flex items-center justify-between gap-2 mb-4">
-                        <div className="flex gap-1 bg-white/5 rounded-lg p-1 w-fit">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+                        <div className="flex gap-1 bg-white/5 rounded-lg p-1 w-full sm:w-fit overflow-x-auto">
                             {STATUS_TABS.map((tab) => (
                                 <button
                                     key={tab.key}
                                     onClick={() => setStatusTab(tab.key)}
-                                    className={`text-xs px-3 py-1.5 rounded-md transition-colors ${
+                                    className={`text-xs px-3 py-2 rounded-md transition-colors shrink-0 min-h-[40px] ${
                                         statusTab === tab.key ? "bg-orange-500/20 text-orange-400" : "text-white/50 hover:text-white"
                                     }`}
                                 >
@@ -1004,7 +1179,7 @@ const AdminArticlesPage = () => {
                             <button
                                 onClick={() => setSortOrder((o) => (o === "desc" ? "asc" : "desc"))}
                                 title={sortOrder === "desc" ? "Showing latest first — click for oldest first" : "Showing oldest first — click for latest first"}
-                                className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md bg-white/5 border border-white/10 text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                                className="flex items-center gap-1.5 text-xs px-2.5 py-2 rounded-md bg-white/5 border border-white/10 text-white/70 hover:text-white hover:bg-white/10 transition-colors min-h-[40px]"
                             >
                                 {sortOrder === "desc" ? <FaSortAmountDown className="text-[11px]" /> : <FaSortAmountUp className="text-[11px]" />}
                                 {sortOrder === "desc" ? "Latest" : "Oldest"}
@@ -1012,7 +1187,7 @@ const AdminArticlesPage = () => {
                             <select
                                 value={daysBack}
                                 onChange={(e) => setDaysBack(Number(e.target.value))}
-                                className="text-xs bg-white/5 border border-white/10 rounded-md px-2 py-1.5 text-white/70 focus:outline-none focus:border-orange-500/50"
+                                className="text-xs bg-white/5 border border-white/10 rounded-md px-2 py-2 text-white/70 focus:outline-none focus:border-orange-500/50 min-h-[40px] flex-1 sm:flex-none"
                             >
                                 {DAYS_BACK_OPTIONS.map((opt) => (
                                     <option key={opt.value} value={opt.value} className="bg-[#1a1a1a]">
@@ -1082,6 +1257,27 @@ const AdminArticlesPage = () => {
                                     />
                                 ))}
                             </div>
+
+                            <div className="pt-4 pb-2 flex flex-col items-center gap-1.5">
+                                {hasMoreArticles ? (
+                                    <button
+                                        type="button"
+                                        onClick={handleLoadMoreArticles}
+                                        disabled={loadingMoreArticles}
+                                        className="text-sm px-4 py-2 rounded-md bg-white/5 border border-white/10 text-white/70 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-50"
+                                    >
+                                        {loadingMoreArticles ? "Loading…" : "Load more articles"}
+                                    </button>
+                                ) : (
+                                    <p className="text-[11px] text-white/35 py-1">No more articles with these filters</p>
+                                )}
+                                <p className="text-[11px] text-white/35">
+                                    {selectedSource ? selectedSource.name : isTrailers ? "All trailers" : "All sources"}
+                                    {" · "}
+                                    {statusTab === "pending" ? "Pending" : statusTab === "approved" ? "Live" : "Rejected"}
+                                    {daysBack > 0 ? ` · last ${daysBack === 1 ? "24 hours" : `${daysBack} days`}` : " · all time"}
+                                </p>
+                            </div>
                         </>
                     )}
                 </div>
@@ -1092,6 +1288,11 @@ const AdminArticlesPage = () => {
                 onClose={() => setDetailArticle(null)}
                 onRegenerate={handleRegenerateSummary}
                 regenerating={!!detailArticle && regeneratingId === detailArticle.id}
+                status={statusTab}
+                daysBack={daysBack}
+                sortOrder={sortOrder}
+                filterInbox={filterInbox}
+                onOpen={setDetailArticle}
             />
 
             <SourceFormModal
@@ -1099,7 +1300,7 @@ const AdminArticlesPage = () => {
                 initial={editingSource}
                 defaultKind={activeKind}
                 onClose={() => setSourceFormOpen(false)}
-                onSaved={() => { loadSources(); loadArticles(statusTab, articleSourceFilter, daysBack, sortOrder); }}
+                onSaved={() => { loadSources(); loadArticles(statusTab, articleSourceFilter, daysBack, sortOrder, activeKind); }}
             />
 
             <GlobalFiltersModal open={filtersOpen} onClose={() => setFiltersOpen(false)} />

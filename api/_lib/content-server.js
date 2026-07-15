@@ -793,24 +793,26 @@ export async function fetchArticles(options = {}) {
 
     // Exclude trailer entries: a verified trailer carries a tmdb_id and is shown
     // as a clean post via trailer_posts, never as a raw news card here.
+    // Order by updated_at (approval / last go-live), not original RSS published_at,
+    // so freshly approved items land at the top of the Home feed.
     let { data, error, count } = await supabase
         .from('feed_articles')
-        .select('id, source_name, source_logo_url, title, link, author, summary, summary_items, image_url, published_at', { count: 'exact' })
+        .select('id, source_name, source_logo_url, title, link, author, summary, summary_items, image_url, published_at, updated_at', { count: 'exact' })
         .eq('status', 'approved')
         .eq('is_active', true)
         .is('tmdb_id', null)
-        .order('published_at', { ascending: false })
+        .order('updated_at', { ascending: false })
         .range(offset, offset + limit - 1);
 
     // Pre-migration DBs may not have summary_items yet.
     if (error && /summary_items/i.test(error.message || '')) {
         ({ data, error, count } = await supabase
             .from('feed_articles')
-            .select('id, source_name, source_logo_url, title, link, author, summary, image_url, published_at', { count: 'exact' })
+            .select('id, source_name, source_logo_url, title, link, author, summary, image_url, published_at, updated_at', { count: 'exact' })
             .eq('status', 'approved')
             .eq('is_active', true)
             .is('tmdb_id', null)
-            .order('published_at', { ascending: false })
+            .order('updated_at', { ascending: false })
             .range(offset, offset + limit - 1));
     }
 
@@ -1087,8 +1089,8 @@ export async function fetchTitleAnalysis(tmdbId, mediaType = 'movie', region = '
     let vibes = null;
     if (isLlmEnabled()) {
         const prompt = [
-            'Analyse this title for a content guide. Use your knowledge of the title if',
-            'you recognise it; otherwise infer from the description, genres and rating.',
+            'Analyse this title like an IMDb Parents Guide. Use your knowledge of the title if',
+            'you recognise it; otherwise infer carefully from the description, genres and rating.',
             '',
             `Title: ${detail?.title || detail?.name || ''}`,
             certification ? `Rating: ${certification}` : '',
@@ -1098,7 +1100,12 @@ export async function fetchTitleAnalysis(tmdbId, mediaType = 'movie', region = '
             'Return ONLY JSON of this exact shape:',
             '{"parent_guide":{"violence":"none|mild|moderate|severe","nudity":"...","profanity":"...","frightening":"..."},',
             ' "vibes":{"emotional":0-100,"thrilling":0-100,"funny":0-100,"romantic":0-100,"thoughtful":0-100,"intense":0-100}}',
-            'parent_guide = severity of sex/nudity, violence, language (profanity), and scary/intense (frightening).',
+            '',
+            'Rules for parent_guide (match IMDb Parents Guide categories):',
+            '- nudity = Sex & Nudity only. Use "none" unless there is actual sexual content or nudity.',
+            '- An R / TV-MA rating, action, crime, or violence does NOT mean sex/nudity. Many R films have Sex & Nudity: None.',
+            '- violence = Violence & Gore. profanity = language. frightening = Frightening & Intense Scenes.',
+            '- Prefer "none" over guessing. Do not invent sex/nudity from genre alone.',
             'vibes = how much the title feels each way (they need not sum to 100).',
         ].filter(Boolean).join('\n');
 
@@ -1121,8 +1128,30 @@ export async function fetchTitleAnalysis(tmdbId, mediaType = 'movie', region = '
         if (row) {
             const patch = {};
             if (certification && !row.certification) patch.certification = certification;
-            const pgEmpty = !row.custom_parent_guide || !Object.keys(row.custom_parent_guide).length;
-            if (parentGuide && pgEmpty) patch.custom_parent_guide = parentGuide;
+            const storedPg = row.custom_parent_guide && typeof row.custom_parent_guide === 'object'
+                ? row.custom_parent_guide
+                : null;
+            const pgEmpty = !storedPg || !Object.keys(storedPg).length;
+            if (parentGuide && pgEmpty) {
+                patch.custom_parent_guide = parentGuide;
+            } else if (parentGuide && storedPg) {
+                // Correct false positives: if new analysis says "none" for a category,
+                // lower the stored value (e.g. Sex/Nudity moderate → none).
+                const merged = { ...storedPg };
+                let changed = false;
+                ['violence', 'nudity', 'profanity', 'frightening'].forEach((k) => {
+                    const neu = String(parentGuide[k] || 'none').toLowerCase();
+                    const old = String(merged[k] || 'none').toLowerCase();
+                    if (neu === 'none' && old !== 'none') {
+                        merged[k] = 'none';
+                        changed = true;
+                    } else if ((!merged[k] || old === '' || old === 'none') && neu !== 'none') {
+                        merged[k] = neu;
+                        changed = true;
+                    }
+                });
+                if (changed) patch.custom_parent_guide = merged;
+            }
             const vibesEmpty = !row.custom_vibes || !Object.keys(row.custom_vibes).length;
             if (vibes && vibesEmpty) patch.custom_vibes = vibes;
             if (Object.keys(patch).length) {
@@ -1145,19 +1174,23 @@ export async function fetchRssTrailers({ limit = 15, daysBack = 21 } = {}) {
     const supabase = getSupabase();
     const since = new Date();
     since.setDate(since.getDate() - daysBack);
+    const sinceIso = since.toISOString();
 
+    // Prefer recently approved / activated trailers (updated_at), not only YouTube publish date.
+    // Include either recently updated OR recently published so older teasers still appear after approve.
     const { data, error } = await supabase
         .from('trailer_posts')
         .select('*')
         .eq('is_active', true)
-        .gte('published_at', since.toISOString())
-        .order('published_at', { ascending: false })
+        .or(`updated_at.gte."${sinceIso}",published_at.gte."${sinceIso}"`)
+        .order('updated_at', { ascending: false })
         .limit(limit);
 
     if (error || !data?.length) return { data: [], total: 0 };
 
     const items = data.map((p) => {
         const tmdbThumb = p.backdrop_path ? `https://image.tmdb.org/t/p/w780${p.backdrop_path}` : null;
+        const feedAt = p.updated_at || p.created_at || p.published_at;
         return {
             id: p.tmdb_id,
             tmdb_id: p.tmdb_id,
@@ -1170,11 +1203,13 @@ export async function fetchRssTrailers({ limit = 15, daysBack = 21 } = {}) {
             overview: p.overview,
             source_name: p.source_name,
             source_logo: p.source_logo || null,
+            updated_at: p.updated_at || null,
             featured_trailer: {
                 key: p.youtube_key || null,
                 name: p.trailer_name,
                 type: p.trailer_type || 'Trailer',
                 published_at: p.published_at,
+                feed_at: feedAt,
                 url: p.trailer_url,
                 thumbnail: p.youtube_key ? `https://img.youtube.com/vi/${p.youtube_key}/maxresdefault.jpg` : tmdbThumb,
                 thumbnailFallback: p.youtube_key ? `https://img.youtube.com/vi/${p.youtube_key}/hqdefault.jpg` : tmdbThumb,

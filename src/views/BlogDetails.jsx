@@ -33,13 +33,18 @@ const BlogDetails = () => {
 
     useEffect(() => {
         if (id) loadBlog();
-    }, [id]);
+    }, [id, user?.id]);
 
     const loadBlog = async () => {
         setLoading(true);
         const data = await getBlogPost(id);
-        setBlog(data);
-        setLikes(data?.likes_count || 0);
+        // Only public blogs are readable by others; owners can open their drafts
+        if (data && data.visibility !== 'public' && data.user_id !== user?.id) {
+            setBlog(null);
+        } else {
+            setBlog(data);
+            setLikes(data?.likes_count || 0);
+        }
         setLoading(false);
     };
 

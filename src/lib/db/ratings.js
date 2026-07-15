@@ -1,8 +1,76 @@
 import { supabase } from '../supabaseClient.js';
+import { normalizeProfileMediaUrls } from '../storagePublicUrl.js';
 
 // Helper functions for movie ratings and reviews
 
 const normalizeMovieId = (movieId) => String(movieId);
+
+const isUuid = (value) =>
+    typeof value === 'string'
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+
+/** Attach avatar/profile fields from user_profiles onto review rows. */
+async function hydrateReviewAuthors(reviews) {
+    if (!reviews?.length) return reviews || [];
+
+    const userIds = [...new Set(
+        reviews.map((r) => r.user_id).filter((id) => id && id !== 'anonymous' && isUuid(id)),
+    )];
+    const usernames = [...new Set(
+        reviews
+            .filter((r) => !(r.user_id && isUuid(r.user_id)) && r.username)
+            .map((r) => String(r.username).replace(/^@/, '').trim())
+            .filter(Boolean),
+    )];
+
+    const profileById = new Map();
+    const profileByUsername = new Map();
+
+    if (userIds.length) {
+        const { data } = await supabase
+            .from('user_profiles')
+            .select('id, username, display_name, avatar_id, avatar_url')
+            .in('id', userIds);
+        (data || []).forEach((p) => {
+            const normalized = normalizeProfileMediaUrls(p);
+            profileById.set(p.id, normalized);
+            if (p.username) profileByUsername.set(String(p.username).toLowerCase(), normalized);
+        });
+    }
+
+    if (usernames.length) {
+        const missing = usernames.filter((u) => !profileByUsername.has(u.toLowerCase()));
+        if (missing.length) {
+            const { data } = await supabase
+                .from('user_profiles')
+                .select('id, username, display_name, avatar_id, avatar_url')
+                .in('username', missing);
+            (data || []).forEach((p) => {
+                const normalized = normalizeProfileMediaUrls(p);
+                profileById.set(p.id, normalized);
+                if (p.username) profileByUsername.set(String(p.username).toLowerCase(), normalized);
+            });
+        }
+    }
+
+    return reviews.map((review) => {
+        const byId = review.user_id && isUuid(review.user_id)
+            ? profileById.get(review.user_id)
+            : null;
+        const byName = review.username
+            ? profileByUsername.get(String(review.username).replace(/^@/, '').toLowerCase())
+            : null;
+        const profile = byId || byName;
+        if (!profile) return review;
+        return {
+            ...review,
+            avatar_url: profile.avatar_url || null,
+            avatar_id: profile.avatar_id || null,
+            username: profile.username || review.username,
+            display_name: profile.display_name || null,
+        };
+    });
+}
 
 const ratingPayloadFromInput = (movieId, movieTitle, ratings, userId) => ({
     movie_id: normalizeMovieId(movieId),
@@ -30,7 +98,7 @@ export const getMovieReviews = async (movieId) => {
         console.error('Error fetching reviews:', error);
         return [];
     }
-    return data || [];
+    return hydrateReviewAuthors(data || []);
 };
 
 // Get aggregate ratings for a movie

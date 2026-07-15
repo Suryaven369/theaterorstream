@@ -14,15 +14,76 @@ import { FaTrash, FaLock, FaGlobe, FaFolderOpen, FaArrowLeft, FaPlus, FaSearch, 
 import ConfirmationModal from '../components/ConfirmationModal';
 import { searchContentFromEdge, getMovieDetailFromEdge } from '../lib/contentEdgeApi';
 import { isTheaterSystemCollection } from '../lib/theaterWatch';
+import { getAvatarUrl } from '../lib/storagePublicUrl';
 
 // Helper to create URL-friendly slug
 const createSlug = (text) => {
-    return text
+    const slug = String(text || '')
         .toLowerCase()
         .replace(/[^\w\s-]/g, '')
         .replace(/\s+/g, '-')
         .replace(/-+/g, '-')
         .trim();
+    return slug || 'collection';
+};
+
+/** Overlapping owner + collaborator avatars (hover name, click → profile). */
+const CollectionPeopleStack = ({ owner, collaborators = [] }) => {
+    const people = [];
+    if (owner?.username || owner?.id) {
+        people.push({
+            id: owner.id || 'owner',
+            username: owner.username,
+            displayName: owner.display_name || owner.username || 'Owner',
+            avatarUrl: owner.avatar_url,
+            isVerified: !!owner.is_verified,
+        });
+    }
+    for (const c of collaborators || []) {
+        if (!c?.username && !c?.id) continue;
+        if (owner?.id && c.id === owner.id) continue;
+        if (people.some((p) => p.id === c.id || p.username === c.username)) continue;
+        people.push({
+            id: c.id,
+            username: c.username,
+            displayName: c.display_name || c.username || 'Collaborator',
+            avatarUrl: c.avatar_url,
+            isVerified: !!c.is_verified,
+        });
+    }
+    if (!people.length) return null;
+
+    return (
+        <div className="flex items-center gap-2.5">
+            <div className="flex items-center -space-x-2">
+                {people.map((p, i) => (
+                    <Link
+                        key={p.id || p.username || i}
+                        to={p.username ? `/${p.username}/profile` : '#'}
+                        className="relative group/avatar block rounded-full ring-2 ring-[#1a1a1a] hover:z-20 focus:z-20 focus:outline-none focus-visible:ring-purple-400/60"
+                        style={{ zIndex: people.length - i }}
+                    >
+                        <span className="block w-8 h-8 sm:w-9 sm:h-9 rounded-full overflow-hidden bg-gradient-to-br from-purple-500 to-pink-500">
+                            {p.avatarUrl ? (
+                                <img
+                                    src={getAvatarUrl(p.avatarUrl, 36)}
+                                    alt=""
+                                    className="w-full h-full object-cover"
+                                />
+                            ) : (
+                                <span className="w-full h-full flex items-center justify-center text-xs font-bold text-white">
+                                    {(p.displayName || p.username || '?').charAt(0).toUpperCase()}
+                                </span>
+                            )}
+                        </span>
+                        <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-1.5 px-2 py-1 rounded-md bg-black/90 border border-white/10 text-[10px] text-white whitespace-nowrap opacity-0 group-hover/avatar:opacity-100 transition-opacity z-30">
+                            {p.username ? `@${p.username}` : p.displayName}
+                        </span>
+                    </Link>
+                ))}
+            </div>
+        </div>
+    );
 };
 
 // Poster Collage Component - Shows first 4 movie posters in a grid
@@ -161,9 +222,12 @@ const ShareModal = ({ collection, movies, imageURL, shareUrl, onClose }) => {
                                 <p className="text-white/50 text-sm line-clamp-2">
                                     {collection.description || `${movies.length} movies curated with love`}
                                 </p>
-                                <p className="text-white/30 text-xs mt-2">
-                                    by @{collection.user_profiles?.username || 'user'}
-                                </p>
+                                <div className="mt-2 scale-90 origin-left">
+                                    <CollectionPeopleStack
+                                        owner={collection.user_profiles}
+                                        collaborators={collection.collaborators}
+                                    />
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -232,6 +296,7 @@ const CollectionDetails = () => {
     const [editName, setEditName] = useState('');
     const [editDescription, setEditDescription] = useState('');
     const [editIsPublic, setEditIsPublic] = useState(false);
+    const [editFranchise, setEditFranchise] = useState(false);
     const [saving, setSaving] = useState(false);
 
     // Share modal state
@@ -260,6 +325,10 @@ const CollectionDetails = () => {
                 setEditName(data.name);
                 setEditDescription(data.description || '');
                 setEditIsPublic(data.is_public);
+                setEditFranchise(
+                    data.category === 'franchise'
+                    || (Array.isArray(data.tags) && data.tags.includes('franchise')),
+                );
             }
         } catch (error) {
             console.error('Error loading collection:', error);
@@ -400,6 +469,7 @@ const CollectionDetails = () => {
             name: isTheaterCollection ? collection.name : editName.trim(),
             description: editDescription.trim(),
             is_public: editIsPublic,
+            franchise: isTheaterCollection ? false : editFranchise,
         });
 
         if (result.success) {
@@ -522,22 +592,54 @@ const CollectionDetails = () => {
                                             placeholder="Describe your collection..."
                                         />
                                     </div>
-                                    <div className="flex items-center justify-between">
+                                    {!isTheaterCollection && (
+                                        <div>
+                                            <p className="text-[11px] uppercase tracking-wide text-white/35 mb-2">Tags</p>
+                                            <div className="flex flex-wrap gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setEditFranchise((v) => !v)}
+                                                    aria-pressed={editFranchise}
+                                                    className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-colors min-h-[36px] ${
+                                                        editFranchise
+                                                            ? 'bg-amber-400 text-[#14181c] border-amber-300'
+                                                            : 'bg-white/5 text-white/55 border-white/15 hover:text-white hover:border-white/25'
+                                                    }`}
+                                                >
+                                                    Franchise
+                                                </button>
+                                            </div>
+                                            <p className="text-[11px] text-white/40 mt-2">
+                                                {collection.moderation_status === 'approved' && editFranchise
+                                                    ? 'Live on Explore → Franchise.'
+                                                    : 'Collection stays posted. Franchise page only after admin approval.'}
+                                            </p>
+                                        </div>
+                                    )}
+                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                         <button
+                                            type="button"
                                             onClick={() => setEditIsPublic(!editIsPublic)}
-                                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-all ${editIsPublic ? 'bg-green-500/20 text-green-400' : 'bg-white/5 text-white/50'}`}
+                                            aria-pressed={editIsPublic}
+                                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors min-h-[36px] w-fit ${
+                                                editIsPublic
+                                                    ? 'bg-green-500/20 text-green-400 border-green-500/35'
+                                                    : 'bg-white/5 text-white/55 border-white/15 hover:text-white hover:border-white/25'
+                                            }`}
                                         >
-                                            {editIsPublic ? <FaGlobe /> : <FaLock />}
+                                            {editIsPublic ? <FaGlobe className="text-[10px]" /> : <FaLock className="text-[10px]" />}
                                             {editIsPublic ? 'Public' : 'Private'}
                                         </button>
-                                        <div className="flex gap-3">
+                                        <div className="flex gap-3 justify-end">
                                             <button
+                                                type="button"
                                                 onClick={() => setIsEditing(false)}
                                                 className="px-4 py-2 text-white/50 hover:text-white"
                                             >
                                                 Cancel
                                             </button>
                                             <button
+                                                type="button"
                                                 onClick={handleSaveEdit}
                                                 disabled={saving || (!isTheaterCollection && !editName.trim())}
                                                 className="flex items-center gap-2 px-5 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50"
@@ -566,6 +668,12 @@ const CollectionDetails = () => {
                                                         <FaLock /> Private
                                                     </span>
                                                 )}
+                                                {collection.moderation_status === 'approved'
+                                                    && (collection.category === 'franchise' || collection.tags?.includes?.('franchise')) && (
+                                                    <span className="px-2 py-1 rounded text-xs bg-amber-500/20 text-amber-300">
+                                                        Franchise
+                                                    </span>
+                                                )}
                                             </div>
                                             <p className="text-white/60 text-sm sm:text-base line-clamp-2 sm:line-clamp-none mb-2 sm:mb-3">{collection.description || 'No description'}</p>
                                             {isOwnCollection && isTheaterCollection && (
@@ -573,9 +681,12 @@ const CollectionDetails = () => {
                                                     🍿 Titles appear here when you log a movie with &quot;In theater&quot; on your diary.
                                                 </p>
                                             )}
-                                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:text-sm text-white/40">
-                                                <span>By @{collection.user_profiles?.username || 'user'}</span>
-                                                <span className="hidden sm:inline">•</span>
+                                            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs sm:text-sm text-white/40">
+                                                <CollectionPeopleStack
+                                                    owner={collection.user_profiles}
+                                                    collaborators={collection.collaborators}
+                                                />
+                                                <span className="text-white/25">•</span>
                                                 <span>{movies.length} items</span>
                                             </div>
                                         </div>

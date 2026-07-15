@@ -30,6 +30,7 @@ import StreamingProviders from "../components/StreamingProviders";
 import SimilarMoviesSection from "../components/discover/SimilarMoviesSection";
 import FollowEntityButton from "../components/FollowEntityButton";
 import { getTitleAnalysisFromEdge } from "../lib/contentEdgeApi";
+import { mergeParentGuides } from "../lib/parentGuide";
 import SeoHead from "../components/SeoHead";
 
 const DETAILS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
@@ -100,9 +101,15 @@ const Details = () => {
   const [castData, setCastData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Prefer admin/DB data; fall back to the live analysis (covers tv + unsynced).
+  // Prefer admin/DB + live analysis merged conservatively (lowest severity wins),
+  // so a false "Sex/Nudity · Moderate" in DB is corrected when analysis says none.
   const _hasObj = (o) => o && typeof o === 'object' && Object.keys(o).length > 0;
-  const effParentGuide = _hasObj(data?.custom_parent_guide) ? data.custom_parent_guide : (contentAnalysis?.parentGuide || null);
+  const effParentGuide = useMemo(() => {
+    const stored = _hasObj(data?.custom_parent_guide) ? data.custom_parent_guide : null;
+    const live = _hasObj(contentAnalysis?.parentGuide) ? contentAnalysis.parentGuide : null;
+    if (stored && live) return mergeParentGuides(stored, live);
+    return stored || live || null;
+  }, [data?.custom_parent_guide, contentAnalysis?.parentGuide]);
   const effVibes = _hasObj(data?.custom_vibes) ? data.custom_vibes : (contentAnalysis?.vibes || null);
   const effCertification = data?.certification || contentAnalysis?.certification || null;
 
@@ -488,10 +495,8 @@ const Details = () => {
               </p>
             )}
 
-            {/* Parent Guide Badges - Uses DB data if available, falls back to TMDB */}
+            {/* Parent Guide — DB/analysis levels; none hidden; tags link to browse */}
             <ParentGuide
-              movieId={movieId}
-              mediaType={mediaType}
               genres={data?.genres}
               customParentGuide={effParentGuide}
               customCertification={effCertification}
@@ -571,22 +576,15 @@ const Details = () => {
               </span>
             </div>
 
-            {/* Genres — each is followable for the "Following" feed */}
+            {/* Genres */}
             {data?.genres && (
               <div className="flex flex-wrap gap-2 mb-6">
                 {data.genres.map((genre) => (
                   <span
                     key={genre.id}
-                    className="group inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full bg-white/5 border border-white/10 text-white/70 text-sm"
+                    className="inline-flex items-center px-3 py-1 rounded-full bg-white/5 border border-white/10 text-white/70 text-sm"
                   >
                     {genre.name}
-                    <FollowEntityButton
-                      targetType="genre"
-                      targetId={genre.id}
-                      targetLabel={genre.name}
-                      size="xs"
-                      className="!px-2 !py-0.5"
-                    />
                   </span>
                 ))}
               </div>

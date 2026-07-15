@@ -16,12 +16,13 @@ import { FaFolder, FaPlus, FaLock, FaGlobe, FaChevronRight, FaArrowLeft, FaEllip
 import ConfirmationModal from '../components/ConfirmationModal';
 
 const createSlug = (text) => {
-    return text
+    const slug = String(text || '')
         .toLowerCase()
         .replace(/[^\w\s-]/g, '')
         .replace(/\s+/g, '-')
         .replace(/-+/g, '-')
         .trim();
+    return slug || 'collection';
 };
 
 const MiniPosterCollage = ({ movies, imageURL }) => {
@@ -120,6 +121,7 @@ const CollectionsPage = () => {
     const [showCreateCollection, setShowCreateCollection] = useState(false);
     const [newCollectionName, setNewCollectionName] = useState('');
     const [isPublicCollection, setIsPublicCollection] = useState(false);
+    const [tagFranchise, setTagFranchise] = useState(false);
     const [creatingCollection, setCreatingCollection] = useState(false);
     const [success, setSuccess] = useState('');
     const [toDelete, setToDelete] = useState(null);
@@ -167,15 +169,26 @@ const CollectionsPage = () => {
         if (!newCollectionName.trim() || !user?.id) return;
 
         setCreatingCollection(true);
-        const result = await createUserCollection(user.id, newCollectionName.trim(), '', isPublicCollection);
+        const result = await createUserCollection(
+            user.id,
+            newCollectionName.trim(),
+            '',
+            isPublicCollection,
+            { tags: tagFranchise ? ['franchise'] : [] },
+        );
 
         if (result.success) {
             setCollections((prev) => [result.data, ...prev]);
             setNewCollectionName('');
             setIsPublicCollection(false);
+            setTagFranchise(false);
             setShowCreateCollection(false);
-            setSuccess('Collection created!');
-            setTimeout(() => setSuccess(''), 3000);
+            setSuccess(
+                tagFranchise
+                    ? 'Collection posted! It will show on Explore → Franchise after admin approval.'
+                    : 'Collection created!',
+            );
+            setTimeout(() => setSuccess(''), 4000);
         }
         setCreatingCollection(false);
     };
@@ -258,32 +271,57 @@ const CollectionsPage = () => {
                                     className="w-full bg-white/5 rounded-xl px-4 py-3 text-white placeholder-white/30 border border-white/10 focus:border-purple-500/50 focus:outline-none mb-4"
                                     autoFocus
                                 />
-                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsPublicCollection(!isPublicCollection)}
-                                        className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm transition-all ${isPublicCollection ? 'bg-green-500/20 text-green-400' : 'bg-white/5 text-white/50'}`}
-                                    >
-                                        {isPublicCollection ? <FaGlobe /> : <FaLock />}
-                                        {isPublicCollection ? 'Public Collection' : 'Private Collection'}
-                                    </button>
-                                    <div className="flex gap-3 justify-end">
+                                <div className="flex flex-col gap-3 mb-4">
+                                    <div className="flex flex-wrap items-center gap-2">
                                         <button
                                             type="button"
-                                            onClick={() => setShowCreateCollection(false)}
-                                            className="px-4 py-2.5 text-sm text-white/50 hover:text-white transition-colors"
+                                            onClick={() => setIsPublicCollection(!isPublicCollection)}
+                                            aria-pressed={isPublicCollection}
+                                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors min-h-[36px] w-fit ${
+                                                isPublicCollection
+                                                    ? 'bg-green-500/20 text-green-400 border-green-500/35'
+                                                    : 'bg-white/5 text-white/55 border-white/15 hover:text-white hover:border-white/25'
+                                            }`}
                                         >
-                                            Cancel
+                                            {isPublicCollection ? <FaGlobe className="text-[10px]" /> : <FaLock className="text-[10px]" />}
+                                            {isPublicCollection ? 'Public' : 'Private'}
                                         </button>
                                         <button
                                             type="button"
-                                            onClick={handleCreateCollection}
-                                            disabled={!newCollectionName.trim() || creatingCollection}
-                                            className="px-5 py-2.5 text-sm bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50 transition-colors font-medium"
+                                            onClick={() => setTagFranchise((v) => !v)}
+                                            aria-pressed={tagFranchise}
+                                            className={`inline-flex items-center px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-colors min-h-[36px] w-fit ${
+                                                tagFranchise
+                                                    ? 'bg-amber-400 text-[#14181c] border-amber-300'
+                                                    : 'bg-white/5 text-white/55 border-white/15 hover:text-white hover:border-white/25'
+                                            }`}
                                         >
-                                            {creatingCollection ? 'Creating...' : 'Create Collection'}
+                                            Franchise
                                         </button>
                                     </div>
+                                    <p className="text-[11px] text-white/40">
+                                        Your collection posts right away. Franchise only appears on the Franchise page after admin approval.
+                                    </p>
+                                </div>
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowCreateCollection(false);
+                                            setTagFranchise(false);
+                                        }}
+                                        className="px-4 py-2.5 text-sm text-white/50 hover:text-white transition-colors"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleCreateCollection}
+                                        disabled={!newCollectionName.trim() || creatingCollection}
+                                        className="px-5 py-2.5 text-sm bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50 transition-colors font-medium"
+                                    >
+                                        {creatingCollection ? 'Creating...' : 'Create Collection'}
+                                    </button>
                                 </div>
                             </div>
                         ) : (
@@ -318,7 +356,7 @@ const CollectionsPage = () => {
                                     />
                                 )}
                                 <Link
-                                    to={`/collection/${createSlug(collection.name)}`}
+                                    to={`/collection/${collection.slug || createSlug(collection.name) || collection.id}`}
                                     className="flex items-center gap-3 sm:gap-4 min-w-0 w-full"
                                 >
                                     <div className="shrink-0">
@@ -330,7 +368,7 @@ const CollectionsPage = () => {
                                                 <span aria-hidden className="mr-1.5">🍿</span>
                                             )}
                                             <span className="break-words line-clamp-2">
-                                                {collection.name}
+                                                {collection.name || 'Untitled collection'}
                                             </span>
                                         </h3>
                                         {isOwnProfile && isTheaterSystemCollection(collection) && (

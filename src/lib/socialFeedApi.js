@@ -355,6 +355,43 @@ function mapPollData(raw) {
 }
 
 function mapFeedPostRow(post, { author, isLiked = false, isSaved = false, userPollVote = null } = {}) {
+    const rawMedia = post.media_items;
+    const isBlog = post.post_type === 'blog'
+        || (rawMedia && typeof rawMedia === 'object' && !Array.isArray(rawMedia) && rawMedia.kind === 'blog');
+
+    if (isBlog) {
+        const blogId = rawMedia?.blogId || null;
+        const title = rawMedia?.title || post.movie_title || 'Blog';
+        const cover = toPublicStorageUrl(rawMedia?.coverImage || post.image_url) || null;
+        return {
+            id: post.id,
+            type: 'blog',
+            postType: 'blog',
+            blogId,
+            title,
+            content: post.content,
+            excerpt: post.content,
+            image: cover,
+            imageUrl: cover,
+            likes: post.likes_count || 0,
+            comments: post.comments_count || 0,
+            shares: post.shares_count || 0,
+            time: formatTimeAgo(post.created_at),
+            createdAt: post.created_at,
+            publishedAt: post.created_at,
+            isLiked,
+            isSaved,
+            user: {
+                id: post.user_id,
+                name: author?.display_name || author?.username || 'User',
+                username: author?.username || 'user',
+                avatar: '🎬',
+                avatarUrl: toPublicStorageUrl(author?.avatar_url) || null,
+                isVerified: !!author?.is_verified,
+            },
+        };
+    }
+
     const { items: mediaItems, caption: carouselCaption } = parseMediaCarousel(post.media_items);
     const primaryImage = toPublicStorageUrl(post.image_url) || mediaItems[0]?.url || null;
     const pollData = post.post_type === 'poll' ? mapPollData(post.poll_data) : null;

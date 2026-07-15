@@ -165,9 +165,11 @@ export async function getRssTrailersFromEdge(options = {}) {
     const params = new URLSearchParams();
     if (options.limit != null) params.set('limit', String(options.limit));
     if (options.daysBack != null) params.set('daysBack', String(options.daysBack));
+    if (options.fresh) params.set('_', String(Date.now()));
     return fetchFromEdge(
         `${API_BASE}/rss-trailers?${params.toString()}`,
         async () => ({ data: [], total: 0 }),
+        { fresh: !!options.fresh },
     );
 }
 
@@ -194,10 +196,12 @@ export async function getArticlesFromEdge(options = {}) {
     const params = new URLSearchParams();
     if (options.limit != null) params.set('limit', String(options.limit));
     if (options.offset != null) params.set('offset', String(options.offset));
+    if (options.fresh) params.set('_', String(Date.now()));
 
     const payload = await fetchFromEdge(
         `${API_BASE}/articles?${params.toString()}`,
         async () => ({ data: [], total: 0 }),
+        { fresh: !!options.fresh },
     );
 
     return payload.data || [];

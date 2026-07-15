@@ -77,6 +77,14 @@ export function isFeedStale(scope = 'all') {
   return !isFresh(entry.ts, FEED_TTL_MS);
 }
 
+/** Force Home to refetch so newly public blogs appear immediately. */
+export function invalidateFeedCaches() {
+  feedByScope.clear();
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.removeItem(STORAGE_KEY_FEED);
+  } catch { /* ignore */ }
+}
+
 export function setCachedFeed(scope, { items, offset, hasMore }) {
   feedByScope.set(scope, {
     items: Array.isArray(items) ? items : [],

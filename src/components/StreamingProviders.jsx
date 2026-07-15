@@ -70,7 +70,6 @@ export default function StreamingProviders({ tmdbId, mediaType = 'movie', region
             <ProviderRow label="Stream" items={providers.flatrate} link={providers.link} />
             <ProviderRow label="Rent" items={providers.rent} link={providers.link} />
             <ProviderRow label="Buy" items={providers.buy} link={providers.link} />
-            <p className="text-[10px] text-white/30">Availability via JustWatch / TMDB</p>
         </div>
     );
 }

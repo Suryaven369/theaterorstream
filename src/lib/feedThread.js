@@ -26,6 +26,10 @@ export function parseFeedThreadId(feedId = '') {
 export function threadPathForItem(item) {
     if (!item?.id) return '/';
 
+    if (item.type === 'blog' && item.blogId) {
+        return `/blog/${item.blogId}`;
+    }
+
     if (item.type === 'article' || item.type === 'tweet') {
         const uuid = String(item.id).startsWith('article-')
             ? String(item.id).slice('article-'.length)

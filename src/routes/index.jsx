@@ -37,11 +37,13 @@ import AchievementsPage from "../views/AchievementsPage";
 
 import HashtagPage from "../views/HashtagPage";
 import TagsDiscoverPage from "../views/TagsDiscoverPage";
+import ParentGuideBrowsePage from "../views/ParentGuideBrowsePage";
 import AdminSectionsPage from "../views/admin/AdminSectionsPage";
 import AdminTrailersPage from "../views/admin/AdminTrailersPage";
 import AdminArticlesPage from "../views/admin/AdminArticlesPage";
 import AdminNewsIntelPage from "../views/admin/AdminNewsIntelPage";
 import AdminCollectionsPage from "../views/admin/AdminCollectionsPage";
+import AdminFranchiseListsPage from "../views/admin/AdminFranchiseListsPage";
 import AdminSettingsPage from "../views/admin/AdminSettingsPage";
 import AdminProfileConnectPage from "../views/admin/AdminProfileConnectPage";
 import AdminControlTowerPage from "../views/admin/AdminControlTowerPage";
@@ -194,6 +196,14 @@ const router = createBrowserRouter([
         path: "tags",
         element: <TagsDiscoverPage />,
       },
+      {
+        path: "parent-guide",
+        element: <ParentGuideBrowsePage />,
+      },
+      {
+        path: "parent-guide/:category",
+        element: <ParentGuideBrowsePage />,
+      },
 
       // Signed-in only — listed before :explore catch-alls
       {
@@ -290,6 +300,10 @@ const router = createBrowserRouter([
           {
             path: "collections",
             element: <AdminCollectionsPage />,
+          },
+          {
+            path: "franchise-lists",
+            element: <AdminFranchiseListsPage />,
           },
           {
             path: "settings",

@@ -15,6 +15,53 @@ import { publishRatingActivity } from "../lib/movieDiary";
 import { computeOverallFromCategories, computeTosScoreFromAggregates } from "../lib/ratingUtils";
 import { markUserRatedMovie, patchHomepageMovieTosRating } from "../store/movieSlice";
 import { useAuth } from "../context/AuthContext";
+import { getAvatarUrl } from "../lib/storagePublicUrl";
+
+const AVATAR_PRESETS = {
+    avatar_1: { emoji: '🎬', bg: 'bg-purple-600' },
+    avatar_2: { emoji: '🎭', bg: 'bg-blue-600' },
+    avatar_3: { emoji: '🎪', bg: 'bg-emerald-600' },
+    avatar_4: { emoji: '🌟', bg: 'bg-amber-600' },
+    avatar_5: { emoji: '🎯', bg: 'bg-red-600' },
+    avatar_6: { emoji: '🦋', bg: 'bg-indigo-600' },
+    avatar_7: { emoji: '🌈', bg: 'bg-pink-600' },
+    avatar_8: { emoji: '🎸', bg: 'bg-teal-600' },
+    avatar_9: { emoji: '🎮', bg: 'bg-violet-600' },
+    avatar_10: { emoji: '📚', bg: 'bg-orange-600' },
+    avatar_11: { emoji: '🚀', bg: 'bg-sky-600' },
+    avatar_12: { emoji: '🎨', bg: 'bg-rose-600' },
+};
+
+function ReviewAvatar({ avatarUrl, avatarId, size = 'md', className = '' }) {
+    const sizeClass = size === 'sm' ? 'w-8 h-8 text-sm' : 'w-10 h-10 text-lg';
+    const preset = (avatarId && AVATAR_PRESETS[avatarId]) || null;
+
+    if (avatarUrl) {
+        return (
+            <div className={`${sizeClass} rounded-full overflow-hidden bg-[var(--color-surface-subtle)] shrink-0 ${className}`}>
+                <img
+                    src={getAvatarUrl(avatarUrl, size === 'sm' ? 32 : 40)}
+                    alt=""
+                    className="w-full h-full object-cover"
+                />
+            </div>
+        );
+    }
+
+    if (preset) {
+        return (
+            <div className={`${sizeClass} rounded-full ${preset.bg} flex items-center justify-center shrink-0 ${className}`}>
+                {preset.emoji}
+            </div>
+        );
+    }
+
+    return (
+        <div className={`${sizeClass} rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shrink-0 ${className}`}>
+            <FaUser className="text-white text-sm" />
+        </div>
+    );
+}
 
 // Reddit-style rating slider
 const RatingSlider = ({ label, value, onChange, color = "#22c55e" }) => {
@@ -464,7 +511,7 @@ const buildThreads = (reviews) => {
 // Reviews List Component with threaded replies
 export const ReviewsList = ({ movieId, movieTitle, onRateClick, hasUserRated }) => {
     const navigate = useNavigate();
-    const { isAuthenticated, profile } = useAuth();
+    const { isAuthenticated, profile, user } = useAuth();
     const [reviews, setReviews] = useState([]);
     const [loading, setLoading] = useState(true);
     const [communityRatings, setCommunityRatings] = useState(null);
@@ -565,6 +612,9 @@ export const ReviewsList = ({ movieId, movieTitle, onRateClick, hasUserRated }) 
             id: `temp-${Date.now()}`,
             review_text: replyText,
             username: displayName,
+            user_id: user?.id || null,
+            avatar_url: profile?.avatar_url || null,
+            avatar_id: profile?.avatar_id || null,
             created_at: new Date().toISOString(),
             parent_id: parentId
         };
@@ -574,7 +624,7 @@ export const ReviewsList = ({ movieId, movieTitle, onRateClick, hasUserRated }) 
         setReplyingTo(null);
 
         // API call
-        await submitReview(movieId, movieTitle, replyText, 'anonymous', displayName, parentId);
+        await submitReview(movieId, movieTitle, replyText, user?.id || 'anonymous', displayName, parentId);
         setSubmittingReply(false);
 
         // Refresh to get real ID
@@ -598,6 +648,9 @@ export const ReviewsList = ({ movieId, movieTitle, onRateClick, hasUserRated }) 
             id: `temp-${Date.now()}`,
             review_text: reviewText,
             username: displayName,
+            user_id: user?.id || null,
+            avatar_url: profile?.avatar_url || null,
+            avatar_id: profile?.avatar_id || null,
             created_at: new Date().toISOString(),
             upvotes: 0,
             downvotes: 0,
@@ -608,24 +661,11 @@ export const ReviewsList = ({ movieId, movieTitle, onRateClick, hasUserRated }) 
         setReviewText('');
 
         // API call
-        await submitReview(movieId, movieTitle, reviewText, 'anonymous', displayName, null);
+        await submitReview(movieId, movieTitle, reviewText, user?.id || 'anonymous', displayName, null);
         setSubmittingReview(false);
 
         // Refresh to get real ID
         fetchData();
-    };
-
-    // Get user avatar info
-    const getUserAvatar = () => {
-        if (profile?.avatar_id) {
-            const avatars = {
-                'avatar_1': '🎬', 'avatar_2': '🎭', 'avatar_3': '🎪', 'avatar_4': '🌟',
-                'avatar_5': '🎯', 'avatar_6': '🦋', 'avatar_7': '🌈', 'avatar_8': '🎸',
-                'avatar_9': '🎮', 'avatar_10': '📚', 'avatar_11': '🚀', 'avatar_12': '🎨'
-            };
-            return avatars[profile.avatar_id] || '👤';
-        }
-        return '👤';
     };
 
     const getDisplayName = () => {
@@ -662,9 +702,14 @@ export const ReviewsList = ({ movieId, movieTitle, onRateClick, hasUserRated }) 
             <div className="p-5 rounded-2xl bg-[#1a1a1a] border border-white/10 mb-6">
                 {/* User info row */}
                 <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-500 to-yellow-500 flex items-center justify-center text-lg">
-                        {isAuthenticated ? getUserAvatar() : '👤'}
-                    </div>
+                    {isAuthenticated ? (
+                        <ReviewAvatar
+                            avatarUrl={profile?.avatar_url}
+                            avatarId={profile?.avatar_id}
+                        />
+                    ) : (
+                        <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-lg">👤</div>
+                    )}
                     <span className="text-white font-medium">
                         {isAuthenticated ? `@${getDisplayName()}` : '@guest'}
                     </span>
@@ -720,9 +765,10 @@ export const ReviewsList = ({ movieId, movieTitle, onRateClick, hasUserRated }) 
                             {/* Review header */}
                             <div className="flex items-start justify-between mb-3">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center overflow-hidden">
-                                        <FaUser className="text-white text-sm" />
-                                    </div>
+                                    <ReviewAvatar
+                                        avatarUrl={review.avatar_url}
+                                        avatarId={review.avatar_id}
+                                    />
                                     <div>
                                         <p className="font-medium text-white">{review.username || 'Anonymous'}</p>
                                         <p className="text-xs text-white/40">{getTimeAgo(review.created_at)}</p>
@@ -775,9 +821,11 @@ export const ReviewsList = ({ movieId, movieTitle, onRateClick, hasUserRated }) 
                             {replyingTo === review.id && (
                                 <div className="mt-4 pt-4 border-t border-white/5 animate-fadeIn">
                                     <div className="flex gap-3">
-                                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-500 to-yellow-500 flex items-center justify-center text-sm flex-shrink-0">
-                                            {getUserAvatar()}
-                                        </div>
+                                        <ReviewAvatar
+                                            avatarUrl={profile?.avatar_url}
+                                            avatarId={profile?.avatar_id}
+                                            size="sm"
+                                        />
                                         <div className="flex-1">
                                             <textarea
                                                 value={replyText}
@@ -813,6 +861,11 @@ export const ReviewsList = ({ movieId, movieTitle, onRateClick, hasUserRated }) 
                                     {review.replies.map((reply) => (
                                         <div key={reply.id} className="pl-4 border-l-2 border-white/10 animate-fadeIn">
                                             <div className="flex items-center gap-2 mb-1">
+                                                <ReviewAvatar
+                                                    avatarUrl={reply.avatar_url}
+                                                    avatarId={reply.avatar_id}
+                                                    size="sm"
+                                                />
                                                 <span className="text-sm font-medium text-white">{reply.username || 'Anonymous'}</span>
                                                 <span className="text-xs text-white/40">{getTimeAgo(reply.created_at)}</span>
                                             </div>

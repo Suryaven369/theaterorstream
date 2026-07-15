@@ -301,6 +301,43 @@ export const updateMovieParentGuide = async (tmdbId, parentGuide, certification 
     return updateMovieInLibrary(tmdbId, updates);
 };
 
+/**
+ * Browse titles by parent-guide category (violence, nudity, …).
+ * Only returns rows where the category level is mild|moderate|severe (never none).
+ */
+export const getMoviesByParentGuide = async (categoryKey, options = {}) => {
+    const { level = null, limit = 48, offset = 0 } = options;
+    const allowed = ['violence', 'nudity', 'profanity', 'frightening'];
+    if (!allowed.includes(categoryKey)) return { data: [], total: 0 };
+
+    const path = `custom_parent_guide->>${categoryKey}`;
+    const levels = level && ['mild', 'moderate', 'severe'].includes(level)
+        ? [level]
+        : ['mild', 'moderate', 'severe'];
+
+    let query = supabase
+        .from('movies_library')
+        .select(MOVIES_LIBRARY_SELECT, { count: 'exact' })
+        .eq('is_active', true)
+        .in(path, levels)
+        .order('popularity', { ascending: false })
+        .range(offset, offset + limit - 1);
+
+    const { data, error, count } = await query;
+
+    if (error) {
+        console.error('Error fetching parent-guide movies:', error);
+        return { data: [], total: 0 };
+    }
+
+    const rows = (data || []).map((m) => ({
+        ...m,
+        id: m.tmdb_id ?? m.id,
+    }));
+
+    return { data: rows, total: count ?? rows.length };
+};
+
 // Update editor review
 export const updateMovieEditorReview = async (tmdbId, review, rating = null) => {
     const updates = { editor_review: review };

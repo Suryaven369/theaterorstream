@@ -2,8 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
     FiRss,
-    FiBook,
-    FiActivity,
+    FiEdit3,
     FiBookmark,
     FiFolder,
     FiCompass,
@@ -103,8 +102,7 @@ export default function ProfileMenu({ profile, userId, isOnboarded, onClose, onS
                 {isOnboarded && username ? (
                     <>
                         <MenuRow to="/feed" icon={FiRss} label="Cinema Feed" sublabel="Popular, following & for you" onClick={close} />
-                        <MenuRow to="/diary" icon={FiBook} label="Diary" sublabel="Your watch log" onClick={close} />
-                        <MenuRow to={`/${username}/activity`} icon={FiActivity} label="Activity" onClick={close} />
+                        <MenuRow to={`/${username}/blogs`} icon={FiEdit3} label="Blogs" sublabel="Write & manage posts" onClick={close} />
                         <MenuRow to={`/${username}/watchlist`} icon={FiBookmark} label="Watchlist" onClick={close} />
                         <MenuRow to={`/${username}/collections`} icon={FiFolder} label="Lists" onClick={close} />
                         <MenuRow to={`/${username}/boards`} icon={FiCompass} label="Boards" onClick={close} />

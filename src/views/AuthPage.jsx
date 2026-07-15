@@ -238,9 +238,11 @@ const AuthPage = () => {
         <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center px-4 py-10">
             <div className="w-full max-w-md">
                 <div className="text-center mb-8">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center">
-                        <span className="text-3xl">🎬</span>
-                    </div>
+                    <img
+                        src="https://res.cloudinary.com/ddhhlkyut/image/upload/v1768226006/a78a29523128c4555fdd178b6c612ac6_dbtyqp.jpg"
+                        alt="TheaterOrStream Logo"
+                        className="w-16 h-16 mx-auto mb-4 rounded-full object-cover"
+                    />
                     <h1 className="text-2xl font-bold text-white">TheaterOrStream</h1>
                     <p className="text-sm text-white/50 mt-1">
                         {mode === 'signup' && 'Create your account'}

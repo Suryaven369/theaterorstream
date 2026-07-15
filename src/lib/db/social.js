@@ -166,21 +166,53 @@ export const searchPublicCollections = async (query, limit = 20) => {
     }));
 };
 
-/** Recent public user lists for Explore browse rail. */
-export const getRecentPublicCollections = async (limit = 6) => {
+/** Recent public user lists for Explore browse rail.
+ *  @param {number} limit
+ *  @param {{ category?: 'all'|'list'|'franchise' }} [options]
+ *  category filters Explore tabs (Franchise = admin/official lists).
+ */
+export const getRecentPublicCollections = async (limit = 6, options = {}) => {
+    const category =
+        options.category && options.category !== 'all' ? options.category : null;
+
     // Prefer posters via embed; fall back to a plain list if the embed 400s
     // (schema/RLS/PostgREST), so the Explore panel never goes empty.
     let data = null;
     let usedEmbed = false;
 
+    const applyCategory = (query) => {
+        if (!category) return query;
+        let q = query.eq('category', category);
+        // Franchise tab only shows admin-approved lists
+        if (category === 'franchise') {
+            q = q.eq('moderation_status', 'approved');
+        }
+        return q;
+    };
+
     {
-        const nested = await supabase
+        let nestedQuery = supabase
             .from('user_collections')
-            .select('id, name, slug, description, user_id, is_public, created_at, collection_movies(movie_id, poster_path, movie_title, added_at)')
+            .select('id, name, slug, description, user_id, is_public, created_at, category, collection_movies(movie_id, poster_path, movie_title, added_at)')
             .eq('is_public', true)
             .order('created_at', { ascending: false })
             .order('added_at', { foreignTable: 'collection_movies', ascending: false })
             .limit(limit);
+        nestedQuery = applyCategory(nestedQuery);
+
+        let nested = await nestedQuery;
+
+        // Pre-migration DBs may not have `category` yet.
+        if (nested.error && /category/i.test(nested.error.message || '')) {
+            nestedQuery = supabase
+                .from('user_collections')
+                .select('id, name, slug, description, user_id, is_public, created_at, collection_movies(movie_id, poster_path, movie_title, added_at)')
+                .eq('is_public', true)
+                .order('created_at', { ascending: false })
+                .order('added_at', { foreignTable: 'collection_movies', ascending: false })
+                .limit(limit);
+            nested = await nestedQuery;
+        }
 
         if (!nested.error && nested.data) {
             data = nested.data;
@@ -191,12 +223,23 @@ export const getRecentPublicCollections = async (limit = 6) => {
     }
 
     if (!data) {
-        const plain = await supabase
+        let plainQuery = supabase
             .from('user_collections')
-            .select('id, name, slug, description, user_id, is_public, created_at')
+            .select('id, name, slug, description, user_id, is_public, created_at, category')
             .eq('is_public', true)
             .order('created_at', { ascending: false })
             .limit(limit);
+        plainQuery = applyCategory(plainQuery);
+
+        let plain = await plainQuery;
+        if (plain.error && /category/i.test(plain.error.message || '')) {
+            plain = await supabase
+                .from('user_collections')
+                .select('id, name, slug, description, user_id, is_public, created_at')
+                .eq('is_public', true)
+                .order('created_at', { ascending: false })
+                .limit(limit);
+        }
 
         if (plain.error) {
             console.error('getRecentPublicCollections:', plain.error);
@@ -266,6 +309,7 @@ export const getRecentPublicCollections = async (limit = 6) => {
             user_id: c.user_id,
             is_public: c.is_public,
             created_at: c.created_at,
+            category: c.category || 'list',
             cover_image: coverMap.get(c.id) || null,
             collection_movies: movies,
             movie_count: movieCount,

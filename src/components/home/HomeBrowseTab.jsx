@@ -159,7 +159,7 @@ export default function HomeBrowseTab({
     },
     collections: {
       title: 'Collections',
-      subtitle: 'Browse public lists without leaving Explore',
+      subtitle: 'Franchise (admin-approved) and community lists — filter above the grid',
     },
     boards: {
       title: 'Boards',

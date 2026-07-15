@@ -1146,9 +1146,10 @@ async function finalizeArticleApproval(supabase, article, { regenerateOnly = fal
     }
 
     if (article.tmdb_id && !regenerateOnly) {
+        // Bump updated_at so the Home feed sorts this trailer to the top on approve.
         await supabase
             .from('trailer_posts')
-            .update({ is_active: true })
+            .update({ is_active: true, updated_at: new Date().toISOString() })
             .eq('tmdb_id', String(article.tmdb_id))
             .eq('media_type', article.media_type || 'movie')
             .then(() => {}, () => {});

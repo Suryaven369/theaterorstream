@@ -7,6 +7,7 @@ import FollowingFeed from "../components/discover/FollowingFeed";
 import FeedPostCard from "../components/social/FeedPostCard";
 import FeedTrailerCard from "../components/social/FeedTrailerCard";
 import FeedArticleCard from "../components/social/FeedArticleCard";
+import FeedBlogCard from "../components/social/FeedBlogCard";
 import FeedTweetCard from "../components/social/FeedTweetCard";
 import FeedActivityCard from "../components/social/FeedActivityCard";
 import FeedComposer from "../components/social/FeedComposer";
@@ -17,6 +18,7 @@ import HomeBrowseTab from "../components/home/HomeBrowseTab";
 import { getSavedRegion, persistRegion } from "../constants/regions";
 import { getTrailersFromEdge, getRssTrailersFromEdge, getArticlesFromEdge } from "../lib/contentEdgeApi";
 import { getAllUserRatings, getHomepageSections, getOfficialProfile } from "../lib/supabase";
+import { getRecentPublicBlogs } from "../lib/blogs";
 import { computeOverallFromRatingRow } from "../lib/ratingUtils";
 import { setHomepageSections, setUserRatedMovies, invalidateHomepageSections } from "../store/movieSlice";
 import { useAuth } from "../context/AuthContext";
@@ -238,36 +240,47 @@ const Home = () => {
   }, [dispatch]);
 
   const getItemSortTime = (item) => {
-    const raw = item.createdAt || item.publishedAt;
+    // Prefer feed/approval time (createdAt) so freshly approved RSS items rise to the top.
+    const raw = item.createdAt || item.feedAt || item.publishedAt;
     return raw ? new Date(raw).getTime() : 0;
   };
 
   const sortByRecency = (items) =>
     [...items].sort((a, b) => getItemSortTime(b) - getItemSortTime(a));
 
-  const mapTrailer = (m, officialUser = null) => ({
-    id: `trailer-${m.tmdb_id ?? m.id}`,
-    type: 'trailer',
-    tmdb_id: m.tmdb_id ?? m.id,
-    title: m.title || m.name,
-    mediaType: m.media_type,
-    releaseDate: m.release_date || m.first_air_date,
-    thumbnail: m.featured_trailer.thumbnail,
-    thumbnailFallback: m.featured_trailer.thumbnailFallback,
-    trailerUrl: m.featured_trailer.url,
-    trailerName: m.featured_trailer.name,
-    publishedAt: m.featured_trailer.published_at,
-    sourceName: m.source_name || null,
-    sourceLogo: m.source_logo || null,
-    user: officialUser,
-    likes: 0,
-    isLiked: false,
-    comments: 0,
-  });
+  const mapTrailer = (m, officialUser = null) => {
+    const feedAt =
+      m.featured_trailer?.feed_at ||
+      m.updated_at ||
+      m.featured_trailer?.published_at ||
+      null;
+    return {
+      id: `trailer-${m.tmdb_id ?? m.id}`,
+      type: 'trailer',
+      tmdb_id: m.tmdb_id ?? m.id,
+      title: m.title || m.name,
+      mediaType: m.media_type,
+      releaseDate: m.release_date || m.first_air_date,
+      thumbnail: m.featured_trailer.thumbnail,
+      thumbnailFallback: m.featured_trailer.thumbnailFallback,
+      trailerUrl: m.featured_trailer.url,
+      trailerName: m.featured_trailer.name,
+      publishedAt: m.featured_trailer.published_at,
+      createdAt: feedAt,
+      feedAt,
+      sourceName: m.source_name || null,
+      sourceLogo: m.source_logo || null,
+      user: officialUser,
+      likes: 0,
+      isLiked: false,
+      comments: 0,
+    };
+  };
 
   const mapArticle = (a, officialUser = null) => {
     const link = a.link || '';
     const twitter = /nitter\.|\/\/(?:www\.)?(?:twitter|x)\.com\b/i.test(link);
+    const feedAt = a.updated_at || a.published_at || null;
     return {
       id: `article-${a.id}`,
       type: twitter ? 'tweet' : 'article',
@@ -278,12 +291,41 @@ const Home = () => {
       summary: a.summary,
       summaryItems: Array.isArray(a.summary_items) ? a.summary_items : null,
       publishedAt: a.published_at,
+      createdAt: feedAt,
+      feedAt,
       link,
       // Tweets stay attributed to the X account (e.g. DiscussingFilm), not TheaterOrStream.
       user: twitter ? null : officialUser,
       likes: 0,
       isLiked: false,
       comments: 0,
+    };
+  };
+
+  const mapBlogRow = (b) => {
+    const profile = b.user_profiles || {};
+    const excerpt = String(b.content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 280);
+    return {
+      id: `blog-${b.id}`,
+      type: 'blog',
+      blogId: b.id,
+      title: b.title || 'Blog',
+      excerpt,
+      content: excerpt,
+      imageUrl: b.cover_image || null,
+      image: b.cover_image || null,
+      publishedAt: b.updated_at || b.created_at,
+      createdAt: b.created_at,
+      likes: 0,
+      isLiked: false,
+      comments: 0,
+      user: {
+        id: b.user_id,
+        name: profile.display_name || profile.username || 'Writer',
+        username: profile.username || 'user',
+        avatarUrl: profile.avatar_url || null,
+        isVerified: !!profile.is_verified,
+      },
     };
   };
 
@@ -357,14 +399,15 @@ const Home = () => {
 
         const extrasPromise = feedScope === 'all'
           ? Promise.all([
-              getRssTrailersFromEdge({ daysBack: 21, limit: 15 }),
+              getRssTrailersFromEdge({ daysBack: 21, limit: 15, fresh: true }),
               getTrailersFromEdge({ sortBy: 'recent', daysBack: 14, type: 'launch', limit: 15 }),
-              getArticlesFromEdge({ limit: 20 }),
+              getArticlesFromEdge({ limit: 20, fresh: true }),
               getOfficialProfile(),
+              getRecentPublicBlogs(12),
             ])
-          : Promise.resolve([null, null, [], null]);
+          : Promise.resolve([null, null, [], null, []]);
 
-        const [postsRes, [rss, lib, articlesRaw, officialProfile]] = await Promise.all([postsPromise, extrasPromise]);
+        const [postsRes, [rss, lib, articlesRaw, officialProfile, blogsRaw]] = await Promise.all([postsPromise, extrasPromise]);
         if (cancelled) return;
 
         const officialUser = officialProfile
@@ -391,9 +434,30 @@ const Home = () => {
           }
         }
         const trailers = [...byId.values()];
-        const articles = (articlesRaw || []).map((a) => mapArticle(a, officialUser));
+        // One card per tweet status URL (RSS can return the same post more than once).
+        const seenTweetIds = new Set();
+        const articles = [];
+        for (const a of articlesRaw || []) {
+          const mapped = mapArticle(a, officialUser);
+          if (mapped.type === 'tweet') {
+            const statusId = String(mapped.link || '').match(/\/status\/(\d+)/i)?.[1];
+            if (statusId) {
+              if (seenTweetIds.has(statusId)) continue;
+              seenTweetIds.add(statusId);
+            }
+          }
+          articles.push(mapped);
+        }
 
-        const merged = sortByRecency([...posts, ...trailers, ...articles]);
+        // Public blogs: prefer feed_posts cards; fill gaps from blog_posts table
+        const blogIdsInPosts = new Set(
+          posts.filter((p) => p.type === 'blog' && p.blogId).map((p) => String(p.blogId)),
+        );
+        const blogsFromTable = (blogsRaw || [])
+          .filter((b) => b?.id && !blogIdsInPosts.has(String(b.id)))
+          .map(mapBlogRow);
+
+        const merged = sortByRecency([...posts, ...trailers, ...articles, ...blogsFromTable]);
         const withLikes = await attachFeedItemLikes(merged, user?.id);
         const withComments = await attachFeedItemCommentCounts(withLikes);
         if (cancelled) return;
@@ -734,6 +798,9 @@ const Home = () => {
         />
       );
     }
+    if (item.type === 'blog') {
+      return <FeedBlogCard key={item.id} item={item} />;
+    }
     if (item.type === 'activity') {
       return (
         <FeedActivityCard
@@ -774,10 +841,16 @@ const Home = () => {
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)]">
-      {/* Main Tabs — desktop only (mobile uses bottom nav) */}
-      <section className="hidden lg:block pt-24 px-3 sm:px-8 md:px-8 lg:pl-16">
+      {/* Clears fixed site header; tab bar sticks directly under it while scrolling */}
+      <div
+        className="hidden lg:block h-24 shrink-0"
+        aria-hidden
+      />
+      <section
+        className="hidden lg:block sticky z-40 bg-[var(--bg-primary)]/95 backdrop-blur-md border-b border-white/10 px-3 sm:px-8 md:px-8 lg:pl-16 top-[calc(env(safe-area-inset-top,0px)+3.5rem)]"
+      >
         <div className="container mx-auto">
-          <div className="flex items-center gap-1 sm:gap-2 border-b border-white/10 overflow-x-auto scrollbar-hide -mx-1 px-1">
+          <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto scrollbar-hide -mx-1 px-1">
             <button
               onClick={() => setActiveTab('home')}
               className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2.5 sm:py-3 text-sm font-medium border-b-2 transition-colors shrink-0 ${

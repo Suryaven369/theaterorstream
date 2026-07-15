@@ -93,26 +93,63 @@ function PanelShell({ children, loading, skeleton = 'cards' }) {
   return <div>{children}</div>;
 }
 
+const COLLECTION_CATEGORY_TABS = [
+  { id: 'all', label: 'All' },
+  { id: 'franchise', label: 'Franchise' },
+  { id: 'list', label: 'Lists' },
+];
+
 export function ExploreCollectionsPanel() {
   const imageURL = useSelector((s) => s.movieData.imageURL);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [category, setCategory] = useState('all');
 
   useEffect(() => {
     let cancelled = false;
-    getRecentPublicCollections(40).then((data) => {
+    setLoading(true);
+    getRecentPublicCollections(40, { category }).then((data) => {
       if (!cancelled) {
         setRows(data || []);
         setLoading(false);
       }
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [category]);
 
   return (
-    <PanelShell loading={loading}>
-      {rows.length === 0 ? (
-        <p className="text-sm text-white/40 py-12 text-center">No public collections yet.</p>
+    <PanelShell loading={false}>
+      <div className="flex gap-1.5 sm:gap-2 mb-4 sm:mb-5 overflow-x-auto scrollbar-hide -mx-1 px-1">
+        {COLLECTION_CATEGORY_TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setCategory(t.id)}
+            className={`shrink-0 px-3 py-2 sm:py-1.5 rounded-full text-xs transition-colors min-h-[36px] ${
+              category === t.id
+                ? 'bg-[var(--accent-green)]/20 text-[var(--accent-green)] border border-[var(--accent-green)]/35'
+                : 'bg-white/5 text-white/50 border border-white/10 hover:text-white'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5 sm:gap-4">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="aspect-[4/3] rounded-xl sm:rounded-2xl bg-white/5 animate-pulse" />
+          ))}
+        </div>
+      ) : rows.length === 0 ? (
+        <p className="text-sm text-white/40 py-12 text-center">
+          {category === 'franchise'
+            ? 'No approved franchise collections yet.'
+            : category === 'list'
+              ? 'No community lists yet.'
+              : 'No public collections yet.'}
+        </p>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5 sm:gap-4">
           {rows.map((c) => (
@@ -124,6 +161,11 @@ export function ExploreCollectionsPanel() {
               <div className="relative aspect-[4/3] sm:aspect-[16/11] overflow-hidden">
                 <CollectionCover collection={c} imageURL={imageURL} />
                 <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" />
+                {c.category === 'franchise' && (
+                  <span className="absolute top-2 left-2 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full bg-amber-500/90 text-black">
+                    Franchise
+                  </span>
+                )}
                 <div className="absolute bottom-0 left-0 right-0 p-2.5 sm:p-3.5">
                   <h3 className="text-sm sm:text-base font-semibold text-white line-clamp-2 group-hover:text-[var(--primary)] transition-colors">
                     {c.name}
