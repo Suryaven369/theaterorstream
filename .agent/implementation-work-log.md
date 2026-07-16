@@ -2,7 +2,7 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 2026 · HEAD `003fdb0` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 2026 · HEAD `176f0d0` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
 
 ---
 
@@ -1032,6 +1032,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `176f0d0` | Jul 2026 | In-Theaters web ratings (TMDB→LLM), details polish, review delete RLS |
 | `003fdb0` | Jul 2026 | Blogs in feed, Franchise moderation, approve-to-top RSS, admin mobile |
 | `f3e753c` | Jul 2026 | Coming Soon divided widget, composer line removed, trending offset, pill search |
 | `ac1496b` | Jul 2026 | Feed carousel/polls, flat layout, mobile nav Watch, admin trending_live |
