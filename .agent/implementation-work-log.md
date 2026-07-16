@@ -2,7 +2,7 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 2026 · HEAD `176f0d0` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 2026 · HEAD `PENDING_PUSH` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
 
 ---
 
@@ -35,6 +35,12 @@ Session log for production architecture Phase 1 work (DB-first performance + Ver
 - `src/lib/db/ratings.js`, `src/lib/supabase.js` — ratings helpers as needed
 
 **Behavior:** Details page is cleaner; reviews deletable by author; vibes match genre; TOS Rating sits vertically on the right on large screens.
+
+### Watch page laptop alignment ✅
+
+**Problem:** Watch page movie rows were too close to the left edge on ~15" laptop screens.
+**Files changed:** `src/views/WatchPage.jsx`
+**Behavior:** The full Watch page content nudges right on `lg`/`xl` laptop widths while mobile and `2xl` desktop alignment stay unchanged.
 
 **Next recommended:** Run `20260727000000_movie_web_ratings.sql` + `20260727100000_reviews_owner_delete.sql` in Supabase; Control Tower → run now-playing (or wait for cron); open an In Theaters title and confirm TOS web scores.
 

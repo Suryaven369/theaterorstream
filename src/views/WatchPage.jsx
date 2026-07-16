@@ -104,7 +104,7 @@ export default function WatchPage({ embedded = false }) {
     const personalMessage = forYou.meta?.message;
 
     return (
-        <div className="min-h-screen bg-[var(--bg-primary)] pb-24 lg:pb-12">
+        <div className="min-h-screen bg-[var(--bg-primary)] pb-24 lg:pb-12 lg:pl-20 xl:pl-28 2xl:pl-0">
             {showHero ? (
                 <SpotlightHero movies={heroPicks} loading={heroLoading} />
             ) : (
