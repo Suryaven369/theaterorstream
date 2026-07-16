@@ -6,6 +6,42 @@ Session log for production architecture Phase 1 work (DB-first performance + Ver
 
 ---
 
+## Session: Jul 17, 2026 — In-Theaters web ratings + movie details polish
+
+### In-Theaters web ratings (TMDB reviews → LLM → TOS 7-axis) ✅
+
+**Problem:** Need main TOS scores for In Theaters titles from internet review consensus, without building a full scrape stack; manual In Theaters CMS titles must also be scored; cron must not wipe manual rail entries.
+
+**Files changed:**
+- `supabase/migrations/20260727000000_movie_web_ratings.sql` — `movies_library.web_ratings` JSONB
+- `api/_lib/web-ratings-server.js` — TMDB review text → LLM 7-axis scores; merge In Theaters CMS; analyze rail titles
+- `api/_lib/tmdb-sync-server.js` — append `reviews` on sync; `runNowPlayingPostSync` after now-playing-daily
+- `api/_lib/movie-detail-server.js` — expose `web_ratings` on detail select
+- `src/views/Details.jsx` — web scores as main TOS; community secondary; layout/crew/overview polish
+- `src/components/TOSRating.jsx` — source/secondary labels; vertical sidebar variant
+
+**Behavior:** Control Tower / now-playing-daily merges In Theaters (keeps manual adds), analyzes up to a few titles needing scores, stores in `web_ratings`; Details shows web consensus as primary TOS Rating.
+
+### Movie details UX: reviews, vibes, crew, layout ✅
+
+**Problem:** Comments looked card-heavy; vibe chart showed irrelevant slices; director/writer/producer duplicated; TOS rating needed a right-side vertical column on desktop; admin sections scrolled horizontally.
+
+**Files changed:**
+- `src/components/UserRatingSystem.jsx` — flat reviews; owner ⋮ delete + confirm toast; no Most Liked filter
+- `supabase/migrations/20260727100000_reviews_owner_delete.sql` — RLS owner DELETE on `reviews`
+- `src/components/VibeChart.jsx`, `api/_lib/content-server.js` — genre-relevant vibes only; hover center label; no chart card BG
+- `src/views/Details.jsx` — Crew merge (one person + roles); cast/crew max 6; overview wrap; left spacing; TOS right column sticky on `lg+`
+- `src/views/admin/AdminSectionsPage.jsx`, `src/components/AdminLayout.jsx` — desktop width / overflow fixes
+- `src/lib/db/ratings.js`, `src/lib/supabase.js` — ratings helpers as needed
+
+**Behavior:** Details page is cleaner; reviews deletable by author; vibes match genre; TOS Rating sits vertically on the right on large screens.
+
+**Next recommended:** Run `20260727000000_movie_web_ratings.sql` + `20260727100000_reviews_owner_delete.sql` in Supabase; Control Tower → run now-playing (or wait for cron); open an In Theaters title and confirm TOS web scores.
+
+**Off-git:** Confirm whether those two migrations were already applied in Supabase Editor (not visible in git).
+
+---
+
 ## Session: Jul 16, 2026 — Blogs feed, Franchise moderation, admin mobile
 
 ### Public blogs → home feed + RSS approve-to-top ✅

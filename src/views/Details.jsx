@@ -28,7 +28,6 @@ import { resolveTmdbImageUrl } from "../utils/imageHelper";
 import { trackEvent, EVENT_TYPES } from "../lib/eventTracking";
 import StreamingProviders from "../components/StreamingProviders";
 import SimilarMoviesSection from "../components/discover/SimilarMoviesSection";
-import FollowEntityButton from "../components/FollowEntityButton";
 import { getTitleAnalysisFromEdge } from "../lib/contentEdgeApi";
 import { mergeParentGuides } from "../lib/parentGuide";
 import SeoHead from "../components/SeoHead";
@@ -41,6 +40,82 @@ function formatMoney(amount) {
   if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(2)}B`;
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
   return `$${n.toLocaleString('en-US')}`;
+}
+
+const CREW_JOB_PRIORITY = [
+  'Director',
+  'Writer',
+  'Screenplay',
+  'Story',
+  'Novel',
+  'Teleplay',
+  'Producer',
+  'Executive Producer',
+  'Co-Producer',
+  'Associate Producer',
+];
+
+const CREW_JOB_LABEL = {
+  Director: 'Director',
+  Writer: 'Writer',
+  Screenplay: 'Writer',
+  Story: 'Writer',
+  Novel: 'Writer',
+  Teleplay: 'Writer',
+  Producer: 'Producer',
+  'Executive Producer': 'Producer',
+  'Co-Producer': 'Producer',
+  'Associate Producer': 'Producer',
+};
+
+/** One card per person; combine roles e.g. "Director, Writer". */
+function mergeCrewPeople(crew) {
+  const allowed = new Set(CREW_JOB_PRIORITY);
+  const byId = new Map();
+
+  (crew || []).forEach((person) => {
+    if (!person?.id || !allowed.has(person.job)) return;
+    const existing = byId.get(person.id);
+    if (!existing) {
+      byId.set(person.id, {
+        id: person.id,
+        name: person.name,
+        profile_path: person.profile_path,
+        profile_base64: person.profile_base64,
+        jobs: [person.job],
+      });
+      return;
+    }
+    if (!existing.jobs.includes(person.job)) existing.jobs.push(person.job);
+    if (!existing.profile_path && person.profile_path) {
+      existing.profile_path = person.profile_path;
+      existing.profile_base64 = person.profile_base64;
+    }
+  });
+
+  return Array.from(byId.values())
+    .map((person) => {
+      const labels = [];
+      const seenLabel = new Set();
+      CREW_JOB_PRIORITY.forEach((job) => {
+        if (!person.jobs.includes(job)) return;
+        const label = CREW_JOB_LABEL[job];
+        if (seenLabel.has(label)) return;
+        seenLabel.add(label);
+        labels.push(label);
+      });
+      return {
+        ...person,
+        rolesLabel: labels.join(', '),
+        sortRank: Math.min(
+          ...person.jobs.map((job) => {
+            const idx = CREW_JOB_PRIORITY.indexOf(job);
+            return idx === -1 ? 99 : idx;
+          }),
+        ),
+      };
+    })
+    .sort((a, b) => a.sortRank - b.sortRank || a.name.localeCompare(b.name));
 }
 
 const Details = () => {
@@ -90,7 +165,6 @@ const Details = () => {
   }, [movieId, mediaType]);
 
   const [tmbdID, setTmbdID] = useState(null);
-  const [AIRatings, setAIRatings] = useState({});
   const [communityRatings, setCommunityRatings] = useState(null);
   const [displayRatings, setDisplayRatings] = useState(null);
   const [userRating, setUserRating] = useState(null);
@@ -206,6 +280,10 @@ const Details = () => {
 
   const duration = (data?.runtime / 60)?.toFixed(1)?.split(".");
   const director = castData?.crew?.find((el) => el?.job === "Director");
+  const crewPeople = useMemo(
+    () => mergeCrewPeople(castData?.crew).slice(0, 6),
+    [castData?.crew],
+  );
 
   // Generate fallback TOS ratings based on TMDB score
   const generateFallbackRatings = (tmdbScore) => {
@@ -225,9 +303,46 @@ const Details = () => {
         verdict: baseScore >= 7 ? "Worth watching in theaters for the full experience!"
           : baseScore >= 5 ? "A good streaming choice for movie night."
             : "You might want to wait for reviews before watching."
-      }
+      },
+      source: 'fallback',
     };
   };
+
+  const mapWebRatingsToDisplay = (webRatings) => {
+    if (!webRatings) return null;
+    return {
+      acting: webRatings.acting,
+      screenplay: webRatings.screenplay,
+      sound: webRatings.sound,
+      direction: webRatings.direction,
+      entertainmentValue: webRatings.entertainment,
+      pacing: webRatings.pacing,
+      cinematicQuality: webRatings.cinematography,
+      verdict: webRatings.verdict,
+    };
+  };
+
+  const mapCommunityToDisplay = (community) => {
+    if (!community || community.totalRatings <= 0) return null;
+    return {
+      acting: community.acting,
+      screenplay: community.screenplay,
+      sound: community.sound,
+      direction: community.direction,
+      entertainmentValue: community.entertainment,
+      pacing: community.pacing,
+      cinematicQuality: community.cinematography,
+    };
+  };
+
+  const communityOverallLabel = useMemo(() => {
+    if (!communityRatings || communityRatings.totalRatings <= 0) return null;
+    const display = mapCommunityToDisplay(communityRatings);
+    const vals = Object.values(display).filter((v) => v != null && typeof v === 'number');
+    if (!vals.length) return null;
+    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+    return `Community: ${avg.toFixed(1)} (${communityRatings.totalRatings} ratings)`;
+  }, [communityRatings]);
 
   // Fetch community ratings from Supabase
   useEffect(() => {
@@ -301,50 +416,46 @@ const Details = () => {
     }
   };
 
-  // AI/scraper ratings - backend service not available, use fallback
-  // Note: This previously connected to localhost:3000/scraper/analyze
-  // The scraper backend is not running, so we skip directly to fallback
+  // Determine which ratings to display (web consensus > community > TMDB fallback)
   useEffect(() => {
-    if (!data?.vote_average) return;
+    const web = data?.web_ratings;
+    if (web?.acting != null) {
+      const reviewCount = web.review_count || 0;
+      setDisplayRatings({
+        ratings: mapWebRatingsToDisplay(web),
+        source: 'web',
+        sourceLabel: reviewCount > 0
+          ? `Web consensus · ${reviewCount} TMDB reviews`
+          : 'Web consensus',
+        secondaryLabel: communityOverallLabel,
+      });
+      return;
+    }
 
-    // Use fallback ratings based on TMDB score (no external API call)
-    setAIRatings(generateFallbackRatings(data.vote_average));
-  }, [data?.vote_average]);
-
-  // Determine which ratings to display
-  useEffect(() => {
     if (communityRatings && communityRatings.totalRatings > 0) {
-      const ratings = {
-        acting: communityRatings.acting,
-        screenplay: communityRatings.screenplay,
-        sound: communityRatings.sound,
-        direction: communityRatings.direction,
-        entertainmentValue: communityRatings.entertainment,
-        pacing: communityRatings.pacing,
-        cinematicQuality: communityRatings.cinematography,
-      };
-
-      const avgScore = Object.values(ratings).filter(v => v).reduce((a, b) => a + b, 0) /
-        Object.values(ratings).filter(v => v).length;
+      const ratings = mapCommunityToDisplay(communityRatings);
+      const avgScore = Object.values(ratings).filter((v) => v).reduce((a, b) => a + b, 0) /
+        Object.values(ratings).filter((v) => v).length;
 
       setDisplayRatings({
         ratings: {
           ...ratings,
-          verdict: avgScore >= 7 ? `Community Rating: Worth watching in theaters! (${communityRatings.totalRatings} ratings)`
-            : avgScore >= 5 ? `Community Rating: A good streaming choice. (${communityRatings.totalRatings} ratings)`
-              : `Community Rating: Mixed reviews. (${communityRatings.totalRatings} ratings)`
+          verdict: avgScore >= 7 ? `Community: Worth watching in theaters! (${communityRatings.totalRatings} ratings)`
+            : avgScore >= 5 ? `Community: A good streaming choice. (${communityRatings.totalRatings} ratings)`
+              : `Community: Mixed reviews. (${communityRatings.totalRatings} ratings)`,
         },
-        source: 'community'
+        source: 'community',
+        sourceLabel: `Community · ${communityRatings.totalRatings} ratings`,
       });
-    } else if (AIRatings?.ratings) {
-      setDisplayRatings({
-        ratings: AIRatings.ratings,
-        source: 'ai'
-      });
-    } else if (data?.vote_average) {
-      setDisplayRatings(generateFallbackRatings(data.vote_average));
+      return;
     }
-  }, [communityRatings, AIRatings, data?.vote_average]);
+
+    if (data?.vote_average) {
+      setDisplayRatings(generateFallbackRatings(data.vote_average));
+    } else {
+      setDisplayRatings(null);
+    }
+  }, [communityRatings, data?.web_ratings, data?.vote_average, communityOverallLabel]);
 
   useEffect(() => {
     if (data?.imdb_id) {
@@ -416,9 +527,9 @@ const Details = () => {
         </button>
       </div>
 
-      {/* Content - Positioned lower */}
-      <div className="container mx-auto px-4 sm:px-6 -mt-28 sm:-mt-40 md:-mt-48 lg:-mt-64 relative z-10">
-        <div className="flex flex-col md:flex-row gap-6 md:gap-8 lg:gap-12">
+      {/* Content — extra left room on ~15" laptop widths */}
+      <div className="container mx-auto px-4 sm:px-6 md:pl-16 md:pr-10 lg:pl-24 lg:pr-14 xl:pl-28 xl:pr-16 2xl:px-12 -mt-28 sm:-mt-40 md:-mt-48 lg:-mt-64 relative z-10">
+        <div className="flex flex-col md:flex-row gap-6 md:gap-10 lg:gap-16">
           {/* Left Column - Poster, Vibe Chart, Actions */}
           <div className="flex-shrink-0 w-full md:w-56 lg:w-72">
             {/* Poster */}
@@ -483,7 +594,7 @@ const Details = () => {
           </div>
 
           {/* Right Column - Details */}
-          <div className="flex-1 pt-4 lg:pt-12">
+          <div className="flex-1 pt-4 lg:pt-12 md:pl-4 lg:pl-8 xl:pl-10 min-w-0">
             {/* Title */}
             <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-2">
               {data?.title || data?.name}
@@ -591,11 +702,13 @@ const Details = () => {
             )}
 
             {/* Overview */}
-            <div className="mb-6">
+            <div className="mb-6 max-w-xl">
               <h3 className="text-lg font-semibold text-white mb-3">
                 Overview
               </h3>
-              <p className="text-white/60 leading-relaxed">{data?.overview}</p>
+              <p className="text-white/60 leading-relaxed text-sm sm:text-base">
+                {data?.overview}
+              </p>
             </div>
 
             {/* Vibe Chart - Mobile Only */}
@@ -605,14 +718,18 @@ const Details = () => {
               </div>
             )}
 
-            {/* TOS Rating */}
+            {/* TOS Rating — inline for mobile/tablet; moves to right column on desktop */}
             {displayRatings?.ratings && (
-              <TOSRating
-                ratings={displayRatings.ratings}
-                verdict={displayRatings.ratings.verdict}
-                onRateClick={handleRateClick}
-                hasUserRated={!!userRating}
-              />
+              <div className="lg:hidden">
+                <TOSRating
+                  ratings={displayRatings.ratings}
+                  verdict={displayRatings.ratings.verdict}
+                  onRateClick={handleRateClick}
+                  hasUserRated={!!userRating}
+                  sourceLabel={displayRatings.sourceLabel}
+                  secondaryLabel={displayRatings.secondaryLabel}
+                />
+              </div>
             )}
 
             {/* Credits */}
@@ -620,16 +737,7 @@ const Details = () => {
               {director && (
                 <div>
                   <p className="text-white/40 text-sm mb-1">Director</p>
-                  <div className="flex items-center gap-2">
-                    <p className="text-white font-medium">{director.name}</p>
-                    <FollowEntityButton
-                      targetType="director"
-                      targetId={director.id}
-                      targetLabel={director.name}
-                      targetImage={director.profile_path}
-                      size="xs"
-                    />
-                  </div>
+                  <p className="text-white font-medium">{director.name}</p>
                 </div>
               )}
               {data?.status && (
@@ -664,7 +772,7 @@ const Details = () => {
                 <div className="flex gap-3 overflow-x-auto pb-3 scrollbar-none">
                   {castData.cast
                     .filter((el) => el?.profile_path)
-                    .slice(0, 8)
+                    .slice(0, 6)
                     .map((actor) => (
                       <div
                         key={actor.id}
@@ -684,9 +792,59 @@ const Details = () => {
               </div>
             )}
 
+            {/* Crew — one person, combined roles (e.g. Director, Writer) */}
+            {crewPeople.length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold text-white mb-4">Crew</h3>
+                <div className="flex gap-5 overflow-x-auto pb-2 scrollbar-none">
+                  {crewPeople.map((person) => (
+                    <div
+                      key={person.id}
+                      className="flex-shrink-0 w-[88px] flex flex-col items-center text-center"
+                    >
+                      {person.profile_path ? (
+                        <img
+                          src={getProfileSrc(person.profile_path, person.profile_base64)}
+                          className="w-16 h-16 rounded-full object-cover mb-2"
+                          alt={person.name}
+                        />
+                      ) : (
+                        <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center text-lg text-white/40 mb-2">
+                          {person.name?.charAt(0) || "?"}
+                        </div>
+                      )}
+                      <p className="text-sm font-medium text-white leading-tight line-clamp-2">
+                        {person.name}
+                      </p>
+                      <p className="text-xs text-white/45 mt-0.5 leading-tight line-clamp-2">
+                        {person.rolesLabel}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Review Analysis */}
             <ReviewAnalysis analysis={analysis} loading={analysisLoading} />
           </div>
+
+          {/* Right Column - TOS Rating (desktop only, vertical) */}
+          {displayRatings?.ratings && (
+            <div className="hidden lg:block flex-shrink-0 w-72 xl:w-80 pt-12">
+              <div className="lg:sticky lg:top-24">
+                <TOSRating
+                  ratings={displayRatings.ratings}
+                  verdict={displayRatings.ratings.verdict}
+                  onRateClick={handleRateClick}
+                  hasUserRated={!!userRating}
+                  sourceLabel={displayRatings.sourceLabel}
+                  secondaryLabel={displayRatings.secondaryLabel}
+                  vertical={true}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Community Discussion Section - FULL WIDTH, DISPLAYED DIRECTLY */}

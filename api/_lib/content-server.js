@@ -1056,10 +1056,22 @@ function sanitizeParentGuide(raw) {
 }
 
 function sanitizeVibes(raw) {
-    const out = {};
-    VIBE_KEYS.forEach((k) => {
+    const ranked = VIBE_KEYS.map((k) => {
         const n = Math.round(Number(raw?.[k]));
-        out[k] = Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 0;
+        return [k, Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 0];
+    }).sort((a, b) => b[1] - a[1]);
+
+    const strongest = ranked[0]?.[1] || 0;
+    const kept = new Set(
+        ranked
+            .filter(([, value], index) => value > 0 && (index < 2 || value >= Math.max(20, strongest * 0.3)))
+            .slice(0, 4)
+            .map(([key]) => key),
+    );
+
+    const out = {};
+    ranked.forEach(([key, value]) => {
+        out[key] = kept.has(key) ? value : 0;
     });
     return out;
 }
@@ -1106,7 +1118,12 @@ export async function fetchTitleAnalysis(tmdbId, mediaType = 'movie', region = '
             '- An R / TV-MA rating, action, crime, or violence does NOT mean sex/nudity. Many R films have Sex & Nudity: None.',
             '- violence = Violence & Gore. profanity = language. frightening = Frightening & Intense Scenes.',
             '- Prefer "none" over guessing. Do not invent sex/nudity from genre alone.',
-            'vibes = how much the title feels each way (they need not sum to 100).',
+            'Rules for vibes:',
+            '- Return only the strongest 2-4 feelings that genuinely define this specific title.',
+            '- Set every unrelated or weak vibe to 0. Do not add all six just to fill the chart.',
+            '- Genre must guide relevance: horror should mainly be thrilling/intense; drama emotional/thoughtful;',
+            '  comedy funny; romance romantic/emotional; action intense/thrilling.',
+            '- Scores are independent strength values and need not sum to 100.',
         ].filter(Boolean).join('\n');
 
         try {

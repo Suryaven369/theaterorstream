@@ -158,8 +158,8 @@ const AdminLayout = () => {
             </aside>
 
             {/* Main content */}
-            <main className="min-w-0 w-full lg:ml-56">
-                <div className="min-h-[calc(100dvh-3.5rem)] lg:min-h-screen pb-[env(safe-area-inset-bottom,0px)]">
+            <main className="min-w-0 w-full max-w-full overflow-x-hidden lg:ml-56">
+                <div className="min-h-[calc(100dvh-3.5rem)] lg:min-h-screen min-w-0 max-w-full pb-[env(safe-area-inset-bottom,0px)]">
                     <Outlet />
                 </div>
             </main>

@@ -349,3 +349,22 @@ export const removeUpvoteReview = async (reviewId) => {
     }
     return { success: true, data };
 };
+
+// Delete a review (owner only — caller should pass current user id)
+export const deleteReview = async (reviewId, userId) => {
+    if (!reviewId || !userId || userId === 'anonymous') {
+        return { success: false, error: 'Not allowed' };
+    }
+
+    const { error } = await supabase
+        .from('reviews')
+        .delete()
+        .eq('id', reviewId)
+        .eq('user_id', String(userId));
+
+    if (error) {
+        console.error('Error deleting review:', error);
+        return { success: false, error };
+    }
+    return { success: true };
+};

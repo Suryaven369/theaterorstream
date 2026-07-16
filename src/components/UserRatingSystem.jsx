@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDispatch } from "react-redux";
-import { FaArrowUp, FaArrowDown, FaStar, FaUser, FaClock, FaReply, FaTimes } from "react-icons/fa";
+import { FaArrowUp, FaArrowDown, FaStar, FaUser, FaClock, FaReply, FaTimes, FaTrash } from "react-icons/fa";
 import {
     getMovieReviews,
     getMovieRatings,
     submitRating,
     submitReview,
     upvoteReview,
-    removeUpvoteReview
+    removeUpvoteReview,
+    deleteReview,
 } from "../lib/supabase";
 import { requestTasteProfileRebuild } from "../lib/tasteProfileApi";
 import { publishRatingActivity } from "../lib/movieDiary";
@@ -16,6 +17,7 @@ import { computeOverallFromCategories, computeTosScoreFromAggregates } from "../
 import { markUserRatedMovie, patchHomepageMovieTosRating } from "../store/movieSlice";
 import { useAuth } from "../context/AuthContext";
 import { getAvatarUrl } from "../lib/storagePublicUrl";
+import { useToast } from "./Toast";
 
 const AVATAR_PRESETS = {
     avatar_1: { emoji: '🎬', bg: 'bg-purple-600' },
@@ -98,7 +100,7 @@ const RatingSlider = ({ label, value, onChange, color = "#22c55e" }) => {
     );
 };
 
-// Time ago helper
+// Time ago helper — recent relative, else "19 Apr 2026"
 function getTimeAgo(dateString) {
     const now = new Date();
     const date = new Date(dateString);
@@ -108,7 +110,7 @@ function getTimeAgo(dateString) {
     if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
     if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
     if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
-    return date.toLocaleDateString();
+    return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 // Reply Input Component
@@ -125,20 +127,20 @@ const ReplyInput = ({ onSubmit, onCancel, isSubmitting }) => {
     };
 
     return (
-        <div className="mt-3 ml-8 p-3 rounded-lg bg-white/[0.03] border border-white/10">
+        <div className="mt-3 ml-8 py-3 border-t border-white/10">
             <input
                 type="text"
                 placeholder="Your name (optional)"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full bg-white/5 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 border border-white/10 focus:border-blue-500/50 focus:outline-none mb-2"
+                className="w-full bg-transparent border-b border-white/15 px-0 py-2 text-sm text-white placeholder-white/30 focus:border-white/40 focus:outline-none mb-2"
             />
             <textarea
                 placeholder="Write a reply..."
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
                 rows={2}
-                className="w-full bg-white/5 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 border border-white/10 focus:border-blue-500/50 focus:outline-none resize-none"
+                className="w-full bg-transparent border-b border-white/15 px-0 py-2 text-sm text-white placeholder-white/30 focus:border-white/40 focus:outline-none resize-none"
                 autoFocus
             />
             <div className="flex justify-end gap-2 mt-2">
@@ -151,7 +153,7 @@ const ReplyInput = ({ onSubmit, onCancel, isSubmitting }) => {
                 <button
                     onClick={handleSubmit}
                     disabled={!replyText.trim() || isSubmitting}
-                    className="px-3 py-1.5 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-3 py-1.5 text-sm bg-white text-black rounded-lg hover:bg-white/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     {isSubmitting ? '...' : 'Reply'}
                 </button>
@@ -195,20 +197,16 @@ const ReviewCard = ({ review, replies = [], onUpvote, onDownvote, onReply, depth
     };
 
     // Limit nesting depth visually
-    const maxDepth = 4;
-    const effectiveDepth = Math.min(depth, maxDepth);
-    const borderColors = ['border-l-blue-500', 'border-l-green-500', 'border-l-purple-500', 'border-l-orange-500', 'border-l-pink-500'];
-
     return (
-        <div className={`${depth > 0 ? `ml-4 pl-3 border-l-2 ${borderColors[effectiveDepth % borderColors.length]}` : ''}`}>
-            <div className="flex gap-3 p-3 rounded-xl bg-white/[0.02] hover:bg-white/[0.04] transition-all">
+        <div className={`${depth > 0 ? `ml-4 pl-3 border-l border-white/10` : ''}`}>
+            <div className="flex gap-3 py-4">
                 {/* Vote buttons */}
                 <div className="flex flex-col items-center gap-0.5">
                     <button
                         onClick={handleUpvote}
                         className={`p-1 rounded transition-all ${voted === 'up'
-                            ? 'text-orange-500 bg-orange-500/20'
-                            : 'text-white/30 hover:text-orange-500 hover:bg-orange-500/10'
+                            ? 'text-orange-500'
+                            : 'text-white/30 hover:text-orange-500'
                             }`}
                     >
                         <FaArrowUp className="text-xs" />
@@ -219,8 +217,8 @@ const ReviewCard = ({ review, replies = [], onUpvote, onDownvote, onReply, depth
                     <button
                         onClick={handleDownvote}
                         className={`p-1 rounded transition-all ${voted === 'down'
-                            ? 'text-blue-500 bg-blue-500/20'
-                            : 'text-white/30 hover:text-blue-500 hover:bg-blue-500/10'
+                            ? 'text-blue-500'
+                            : 'text-white/30 hover:text-blue-500'
                             }`}
                     >
                         <FaArrowDown className="text-xs" />
@@ -239,7 +237,7 @@ const ReviewCard = ({ review, replies = [], onUpvote, onDownvote, onReply, depth
                             <FaClock className="text-[8px]" /> {getTimeAgo(review.created_at)}
                         </span>
                     </div>
-                    <p className="text-sm text-white/70 leading-relaxed mb-2">{review.review_text}</p>
+                    <p className="text-sm text-white/80 leading-relaxed mb-2">{review.review_text}</p>
 
                     {/* Reply button */}
                     <button
@@ -511,6 +509,7 @@ const buildThreads = (reviews) => {
 // Reviews List Component with threaded replies
 export const ReviewsList = ({ movieId, movieTitle, onRateClick, hasUserRated }) => {
     const navigate = useNavigate();
+    const toast = useToast();
     const { isAuthenticated, profile, user } = useAuth();
     const [reviews, setReviews] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -525,6 +524,9 @@ export const ReviewsList = ({ movieId, movieTitle, onRateClick, hasUserRated }) 
     const [replyingTo, setReplyingTo] = useState(null);
     const [replyText, setReplyText] = useState('');
     const [submittingReply, setSubmittingReply] = useState(false);
+    const [menuOpenId, setMenuOpenId] = useState(null);
+    const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+    const [deleting, setDeleting] = useState(false);
 
     const handleAuthRequired = () => {
         sessionStorage.setItem('authMessage', 'Please sign up or login to rate and review movies');
@@ -668,6 +670,76 @@ export const ReviewsList = ({ movieId, movieTitle, onRateClick, hasUserRated }) 
         fetchData();
     };
 
+    const requestDeleteReview = (reviewId) => {
+        if (!isAuthenticated || !user?.id) {
+            handleAuthRequired();
+            return;
+        }
+        setMenuOpenId(null);
+        setDeleteConfirmId(reviewId);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (!deleteConfirmId || !user?.id) return;
+        setDeleting(true);
+        const reviewId = deleteConfirmId;
+        setReviews((prev) => prev.filter((r) => r.id !== reviewId && r.parent_id !== reviewId));
+        setDeleteConfirmId(null);
+
+        const result = await deleteReview(reviewId, user.id);
+        setDeleting(false);
+
+        if (result.success) {
+            toast.success('Review deleted');
+        } else {
+            toast.error('Could not delete review. Try again.');
+            fetchData();
+        }
+    };
+
+    const isOwnReview = (item) => user?.id && String(item?.user_id) === String(user.id);
+
+    const ReviewMenu = ({ itemId }) => (
+        <div className="relative ml-auto">
+            <button
+                type="button"
+                onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpenId(menuOpenId === itemId ? null : itemId);
+                }}
+                className="p-1 text-white/50 hover:text-white transition-colors"
+                aria-label="More options"
+                aria-expanded={menuOpenId === itemId}
+            >
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    <circle cx="5" cy="12" r="1.75" />
+                    <circle cx="12" cy="12" r="1.75" />
+                    <circle cx="19" cy="12" r="1.75" />
+                </svg>
+            </button>
+            {menuOpenId === itemId && (
+                <>
+                    <button
+                        type="button"
+                        className="fixed inset-0 z-10 cursor-default"
+                        aria-label="Close menu"
+                        onClick={() => setMenuOpenId(null)}
+                    />
+                    <div className="absolute right-0 top-full mt-1 z-20 min-w-[140px] rounded-lg border border-white/10 bg-[#161616] py-1 shadow-xl">
+                        <button
+                            type="button"
+                            onClick={() => requestDeleteReview(itemId)}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/5 transition-colors"
+                        >
+                            <FaTrash className="w-3.5 h-3.5" />
+                            Delete
+                        </button>
+                    </div>
+                </>
+            )}
+        </div>
+    );
+
     const getDisplayName = () => {
         return profile?.username || profile?.display_name || 'Anonymous';
     };
@@ -676,31 +748,25 @@ export const ReviewsList = ({ movieId, movieTitle, onRateClick, hasUserRated }) 
     const threadedReviews = buildThreads(reviews);
 
     return (
+        <>
         <div className="mt-8 max-w-2xl">
             {/* Header */}
-            <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-4">
-                    <h2 className="text-2xl font-bold text-white">Reviews</h2>
-                    <button
-                        onClick={handleRateClick}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-full text-white text-sm font-medium transition-all ${hasUserRated
-                            ? 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700'
-                            : 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600'
-                            }`}
-                    >
-                        <FaStar className="text-xs" />
-                        {hasUserRated ? 'Rated ✓' : 'Rate'}
-                    </button>
-                </div>
-                <select className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none">
-                    <option value="liked">Most Liked</option>
-                    <option value="recent">Most Recent</option>
-                </select>
+            <div className="flex flex-wrap items-center gap-4 mb-2">
+                <h2 className="text-2xl font-bold text-white">User Reviews</h2>
+                <button
+                    onClick={handleRateClick}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-full text-white text-sm font-medium transition-all ${hasUserRated
+                        ? 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700'
+                        : 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600'
+                        }`}
+                >
+                    <FaStar className="text-xs" />
+                    {hasUserRated ? 'Rated ✓' : 'Rate'}
+                </button>
             </div>
 
-            {/* Write Review Box */}
-            <div className="p-5 rounded-2xl bg-[#1a1a1a] border border-white/10 mb-6">
-                {/* User info row */}
+            {/* Write Review — flat, no card fill */}
+            <div className="py-5 border-b border-white/10 mb-1">
                 <div className="flex items-center gap-3 mb-4">
                     {isAuthenticated ? (
                         <ReviewAvatar
@@ -715,24 +781,19 @@ export const ReviewsList = ({ movieId, movieTitle, onRateClick, hasUserRated }) 
                     </span>
                 </div>
 
-                {/* Textarea */}
-                <div className="relative">
-                    <textarea
-                        value={reviewText}
-                        onChange={(e) => {
-                            if (e.target.value.length <= 1000) {
-                                setReviewText(e.target.value);
-                            }
-                        }}
-                        placeholder="Write your review here..."
-                        rows={4}
-                        className="w-full bg-transparent text-white placeholder-white/30 focus:outline-none resize-none text-sm leading-relaxed"
-                    />
-                    <div className="absolute bottom-0 left-0 right-0 h-px bg-white/10" />
-                </div>
+                <textarea
+                    value={reviewText}
+                    onChange={(e) => {
+                        if (e.target.value.length <= 1000) {
+                            setReviewText(e.target.value);
+                        }
+                    }}
+                    placeholder="Write your review here..."
+                    rows={3}
+                    className="w-full bg-transparent text-white placeholder-white/30 focus:outline-none resize-none text-sm leading-relaxed"
+                />
 
-                {/* Footer with character count and post button */}
-                <div className="flex items-center justify-between mt-4">
+                <div className="flex items-center justify-between mt-3">
                     <span className="text-xs text-white/40">{reviewText.length}/1000</span>
                     <button
                         onClick={handleSubmitReview}
@@ -744,11 +805,11 @@ export const ReviewsList = ({ movieId, movieTitle, onRateClick, hasUserRated }) 
                 </div>
             </div>
 
-            {/* Reviews List */}
+            {/* Reviews List — flat rows, divider only */}
             {loading ? (
-                <div className="space-y-4">
+                <div className="divide-y divide-white/10">
                     {[...Array(3)].map((_, i) => (
-                        <div key={i} className="animate-pulse p-5 rounded-xl bg-[#1a1a1a]">
+                        <div key={i} className="animate-pulse py-5">
                             <div className="flex items-center gap-3 mb-3">
                                 <div className="w-10 h-10 rounded-full bg-white/5" />
                                 <div className="h-4 bg-white/5 rounded w-24" />
@@ -759,40 +820,42 @@ export const ReviewsList = ({ movieId, movieTitle, onRateClick, hasUserRated }) 
                     ))}
                 </div>
             ) : threadedReviews.length > 0 ? (
-                <div className="space-y-4">
+                <div className="divide-y divide-white/10">
                     {threadedReviews.map((review) => (
-                        <div key={review.id} className="p-5 rounded-xl bg-[#1a1a1a] border border-white/5 transition-all duration-200">
+                        <div key={review.id} className="py-5">
                             {/* Review header */}
-                            <div className="flex items-start justify-between mb-3">
-                                <div className="flex items-center gap-3">
+                            <div className="flex items-start justify-between gap-3 mb-3">
+                                <div className="flex items-center gap-3 min-w-0">
                                     <ReviewAvatar
                                         avatarUrl={review.avatar_url}
                                         avatarId={review.avatar_id}
                                     />
-                                    <div>
-                                        <p className="font-medium text-white">{review.username || 'Anonymous'}</p>
-                                        <p className="text-xs text-white/40">{getTimeAgo(review.created_at)}</p>
+                                    <div className="min-w-0">
+                                        <p className="font-semibold text-white truncate">
+                                            {review.username || 'Anonymous'}
+                                        </p>
+                                        <p className="text-xs text-white/45">{getTimeAgo(review.created_at)}</p>
                                     </div>
                                 </div>
                             </div>
 
                             {/* Review text */}
-                            <p className="text-white/80 text-sm leading-relaxed mb-4">
+                            <p className="text-white text-sm leading-relaxed mb-4 whitespace-pre-wrap">
                                 {review.review_text}
                             </p>
 
                             {/* Review footer */}
-                            <div className="flex items-center gap-4">
-                                {/* Like button */}
+                            <div className="flex items-center gap-5">
                                 <button
                                     onClick={() => handleLike(review.id)}
-                                    className={`flex items-center gap-1.5 transition-all duration-200 ${likedReviews.has(review.id)
-                                        ? 'text-red-500 scale-110'
-                                        : 'text-white/50 hover:text-red-400'
+                                    className={`flex items-center gap-1.5 transition-colors ${likedReviews.has(review.id)
+                                        ? 'text-red-500'
+                                        : 'text-white/70 hover:text-red-400'
                                         }`}
+                                    aria-label="Like review"
                                 >
                                     <svg
-                                        className="w-4 h-4 transition-transform duration-200"
+                                        className="w-4 h-4"
                                         fill={likedReviews.has(review.id) ? "currentColor" : "none"}
                                         stroke="currentColor"
                                         viewBox="0 0 24 24"
@@ -802,37 +865,39 @@ export const ReviewsList = ({ movieId, movieTitle, onRateClick, hasUserRated }) 
                                     <span className="text-sm">{review.upvotes || 0}</span>
                                 </button>
 
-                                {/* Reply button */}
                                 <button
                                     onClick={() => handleReplyClick(review.id)}
                                     className={`flex items-center gap-1.5 transition-colors ${replyingTo === review.id
-                                        ? 'text-blue-400'
-                                        : 'text-white/50 hover:text-white/70'
+                                        ? 'text-white'
+                                        : 'text-white/70 hover:text-white'
                                         }`}
+                                    aria-label="Reply"
                                 >
                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                                     </svg>
                                     <span className="text-sm">{review.replies?.length || 0}</span>
                                 </button>
+
+                                {isOwnReview(review) && <ReviewMenu itemId={review.id} />}
                             </div>
 
                             {/* Reply Input */}
                             {replyingTo === review.id && (
-                                <div className="mt-4 pt-4 border-t border-white/5 animate-fadeIn">
+                                <div className="mt-4 pt-4 border-t border-white/10">
                                     <div className="flex gap-3">
                                         <ReviewAvatar
                                             avatarUrl={profile?.avatar_url}
                                             avatarId={profile?.avatar_id}
                                             size="sm"
                                         />
-                                        <div className="flex-1">
+                                        <div className="flex-1 min-w-0">
                                             <textarea
                                                 value={replyText}
                                                 onChange={(e) => setReplyText(e.target.value)}
                                                 placeholder="Write a reply..."
                                                 rows={2}
-                                                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-blue-500/50 resize-none"
+                                                className="w-full bg-transparent border-b border-white/15 px-0 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-white/40 resize-none"
                                                 autoFocus
                                             />
                                             <div className="flex justify-end gap-2 mt-2">
@@ -845,7 +910,7 @@ export const ReviewsList = ({ movieId, movieTitle, onRateClick, hasUserRated }) 
                                                 <button
                                                     onClick={() => handleSubmitReply(review.id)}
                                                     disabled={submittingReply || !replyText.trim()}
-                                                    className="px-4 py-1.5 text-xs bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors"
+                                                    className="px-4 py-1.5 text-xs bg-white text-black rounded-lg hover:bg-white/90 disabled:opacity-50 transition-colors"
                                                 >
                                                     {submittingReply ? 'Posting...' : 'Reply'}
                                                 </button>
@@ -857,19 +922,20 @@ export const ReviewsList = ({ movieId, movieTitle, onRateClick, hasUserRated }) 
 
                             {/* Replies */}
                             {review.replies && review.replies.length > 0 && (
-                                <div className="mt-4 pt-4 border-t border-white/5 space-y-3">
+                                <div className="mt-4 ml-2 pl-4 border-l border-white/10 space-y-4">
                                     {review.replies.map((reply) => (
-                                        <div key={reply.id} className="pl-4 border-l-2 border-white/10 animate-fadeIn">
-                                            <div className="flex items-center gap-2 mb-1">
+                                        <div key={reply.id}>
+                                            <div className="flex items-center gap-2 mb-1.5">
                                                 <ReviewAvatar
                                                     avatarUrl={reply.avatar_url}
                                                     avatarId={reply.avatar_id}
                                                     size="sm"
                                                 />
-                                                <span className="text-sm font-medium text-white">{reply.username || 'Anonymous'}</span>
-                                                <span className="text-xs text-white/40">{getTimeAgo(reply.created_at)}</span>
+                                                <span className="text-sm font-semibold text-white">{reply.username || 'Anonymous'}</span>
+                                                <span className="text-xs text-white/45">{getTimeAgo(reply.created_at)}</span>
+                                                {isOwnReview(reply) && <ReviewMenu itemId={reply.id} />}
                                             </div>
-                                            <p className="text-sm text-white/70">{reply.review_text}</p>
+                                            <p className="text-sm text-white/80 leading-relaxed whitespace-pre-wrap">{reply.review_text}</p>
                                         </div>
                                     ))}
                                 </div>
@@ -878,12 +944,52 @@ export const ReviewsList = ({ movieId, movieTitle, onRateClick, hasUserRated }) 
                     ))}
                 </div>
             ) : (
-                <div className="text-center py-12 rounded-xl bg-[#1a1a1a]">
-                    <span className="text-4xl mb-3 block">🎬</span>
+                <div className="text-center py-12 border-b border-white/10">
                     <p className="text-white/40 text-sm">No reviews yet. Be the first to share your thoughts!</p>
                 </div>
             )}
         </div>
+
+        {deleteConfirmId && (
+            <div
+                className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+                onClick={() => !deleting && setDeleteConfirmId(null)}
+            >
+                <div
+                    className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#161616] p-5 shadow-2xl"
+                    onClick={(e) => e.stopPropagation()}
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="delete-review-title"
+                >
+                    <h3 id="delete-review-title" className="text-lg font-semibold text-white mb-2">
+                        Delete review?
+                    </h3>
+                    <p className="text-sm text-white/55 mb-5">
+                        This can’t be undone. Your review will be removed from this movie.
+                    </p>
+                    <div className="flex justify-end gap-2">
+                        <button
+                            type="button"
+                            disabled={deleting}
+                            onClick={() => setDeleteConfirmId(null)}
+                            className="px-4 py-2 rounded-lg text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors disabled:opacity-50"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            disabled={deleting}
+                            onClick={handleConfirmDelete}
+                            className="px-4 py-2 rounded-lg text-sm font-medium bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50"
+                        >
+                            {deleting ? 'Deleting…' : 'Delete'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+        </>
     );
 };
 

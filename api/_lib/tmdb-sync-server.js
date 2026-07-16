@@ -8,7 +8,7 @@ import {
     upsertLibraryRecord,
 } from './movie-library-server.js';
 
-const DETAIL_APPEND = 'credits,videos,release_dates,keywords';
+const DETAIL_APPEND = 'credits,videos,release_dates,keywords,reviews';
 const BATCH_SIZE = 3;
 
 // Helper to get date strings for TMDB discover queries
@@ -366,6 +366,15 @@ export async function runSyncJob(jobName) {
 
         await processItems(supabase, deduped, stats);
         stats.metadata.processed = deduped.length;
+
+        if (jobName === 'now-playing-daily') {
+            const { runNowPlayingPostSync } = await import('./web-ratings-server.js');
+            const tmdbIds = deduped.map((item) => String(item.id));
+            stats.metadata.inTheaters = await runNowPlayingPostSync({
+                region: config.region,
+                tmdbIds,
+            });
+        }
 
         await finishSyncRun(supabase, runId, stats);
         await updateSyncState(supabase, jobName, config.region, runId, 'completed', String(deduped.length));

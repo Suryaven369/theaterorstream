@@ -900,11 +900,12 @@ const AdminSectionsPage = () => {
     };
 
     return (
-        <div className="p-4 sm:p-6 h-full overflow-auto" ref={containerRef}>
+        <div className="p-4 sm:p-6 h-full overflow-y-auto overflow-x-hidden w-full min-w-0" ref={containerRef}>
+            <div className="max-w-5xl mx-auto w-full min-w-0 space-y-6">
             {/* Header */}
-            <div className="mb-6 flex flex-col gap-4">
-                <div className="flex items-start justify-between">
-                    <div>
+            <div className="flex flex-col gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                    <div className="min-w-0">
                         <h1 className="text-2xl font-bold text-white">Explore Sections</h1>
                         <p className="text-white/50 text-sm max-w-xl">
                             Manage rows on Explore. <span className="text-white/70">Fetch from API</span> pulls
@@ -913,7 +914,7 @@ const AdminSectionsPage = () => {
                     </div>
 
                     {/* Save/Discard Buttons */}
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 sm:gap-3 flex-wrap shrink-0">
                         {hasUnsavedChanges && (
                             <>
                                 <span className="text-yellow-400 text-sm animate-pulse">● Unsaved changes</span>
@@ -928,7 +929,7 @@ const AdminSectionsPage = () => {
                         <button
                             onClick={handleSaveChanges}
                             disabled={!hasUnsavedChanges || saving}
-                            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${hasUnsavedChanges
+                            className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${hasUnsavedChanges
                                 ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 shadow-lg shadow-green-500/20'
                                 : 'bg-white/10 text-white/30 cursor-not-allowed'
                                 }`}
@@ -938,7 +939,7 @@ const AdminSectionsPage = () => {
                     </div>
                 </div>
 
-                <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs text-white/50">
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs text-white/50 leading-relaxed">
                     Tip: pick a region → open a section → <span className="text-purple-300">Fetch Movies + Series</span> →
                     Save & Publish. Hot / OTT mix movies + series; In Theaters is movies only.
                     <span className="text-amber-400/90 ml-1">Hot Right Now — 24h</span> uses the live API source for trailers &amp; announcements from the last 24 hours.
@@ -947,27 +948,27 @@ const AdminSectionsPage = () => {
             </div>
 
             {/* Create New Section */}
-            <div className="bg-white/5 rounded-xl p-4 mb-6 border border-white/10">
+            <div className="bg-white/5 rounded-xl p-4 border border-white/10 min-w-0">
                 <h3 className="text-sm font-medium text-white mb-3">Create New Section</h3>
-                <div className="flex gap-3 flex-wrap">
+                <div className="flex gap-2 sm:gap-3 flex-wrap">
                     <input
                         type="text"
                         placeholder="Section name"
                         value={newSection.name}
                         onChange={(e) => setNewSection({ ...newSection, name: e.target.value })}
-                        className="flex-1 min-w-[200px] bg-black/30 rounded-lg px-4 py-2 text-sm text-white border border-white/10 focus:border-orange-500/50 outline-none"
+                        className="flex-1 min-w-0 basis-full sm:basis-48 bg-black/30 rounded-lg px-4 py-2 text-sm text-white border border-white/10 focus:border-orange-500/50 outline-none"
                     />
                     <input
                         type="text"
                         placeholder="Icon"
                         value={newSection.icon}
                         onChange={(e) => setNewSection({ ...newSection, icon: e.target.value })}
-                        className="w-16 bg-black/30 rounded-lg px-3 py-2 text-sm text-center text-white border border-white/10 focus:border-orange-500/50 outline-none"
+                        className="w-16 shrink-0 bg-black/30 rounded-lg px-3 py-2 text-sm text-center text-white border border-white/10 focus:border-orange-500/50 outline-none"
                     />
                     <select
                         value={newSection.section_type}
                         onChange={(e) => setNewSection({ ...newSection, section_type: e.target.value })}
-                        className="bg-black/30 rounded-lg px-4 py-2 text-sm text-white border border-white/10 outline-none"
+                        className="min-w-0 max-w-full bg-black/30 rounded-lg px-3 py-2 text-sm text-white border border-white/10 outline-none"
                     >
                         <option value="manual">Manual</option>
                         <option value="api">API Source</option>
@@ -976,7 +977,7 @@ const AdminSectionsPage = () => {
                         <select
                             value={newSection.api_source}
                             onChange={(e) => setNewSection({ ...newSection, api_source: e.target.value })}
-                            className="bg-black/30 rounded-lg px-4 py-2 text-sm text-white border border-white/10 outline-none"
+                            className="min-w-0 max-w-full flex-1 basis-full sm:basis-56 bg-black/30 rounded-lg px-3 py-2 text-sm text-white border border-white/10 outline-none"
                         >
                             <option value="trending">Trending (Movies + Series)</option>
                             <option value="trending_live">Hot Right Now — 24h Trailers &amp; Announcements</option>
@@ -997,11 +998,11 @@ const AdminSectionsPage = () => {
                         placeholder="Max"
                         value={newSection.max_movies}
                         onChange={(e) => setNewSection({ ...newSection, max_movies: parseInt(e.target.value) || 10 })}
-                        className="w-20 bg-black/30 rounded-lg px-3 py-2 text-sm text-white border border-white/10 focus:border-orange-500/50 outline-none"
+                        className="w-20 shrink-0 bg-black/30 rounded-lg px-3 py-2 text-sm text-white border border-white/10 focus:border-orange-500/50 outline-none"
                     />
                     <button
                         onClick={handleCreateSection}
-                        className="px-4 py-2 rounded-lg text-sm font-medium bg-orange-500 text-white hover:bg-orange-600 transition-colors"
+                        className="px-4 py-2 rounded-lg text-sm font-medium bg-orange-500 text-white hover:bg-orange-600 transition-colors shrink-0"
                     >
                         + Create
                     </button>
@@ -1009,13 +1010,13 @@ const AdminSectionsPage = () => {
             </div>
 
             {/* Region Selector for API Fetches */}
-            <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-xl p-4 mb-6 border border-blue-500/20">
-                <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                        <span className="text-xl">🌍</span>
+            <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-xl p-4 border border-blue-500/20 min-w-0">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-xl shrink-0">🌍</span>
                         <h3 className="text-sm font-medium text-white">Region for API Fetches</h3>
                     </div>
-                    <span className="text-xs text-white/50">
+                    <span className="text-xs text-white/50 shrink-0">
                         Currently: {selectedRegion.flag} {selectedRegion.name}
                     </span>
                 </div>
@@ -1024,7 +1025,7 @@ const AdminSectionsPage = () => {
                         <button
                             key={region.code}
                             onClick={() => setSelectedRegion(region)}
-                            className={`px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${selectedRegion.code === region.code
+                            className={`px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all flex items-center gap-1.5 sm:gap-2 ${selectedRegion.code === region.code
                                 ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-lg shadow-blue-500/20'
                                 : 'bg-white/5 text-white/70 hover:bg-white/10'
                                 }`}
@@ -1034,7 +1035,7 @@ const AdminSectionsPage = () => {
                         </button>
                     ))}
                 </div>
-                <p className="text-xs text-white/40 mt-3">
+                <p className="text-xs text-white/40 mt-3 leading-relaxed">
                     Select a region, then click <span className="text-purple-300">Fetch Movies + Series</span> on a section.
                     That fills Hot / OTT / Coming Soon with movies + TV. In Theaters stays movies only.
                 </p>
@@ -1046,7 +1047,7 @@ const AdminSectionsPage = () => {
                     <div className="animate-spin w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full"></div>
                 </div>
             ) : (
-                <div className="space-y-3">
+                <div className="space-y-3 min-w-0">
                     {sections.map((section, index) => (
                         <div
                             key={section.id}
@@ -1054,68 +1055,70 @@ const AdminSectionsPage = () => {
                             onDragStart={() => handleDragStart(index)}
                             onDragOver={(e) => handleDragOver(e, index)}
                             onDragEnd={handleDragEnd}
-                            className={`bg-white/5 rounded-xl border transition-all ${draggedIndex === index ? "border-orange-500 scale-[1.02]" : "border-white/10"
+                            className={`bg-white/5 rounded-xl border transition-all min-w-0 overflow-hidden ${draggedIndex === index ? "border-orange-500" : "border-white/10"
                                 } ${!section.is_active ? "opacity-60" : ""}`}
                         >
                             {/* Section Header */}
-                            <div className="flex items-center gap-4 p-4">
-                                {/* Drag Handle */}
-                                <div className="cursor-grab active:cursor-grabbing text-white/30 hover:text-white/60">
-                                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                                        <path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-8a2 2 0 1 0-.001-4.001A2 2 0 0 0 13 6zm0 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z" />
-                                    </svg>
-                                </div>
-
-                                {/* Order Number */}
-                                <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/40 text-sm font-medium">
-                                    {index + 1}
-                                </div>
-
-                                {/* Icon */}
-                                <span className="text-2xl">{section.icon}</span>
-
-                                {/* Info */}
-                                <div className="flex-1">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="text-white font-medium">{section.name}</span>
-                                        {section.is_system && (
-                                            <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 text-[10px] font-medium">SYSTEM</span>
-                                        )}
-                                        <span className={`px-2 py-0.5 rounded text-[10px] ${section.api_source === 'trending_live' ? 'bg-amber-500/20 text-amber-400' : 'bg-white/10 text-white/50'}`}>
-                                            {section.section_type === 'api'
-                                                ? (API_SOURCE_LABELS[section.api_source] || `API: ${section.api_source}`)
-                                                : 'Manual'}
-                                        </span>
+                            <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:gap-3">
+                                <div className="flex items-center gap-3 min-w-0 flex-1">
+                                    {/* Drag Handle */}
+                                    <div className="cursor-grab active:cursor-grabbing text-white/30 hover:text-white/60 shrink-0">
+                                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                            <path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-8a2 2 0 1 0-.001-4.001A2 2 0 0 0 13 6zm0 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z" />
+                                        </svg>
                                     </div>
-                                    {/* Region movie counts */}
-                                    <div className="flex items-center gap-1 mt-1 flex-wrap">
-                                        {section.movies_by_region && Object.keys(section.movies_by_region).length > 0 ? (
-                                            Object.entries(section.movies_by_region).map(([regionCode, movies]) => (
-                                                <span
-                                                    key={regionCode}
-                                                    className={`px-2 py-0.5 rounded text-[10px] font-medium ${selectedRegion.code === regionCode
-                                                        ? 'bg-orange-500/30 text-orange-300 ring-1 ring-orange-500/50'
-                                                        : 'bg-purple-500/20 text-purple-400'
-                                                        }`}
-                                                >
-                                                    {REGIONS.find(r => r.code === regionCode)?.flag || '🌍'} {regionCode}: {movies?.length || 0}
-                                                </span>
-                                            ))
-                                        ) : (
-                                            <span className="text-white/30 text-xs">No movies saved yet</span>
-                                        )}
+
+                                    {/* Order Number */}
+                                    <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/40 text-sm font-medium shrink-0">
+                                        {index + 1}
+                                    </div>
+
+                                    {/* Icon */}
+                                    <span className="text-2xl shrink-0">{section.icon}</span>
+
+                                    {/* Info */}
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="text-white font-medium">{section.name}</span>
+                                            {section.is_system && (
+                                                <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 text-[10px] font-medium">SYSTEM</span>
+                                            )}
+                                            <span className={`px-2 py-0.5 rounded text-[10px] ${section.api_source === 'trending_live' ? 'bg-amber-500/20 text-amber-400' : 'bg-white/10 text-white/50'}`}>
+                                                {section.section_type === 'api'
+                                                    ? (API_SOURCE_LABELS[section.api_source] || `API: ${section.api_source}`)
+                                                    : 'Manual'}
+                                            </span>
+                                        </div>
+                                        {/* Region movie counts */}
+                                        <div className="flex items-center gap-1 mt-1 flex-wrap">
+                                            {section.movies_by_region && Object.keys(section.movies_by_region).length > 0 ? (
+                                                Object.entries(section.movies_by_region).map(([regionCode, movies]) => (
+                                                    <span
+                                                        key={regionCode}
+                                                        className={`px-2 py-0.5 rounded text-[10px] font-medium ${selectedRegion.code === regionCode
+                                                            ? 'bg-orange-500/30 text-orange-300 ring-1 ring-orange-500/50'
+                                                            : 'bg-purple-500/20 text-purple-400'
+                                                            }`}
+                                                    >
+                                                        {REGIONS.find(r => r.code === regionCode)?.flag || '🌍'} {regionCode}: {movies?.length || 0}
+                                                    </span>
+                                                ))
+                                            ) : (
+                                                <span className="text-white/30 text-xs">No movies saved yet</span>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
 
                                 {/* Actions */}
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap sm:justify-end sm:shrink-0 pl-11 sm:pl-0">
                                     {section.section_type === 'api' && (
                                         <button
                                             onClick={() => handleFetchFromApi(section)}
                                             disabled={fetchingApi === section.id}
-                                            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 transition-colors disabled:opacity-50"
+                                            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 transition-colors disabled:opacity-50 whitespace-nowrap"
                                         >
-                                            {fetchingApi === section.id ? "⏳ Fetching…" : "🔄 Fetch Movies + Series"}
+                                            {fetchingApi === section.id ? "⏳ Fetching…" : "🔄 Fetch"}
                                         </button>
                                     )}
                                     <button
@@ -1154,19 +1157,19 @@ const AdminSectionsPage = () => {
 
                                 if (regionMovies.length > 0) {
                                     return (
-                                        <div className="px-4 pb-4">
-                                            <div className="flex items-center justify-between mb-2">
-                                                <p className="text-xs text-white/50">
+                                        <div className="px-4 pb-4 min-w-0">
+                                            <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                                                <p className="text-xs text-white/50 min-w-0">
                                                     {selectedRegion.flag} Showing {regionMovies.length} titles for <span className="text-orange-400">{selectedRegion.name}</span>
                                                     <span className="text-white/30 ml-2">
                                                         ({regionMovies.filter((m) => m.media_type === 'tv').length} series · {regionMovies.filter((m) => m.media_type !== 'tv').length} movies)
                                                     </span>
                                                 </p>
                                                 {editingSection === section.id && (
-                                                    <span className="text-xs text-white/40">💡 Drag to reorder</span>
+                                                    <span className="text-xs text-white/40 shrink-0">💡 Drag to reorder</span>
                                                 )}
                                             </div>
-                                            <div className="flex gap-3 overflow-x-auto pb-2">
+                                            <div className="flex gap-3 overflow-x-auto pb-2 max-w-full min-w-0">
                                                 {regionMovies.map((movie, idx) => (
                                                     <div
                                                         key={`${movie.tmdb_id}-${idx}`}
@@ -1329,9 +1332,9 @@ const AdminSectionsPage = () => {
                                         </div>
                                     </div>
 
-                                    <div className="flex items-center justify-between mb-4">
-                                        <h4 className="text-sm font-medium text-white">Titles in "{section.name}"</h4>
-                                        <div className="flex gap-2">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                                        <h4 className="text-sm font-medium text-white min-w-0 truncate">Titles in "{section.name}"</h4>
+                                        <div className="flex gap-2 flex-wrap shrink-0">
                                             {section.section_type === 'api' && (
                                                 <button
                                                     onClick={() => handleFetchFromApi(section)}
@@ -1370,7 +1373,7 @@ const AdminSectionsPage = () => {
 
                                     {/* Search Results */}
                                     {searchResults.length > 0 && (
-                                        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-3">
+                                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
                                             {searchResults.map((movie) => {
                                                 const alreadyAdded = section.movies_by_region?.[selectedRegion.code]?.some(m => m.tmdb_id === movie.id);
                                                 const isAddingThis = addingMovieId === movie.id && processingSectionId === section.id;
@@ -1426,6 +1429,7 @@ const AdminSectionsPage = () => {
                     ))}
                 </div>
             )}
+            </div>
 
             {/* Floating Save Button when scrolled */}
             {hasUnsavedChanges && (

@@ -10,84 +10,137 @@ const VIBE_CATEGORIES = [
     { key: "intense", label: "Intense", emoji: "🔥", color: "#f97316" },
 ];
 
-// Generate vibe scores based on genres
+const GENRE_VIBE_KEYS = {
+    drama: ["emotional", "thoughtful", "intense"],
+    action: ["intense", "thrilling"],
+    thriller: ["thrilling", "intense", "thoughtful"],
+    horror: ["thrilling", "intense"],
+    comedy: ["funny", "emotional"],
+    romance: ["romantic", "emotional"],
+    "science fiction": ["thoughtful", "thrilling", "intense"],
+    fantasy: ["thoughtful", "thrilling", "emotional"],
+    mystery: ["thoughtful", "thrilling", "intense"],
+    crime: ["intense", "thrilling", "thoughtful"],
+    family: ["funny", "emotional"],
+    animation: ["funny", "emotional", "thoughtful"],
+    war: ["intense", "emotional", "thoughtful"],
+    adventure: ["thrilling", "intense", "funny"],
+    documentary: ["thoughtful", "emotional"],
+    history: ["thoughtful", "emotional", "intense"],
+    music: ["emotional", "funny", "romantic"],
+};
+
+// Sparse genre fallback: unrelated vibes remain zero.
 const generateVibeScores = (genres = []) => {
     const genreNames = genres.map(g => g.name?.toLowerCase() || "");
 
     const vibes = {
-        emotional: 20,
-        thrilling: 20,
-        funny: 20,
-        romantic: 20,
-        thoughtful: 20,
-        intense: 20
+        emotional: 0,
+        thrilling: 0,
+        funny: 0,
+        romantic: 0,
+        thoughtful: 0,
+        intense: 0
     };
 
     // Drama boosts
     if (genreNames.includes("drama")) {
-        vibes.emotional += 35;
-        vibes.thoughtful += 20;
+        vibes.emotional += 55;
+        vibes.thoughtful += 35;
+        vibes.intense += 10;
     }
 
     // Action/Thriller boosts
     if (genreNames.includes("action")) {
-        vibes.thrilling += 30;
-        vibes.intense += 35;
+        vibes.thrilling += 45;
+        vibes.intense += 55;
     }
     if (genreNames.includes("thriller")) {
-        vibes.thrilling += 35;
-        vibes.intense += 25;
+        vibes.thrilling += 60;
+        vibes.intense += 45;
+        vibes.thoughtful += 15;
     }
 
     // Horror boosts
     if (genreNames.includes("horror")) {
-        vibes.thrilling += 40;
-        vibes.intense += 30;
+        vibes.thrilling += 65;
+        vibes.intense += 60;
     }
 
     // Comedy boosts
     if (genreNames.includes("comedy")) {
-        vibes.funny += 45;
+        vibes.funny += 70;
     }
 
     // Romance boosts
     if (genreNames.includes("romance")) {
-        vibes.romantic += 45;
-        vibes.emotional += 15;
+        vibes.romantic += 70;
+        vibes.emotional += 35;
     }
 
     // Sci-Fi/Fantasy
     if (genreNames.includes("science fiction") || genreNames.includes("fantasy")) {
-        vibes.thoughtful += 25;
-        vibes.thrilling += 10;
+        vibes.thoughtful += 40;
+        vibes.thrilling += 25;
     }
 
     // Mystery
     if (genreNames.includes("mystery") || genreNames.includes("crime")) {
-        vibes.thoughtful += 30;
-        vibes.thrilling += 20;
+        vibes.thoughtful += 45;
+        vibes.thrilling += 35;
     }
 
     // Family/Animation
     if (genreNames.includes("family") || genreNames.includes("animation")) {
-        vibes.funny += 20;
-        vibes.emotional += 15;
+        vibes.funny += 45;
+        vibes.emotional += 35;
     }
 
     // War
     if (genreNames.includes("war")) {
-        vibes.intense += 35;
-        vibes.emotional += 30;
+        vibes.intense += 65;
+        vibes.emotional += 50;
     }
 
     // Adventure
     if (genreNames.includes("adventure")) {
-        vibes.thrilling += 20;
-        vibes.intense += 10;
+        vibes.thrilling += 45;
+        vibes.intense += 25;
     }
+
+    // Unknown genres still get one neutral, useful signal.
+    if (!Object.values(vibes).some((value) => value > 0)) vibes.thoughtful = 100;
 
     return vibes;
 };
+
+function selectRelevantVibes(genres, sourceVibes) {
+    const genreNames = genres.map((g) => g.name?.toLowerCase() || "");
+    const relevantKeys = new Set(
+        genreNames.flatMap((name) => GENRE_VIBE_KEYS[name] || [])
+    );
+
+    let entries = VIBE_CATEGORIES
+        .map((cat) => [cat.key, Number(sourceVibes?.[cat.key]) || 0])
+        .filter(([key, value]) => value > 0 && (!relevantKeys.size || relevantKeys.has(key)))
+        .sort((a, b) => b[1] - a[1]);
+
+    // Keep only genuinely meaningful signals: max four, and no tiny tail slices.
+    const strongest = entries[0]?.[1] || 0;
+    entries = entries
+        .filter(([, value], index) => index < 2 || value >= strongest * 0.3)
+        .slice(0, 4);
+
+    // A poor stored analysis can conflict with every genre. Fall back safely.
+    if (!entries.length) {
+        entries = Object.entries(generateVibeScores(genres))
+            .filter(([, value]) => value > 0)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 4);
+    }
+
+    return Object.fromEntries(entries);
+}
 
 // Pie Chart Slice Component
 const PieSlice = ({ startAngle, endAngle, color, isHovered, onMouseEnter, onMouseLeave }) => {
@@ -139,17 +192,18 @@ const PieSlice = ({ startAngle, endAngle, color, isHovered, onMouseEnter, onMous
 const VibeChart = ({ genres = [], compact = false, customVibes = null }) => {
     const [hoveredVibe, setHoveredVibe] = useState(null);
 
-    // Use custom vibes from DB if they exist and have values, otherwise auto-generate from genres
+    // Custom analysis replaces the fallback; it is not merged with default values.
     const hasCustomVibes = customVibes && Object.values(customVibes).some(v => v > 0);
-    const vibes = hasCustomVibes ? { ...generateVibeScores(genres), ...customVibes } : generateVibeScores(genres);
+    const rawVibes = hasCustomVibes ? customVibes : generateVibeScores(genres);
+    const vibes = selectRelevantVibes(genres, rawVibes);
 
     // Normalize scores to percentages and filter out 0% vibes
     const total = Object.values(vibes).reduce((a, b) => a + b, 0);
     const vibeData = VIBE_CATEGORIES.map(cat => ({
         ...cat,
-        value: vibes[cat.key],
-        percentage: Math.round((vibes[cat.key] / total) * 100)
-    })).filter(v => v.percentage > 0).sort((a, b) => b.value - a.value);
+        value: vibes[cat.key] || 0,
+        percentage: total > 0 ? Math.round(((vibes[cat.key] || 0) / total) * 100) : 0
+    })).filter(v => v.value > 0).sort((a, b) => b.value - a.value);
 
     // Get top 3 vibes
     const topVibes = vibeData.slice(0, 3);
@@ -172,7 +226,7 @@ const VibeChart = ({ genres = [], compact = false, customVibes = null }) => {
 
     if (compact) {
         return (
-            <div className="p-5 rounded-xl bg-gradient-to-br from-white/[0.06] to-white/[0.02] border border-white/10">
+            <div className="py-2">
                 {/* Header */}
                 <div className="flex items-center gap-2 mb-4">
                     <span className="text-xl">🎭</span>
@@ -194,23 +248,41 @@ const VibeChart = ({ genres = [], compact = false, customVibes = null }) => {
                                     onMouseLeave={() => setHoveredVibe(null)}
                                 />
                             ))}
-                            {/* Center circle */}
-                            <circle cx="60" cy="60" r="25" fill="#0a0a0a" />
+                            {/* Center circle — pointer-events none so slice hover still works near the hole */}
+                            <circle cx="60" cy="60" r="25" fill="#0a0a0a" style={{ pointerEvents: 'none' }} />
                             {activeVibe ? (
                                 <>
-                                    <text x="60" y="54" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="12">
-                                        {activeVibe.emoji}
+                                    <text
+                                        x="60"
+                                        y="52"
+                                        textAnchor="middle"
+                                        dominantBaseline="middle"
+                                        fill="white"
+                                        fontSize="8"
+                                        fontWeight="600"
+                                        style={{ pointerEvents: 'none' }}
+                                    >
+                                        {activeVibe.label}
                                     </text>
-                                    <text x="60" y="68" textAnchor="middle" dominantBaseline="middle" fill={activeVibe.color} fontSize="9" fontWeight="bold">
+                                    <text
+                                        x="60"
+                                        y="68"
+                                        textAnchor="middle"
+                                        dominantBaseline="middle"
+                                        fill={activeVibe.color}
+                                        fontSize="14"
+                                        fontWeight="bold"
+                                        style={{ pointerEvents: 'none' }}
+                                    >
                                         {activeVibe.percentage}%
                                     </text>
                                 </>
                             ) : (
                                 <>
-                                    <text x="60" y="55" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="9" fontWeight="bold">
+                                    <text x="60" y="55" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="9" fontWeight="bold" style={{ pointerEvents: 'none' }}>
                                         MOVIE
                                     </text>
-                                    <text x="60" y="67" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="9" opacity="0.6">
+                                    <text x="60" y="67" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="9" opacity="0.6" style={{ pointerEvents: 'none' }}>
                                         VIBE
                                     </text>
                                 </>
@@ -224,7 +296,9 @@ const VibeChart = ({ genres = [], compact = false, customVibes = null }) => {
                     {vibeData.map(vibe => (
                         <div
                             key={vibe.key}
-                            className="flex items-center gap-2.5 px-2 py-1"
+                            className={`flex items-center gap-2.5 px-2 py-1 rounded-lg cursor-pointer transition-colors ${hoveredVibe === vibe.key ? 'bg-white/5' : ''}`}
+                            onMouseEnter={() => setHoveredVibe(vibe.key)}
+                            onMouseLeave={() => setHoveredVibe(null)}
                         >
                             <div
                                 className="w-3 h-3 rounded-full flex-shrink-0"
@@ -240,7 +314,7 @@ const VibeChart = ({ genres = [], compact = false, customVibes = null }) => {
     }
 
     return (
-        <div className="p-6 rounded-2xl bg-gradient-to-br from-white/[0.06] to-white/[0.02] border border-white/10">
+        <div className="py-2">
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
@@ -273,22 +347,40 @@ const VibeChart = ({ genres = [], compact = false, customVibes = null }) => {
                             />
                         ))}
                         {/* Center circle */}
-                        <circle cx="60" cy="60" r="28" fill="#0a0a0a" />
+                        <circle cx="60" cy="60" r="28" fill="#0a0a0a" style={{ pointerEvents: 'none' }} />
                         {activeVibe ? (
                             <>
-                                <text x="60" y="53" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="14">
-                                    {activeVibe.emoji}
+                                <text
+                                    x="60"
+                                    y="52"
+                                    textAnchor="middle"
+                                    dominantBaseline="middle"
+                                    fill="white"
+                                    fontSize="9"
+                                    fontWeight="600"
+                                    style={{ pointerEvents: 'none' }}
+                                >
+                                    {activeVibe.label}
                                 </text>
-                                <text x="60" y="70" textAnchor="middle" dominantBaseline="middle" fill={activeVibe.color} fontSize="10" fontWeight="bold">
+                                <text
+                                    x="60"
+                                    y="70"
+                                    textAnchor="middle"
+                                    dominantBaseline="middle"
+                                    fill={activeVibe.color}
+                                    fontSize="16"
+                                    fontWeight="bold"
+                                    style={{ pointerEvents: 'none' }}
+                                >
                                     {activeVibe.percentage}%
                                 </text>
                             </>
                         ) : (
                             <>
-                                <text x="60" y="55" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="10" fontWeight="bold">
+                                <text x="60" y="55" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="10" fontWeight="bold" style={{ pointerEvents: 'none' }}>
                                     MOVIE
                                 </text>
-                                <text x="60" y="68" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="10" opacity="0.6">
+                                <text x="60" y="68" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="10" opacity="0.6" style={{ pointerEvents: 'none' }}>
                                     VIBE
                                 </text>
                             </>
@@ -301,7 +393,9 @@ const VibeChart = ({ genres = [], compact = false, customVibes = null }) => {
                     {vibeData.map(vibe => (
                         <div
                             key={vibe.key}
-                            className="flex items-center gap-2.5 px-2 py-1.5"
+                            className={`flex items-center gap-2.5 px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${hoveredVibe === vibe.key ? 'bg-white/5' : ''}`}
+                            onMouseEnter={() => setHoveredVibe(vibe.key)}
+                            onMouseLeave={() => setHoveredVibe(null)}
                         >
                             <div
                                 className="w-3.5 h-3.5 rounded-full flex-shrink-0"

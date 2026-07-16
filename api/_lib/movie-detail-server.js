@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { fetchTmdbApi } from './tmdb-server.js';
 
 const MOVIE_DETAIL_SELECT =
-    'tmdb_id, title, original_title, overview, tagline, poster_path, backdrop_path, media_type, release_date, first_air_date, status, runtime, vote_average, vote_count, popularity, genres, certification, custom_parent_guide, custom_vibes, streaming_platforms, editor_review, editor_rating, credits, videos, number_of_seasons, number_of_episodes, seasons, networks, imdb_id, homepage, production_companies, spoken_languages, belongs_to_collection, adult, budget, revenue';
+    'tmdb_id, title, original_title, overview, tagline, poster_path, backdrop_path, media_type, release_date, first_air_date, status, runtime, vote_average, vote_count, popularity, genres, certification, custom_parent_guide, custom_vibes, streaming_platforms, editor_review, editor_rating, web_ratings, credits, videos, number_of_seasons, number_of_episodes, seasons, networks, imdb_id, homepage, production_companies, spoken_languages, belongs_to_collection, adult, budget, revenue';
 
 function getSupabase() {
     const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -85,6 +85,7 @@ async function fetchMovieDetailFromTmdb(tmdbId, mediaType = null) {
                 streaming_platforms: [],
                 editor_review: null,
                 editor_rating: null,
+                web_ratings: null,
                 credits: m.credits || { cast: [], crew: [] },
                 videos: m.videos || { results: [] },
                 number_of_seasons: m.number_of_seasons ?? null,

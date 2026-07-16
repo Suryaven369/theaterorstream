@@ -26,6 +26,7 @@ export {
     submitReview,
     upvoteReview,
     removeUpvoteReview,
+    deleteReview,
 } from './db/ratings.js';
 
 export {
