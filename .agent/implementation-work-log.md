@@ -2,7 +2,7 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 2026 · HEAD `PENDING` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 2026 · HEAD `b53aad7` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
 
 ---
 
@@ -137,7 +137,7 @@ Session log for production architecture Phase 1 work (DB-first performance + Ver
 - `supabase/migrations/20260726100000_collection_franchise_category.sql`
 - `supabase/migrations/20260726200000_collection_franchise_moderation.sql` — `moderation_status`, collaborators, `admin_set_collection_moderation`
 - `src/lib/db/collections.js`, `src/lib/db/social.js` — create/update tags; Explore filter `approved` only
-- `src/views/CollectionsPage.jsx`, `CollectionDetails.jsx` — Franchise pill; avatar stack (single hover `@username`); no “Franchise · pending” / “By @x + N” on cards
+- `src/views/CollectionsPage.jsx`, `CollectionDetails.jsx` — Franchise pill; avatar stack (single hover `@username`); no “Franchise · b53aad7” / “By @x + N” on cards
 - `src/views/admin/AdminFranchiseListsPage.jsx`, `AdminLayout.jsx`, `AdminDashboardPage.jsx`, `routes/index.jsx` — `/admin/franchise-lists` List Moderation
 - `src/components/home/ExplorePanels.jsx` — All / Franchise / Lists tabs
 - `AdminProfileConnectPage.jsx` — note that approve attaches official collaborator
@@ -295,7 +295,7 @@ Session log for production architecture Phase 1 work (DB-first performance + Ver
   - New `news_story_clusters` table for grouping related articles by story
   - New `news_keyword_dictionaries` table for pre-AI filtering keywords
   - New `news_processing_logs` table for pipeline audit trail
-  - Helper functions: `get_pending_classification_articles()`, `get_active_clusters_for_trending()`, `update_cluster_stats()`
+  - Helper functions: `get_b53aad7_classification_articles()`, `get_active_clusters_for_trending()`, `update_cluster_stats()`
   - RLS policies and indexes
 - `src/lib/db/rss.js` — Added 20+ new functions for news intelligence CRUD operations
 - `src/lib/supabase.js` — Exported new news intelligence functions
@@ -341,7 +341,7 @@ Session log for production architecture Phase 1 work (DB-first performance + Ver
   - `classify-text`: Test classification on any text
   - `batch-classify`: Classify multiple articles
   - `classifier-status`: Check API key availability
-  - `pending-classification`: Get articles awaiting classification
+  - `b53aad7-classification`: Get articles awaiting classification
 
 **Classification Output Schema:**
 ```json
@@ -534,7 +534,7 @@ Bonuses:
 
 **Files changed:**
 - `src/views/admin/AdminNewsIntelPage.jsx` — New admin page with 4 tabs:
-  - **Intelligence Tab**: Pending classification queue, batch classify, keyword/classifier stats
+  - **Intelligence Tab**: b53aad7 classification queue, batch classify, keyword/classifier stats
   - **Clusters Tab**: Story clusters grid, unclustered count, cluster details with articles
   - **Trending Tab**: Publish-ready clusters, review queue, approve/reject/publish buttons
   - **Keywords Tab**: Keyword dictionary stats, keyword tester with live analysis
@@ -544,7 +544,7 @@ Bonuses:
 **UI Features:**
 - Score badges with color coding (green ≥72, yellow 45-71, red <45)
 - Probability bars for gossip/rumour scores
-- Batch operations (classify top 10, cluster pending, publish all ready)
+- Batch operations (classify top 10, cluster b53aad7, publish all ready)
 - Cluster cards with expandable article lists
 - Keyword tester with instant feedback
 - Real-time refresh for all tabs
@@ -560,7 +560,7 @@ Bonuses:
 
 **Files changed:**
 - `api/cron/[job].js` — Added 5 news intelligence cron jobs:
-  - `news-classify`: Classify pending articles through AI (batch of 10)
+  - `news-classify`: Classify b53aad7 articles through AI (batch of 10)
   - `news-cluster`: Cluster classified articles (batch of 20)
   - `news-trend`: Recalculate all cluster trend scores
   - `news-publish`: Auto-publish eligible + archive stale clusters
@@ -571,7 +571,7 @@ Bonuses:
 
 | Job | Purpose | Schedule |
 |-----|---------|----------|
-| `news-classify` | AI classification of pending articles | Manual/API |
+| `news-classify` | AI classification of b53aad7 articles | Manual/API |
 | `news-cluster` | Group articles into story clusters | Manual/API |
 | `news-trend` | Recalculate trend scores | Manual/API |
 | `news-publish` | Auto-publish high-score, archive stale | Manual/API |
@@ -579,7 +579,7 @@ Bonuses:
 
 **Pipeline Flow:**
 ```
-1. Classify pending articles (up to 10)
+1. Classify b53aad7 articles (up to 10)
         ↓
 2. Cluster unclustered articles (up to 20)
         ↓
@@ -1068,7 +1068,7 @@ All 9 phases implemented:
    - `.agent/tos-production-architecture-plan.md`
    - `.agent/implementation-plan-api-optimization.md`
    - `~/.cursor/plans/tos_production_architecture_e5360011.plan.md`
-4. **Tick marks:** ✅ done · 🔄 partial · ⬜ pending
+4. **Tick marks:** ✅ done · 🔄 partial · ⬜ b53aad7
 5. **Set HEAD** to latest `git log -1` short hash
 
 ---
@@ -1090,9 +1090,9 @@ All 9 phases implemented:
 | 11 | `recommendation-engine` | Hybrid reco API | ✅ Done |
 | 12 | `ux-redesign` | Watch Tonight, Family hub, personalized home | ✅ Done |
 | 13 | `phase3-social-schema` | Diary, badges, following feed | ✅ Done |
-| 14 | `ai-agents-stack` | Background AI agents (Gateway) | ⬜ Pending |
+| 14 | `ai-agents-stack` | Background AI agents (Gateway) | ⬜ b53aad7 |
 
-**Progress:** 13 complete · 0 partial · 1 pending
+**Progress:** 13 complete · 0 partial · 1 b53aad7
 
 Full roadmap: [tos-production-architecture-plan.md](./tos-production-architecture-plan.md)
 
@@ -1102,7 +1102,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
-| `PENDING` | Jul 2026 | Watch session cache, poster actions, taste ≥3 likes |
+| `b53aad7` | Jul 2026 | Watch session cache, poster actions, taste ≥3 likes |
 | `0b895ea` | Jul 2026 | Sitemap index, GEO llms.txt, Search Console SEO |
 | `5213bb1` | Jul 2026 | Watch page laptop alignment nudge |
 | `176f0d0` | Jul 2026 | In-Theaters web ratings (TMDB→LLM), details polish, review delete RLS |

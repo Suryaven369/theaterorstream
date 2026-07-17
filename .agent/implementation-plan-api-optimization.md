@@ -1,6 +1,6 @@
 # API & Admin Panel Optimization - Implementation Plan
 
-**Last updated:** Jul 2026 · synced with `main` @ `PENDING`
+**Last updated:** Jul 2026 · synced with `main` @ `b53aad7`
 
 ---
 
@@ -109,7 +109,7 @@ Full table: [tos-production-architecture-plan.md](./tos-production-architecture-
 
 ## 📋 REMAINING / OPTIONAL
 
-### Master plan tasks — pending (see full list in architecture plan)
+### Master plan tasks — b53aad7 (see full list in architecture plan)
 
 - [x] **#4** `db-migrations` — snapshots, sync tables, RLS ✅ (Supabase, May 2026)
 - [x] **#5** `server-tmdb-proxy` — TMDB key off client ✅

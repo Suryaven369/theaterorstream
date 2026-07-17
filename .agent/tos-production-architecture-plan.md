@@ -37,19 +37,19 @@ todos:
     status: completed
   - id: ux-redesign
     content: Redesign Home as personalized feed; add Watch Tonight, Family Picks, OTT availability pages; retire CMS-only homepage
-    status: pending
+    status: b53aad7
   - id: phase3-social-schema
     content: movie_logs diary, badges, activity_feed, following feed, public collections, share cards
     status: completed
   - id: ai-agents-stack
     content: "Deploy AI agents: Taste Summarizer, Parent Guide Enricher, Editorial, Moderation — server-side only via Vercel AI Gateway"
-    status: pending
+    status: b53aad7
 isProject: false
 ---
 
 # TheaterOrStream — Production Architecture & Product Redesign Plan
 
-**Branch:** `main` · **HEAD:** `PENDING` · **Progress:** 13 / 14 tasks complete
+**Branch:** `main` · **HEAD:** `b53aad7` · **Progress:** 13 / 14 tasks complete
 
 **Next recommended:** `ai-agents-stack` (Task #14)
 
@@ -72,9 +72,9 @@ isProject: false
 | 11 | `recommendation-engine` | Hybrid reco + `/api/recommendations/for-you` | 4 | ✅ **Done** |
 | 12 | `ux-redesign` | Personalized home, Watch Tonight, Family hub, Decision Mode | 5 | ✅ **Done** |
 | 13 | `phase3-social-schema` | Diary logs, badges, activity feed, following feed | 6 | ✅ **Done** |
-| 14 | `ai-agents-stack` | Taste Summarizer, Parent Guide, Editorial, Moderation agents | 7 | ⬜ Pending |
+| 14 | `ai-agents-stack` | Taste Summarizer, Parent Guide, Editorial, Moderation agents | 7 | ⬜ b53aad7 |
 
-**Legend:** ✅ Done · 🔄 Partial · ⬜ Pending
+**Legend:** ✅ Done · 🔄 Partial · ⬜ b53aad7
 
 **Next recommended:** `ai-agents-stack` (Task #14)
 
