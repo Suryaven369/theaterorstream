@@ -29,6 +29,7 @@ const CRAWLER_USER_AGENTS = [
     'TelegramBot',
     'Discordbot',
     'Googlebot',
+    'Google-Extended',
     'bingbot',
     'Baiduspider',
     'DuckDuckBot',
@@ -41,7 +42,18 @@ const CRAWLER_USER_AGENTS = [
     'W3C_Validator',
     'redditbot',
     'Applebot',
+    'Applebot-Extended',
     'Instagram',
+    // GEO / AI answer engines
+    'GPTBot',
+    'ChatGPT-User',
+    'OAI-SearchBot',
+    'ClaudeBot',
+    'anthropic-ai',
+    'PerplexityBot',
+    'Bytespider',
+    'CCBot',
+    'meta-externalagent',
 ];
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -162,7 +174,7 @@ async function handleMovie(supabase, pathname, pageUrl) {
 
     const { data: movie } = await supabase
         .from('movies_library')
-        .select('tmdb_id, title, overview, poster_path, backdrop_path, media_type, release_date, first_air_date, vote_average')
+        .select('tmdb_id, title, overview, poster_path, backdrop_path, media_type, release_date, first_air_date, vote_average, vote_count, genres, runtime')
         .eq('tmdb_id', String(tmdbId))
         .maybeSingle();
 
@@ -178,14 +190,50 @@ async function handleMovie(supabase, pathname, pageUrl) {
         tmdbImage(movie.poster_path, 'w780') ||
         DEFAULT_OG_IMAGE;
 
-    const kind = (movie.media_type || mediaType) === 'tv' ? 'TV show' : 'movie';
+    const isTv = (movie.media_type || mediaType) === 'tv';
+    const kind = isTv ? 'TV show' : 'movie';
+    const schemaType = isTv ? 'TVSeries' : 'Movie';
+    const datePublished = movie.release_date || movie.first_air_date || undefined;
+    const genreList = Array.isArray(movie.genres)
+        ? movie.genres.map((g) => (typeof g === 'string' ? g : g?.name)).filter(Boolean)
+        : [];
+    const voteCount = Number(movie.vote_count) || 0;
+
+    const jsonLd = {
+        '@context': 'https://schema.org',
+        '@type': schemaType,
+        name: movie.title,
+        description: (movie.overview || description || '').slice(0, 500),
+        url: pageUrl,
+        image,
+        datePublished: datePublished || undefined,
+        genre: genreList.length ? genreList : undefined,
+        duration: !isTv && movie.runtime ? `PT${Number(movie.runtime)}M` : undefined,
+    };
+    if (movie.vote_average != null && voteCount > 0) {
+        jsonLd.aggregateRating = {
+            '@type': 'AggregateRating',
+            ratingValue: Number(movie.vote_average).toFixed(1),
+            bestRating: '10',
+            worstRating: '0',
+            ratingCount: String(voteCount),
+        };
+    }
+    Object.keys(jsonLd).forEach((k) => jsonLd[k] === undefined && delete jsonLd[k]);
+
+    const extra = [
+        `<meta property="og:video:type" content="${kind}">`,
+        `<meta name="robots" content="index, follow, max-image-preview:large">`,
+        `<script type="application/ld+json">${JSON.stringify(jsonLd).replace(/</g, '\\u003c')}</script>`,
+    ].join('\n  ');
+
     return ogHtml({
         title,
         description,
         image,
         url: pageUrl,
         type: 'video.movie',
-        extra: `<meta property="og:video:type" content="${kind}">`,
+        extra,
     });
 }
 
@@ -278,12 +326,28 @@ async function handleBlog(supabase, pathname, pageUrl) {
         .slice(0, 180);
     const img = toPublicStorageUrl(blog.cover_image) || DEFAULT_OG_IMAGE;
 
+    const articleLd = {
+        '@context': 'https://schema.org',
+        '@type': 'Article',
+        headline: blog.title,
+        description: desc,
+        image: img,
+        url: pageUrl,
+        mainEntityOfPage: pageUrl,
+        publisher: {
+            '@type': 'Organization',
+            name: 'TheaterOrStream',
+            url: SITE,
+        },
+    };
+
     return ogHtml({
         title: blog.title,
         description: desc,
         image: img,
         url: pageUrl,
         type: 'article',
+        extra: `<script type="application/ld+json">${JSON.stringify(articleLd).replace(/</g, '\\u003c')}</script>`,
     });
 }
 

@@ -51,11 +51,27 @@
             "destination": "/api/sitemap.xml"
         },
         {
+            "source": "/sitemap-pages.xml",
+            "destination": "/api/sitemap-pages.xml"
+        },
+        {
+            "source": "/sitemap-movies.xml",
+            "destination": "/api/sitemap-movies.xml"
+        },
+        {
+            "source": "/sitemap-lists.xml",
+            "destination": "/api/sitemap-lists.xml"
+        },
+        {
+            "source": "/sitemap-community.xml",
+            "destination": "/api/sitemap-community.xml"
+        },
+        {
             "source": "/api/tmdb/(.*)",
             "destination": "/api/tmdb?path=$1"
         },
         {
-            "source": "/((?!api|_next/static|_next/image|favicon.ico|robots.txt|.*\\..*$).*)",
+            "source": "/((?!api|_next/static|_next/image|favicon.ico|robots.txt|llms.txt|sitemap.*\\.xml|.*\\..*$).*)",
             "destination": "/index.html"
         }
     ],

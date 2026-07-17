@@ -31,13 +31,20 @@
   <meta name="keywords"
     content="movie reviews, theater or stream, should I watch in theater, cinema reviews, streaming recommendations, movie ratings, new movie releases, film reviews, watch in theaters or at home, movie guide, cinema vs streaming, movie recommendations, latest movies, theatrical release reviews, streaming vs theater, best movies to watch, blockbuster movies, indie films, Hollywood movies, Bollywood movies">
   <meta name="author" content="TheaterOrStream">
-  <meta name="robots" content="index, follow">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+  <meta name="googlebot" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
   <meta name="language" content="English">
   <meta name="revisit-after" content="3 days">
   <meta name="theme-color" content="#0a0a0a">
+  <meta name="rating" content="general">
+  <meta name="distribution" content="global">
+  <meta name="geo.region" content="US">
+  <meta name="geo.placename" content="United States">
+  <meta name="ICBM" content="37.0902, -95.7129">
 
   <!-- Open Graph / Facebook / Instagram -->
   <meta property="og:type" content="website">
+  <meta property="og:locale" content="en_US">
   <meta property="og:url" content="https://www.theaterorstream.com/">
   <meta property="og:title" content="TheaterOrStream - Should You Watch It in Theaters or Stream at Home?">
   <meta property="og:description"
@@ -46,6 +53,7 @@
     content="https://res.cloudinary.com/ddhhlkyut/image/upload/v1768226006/a78a29523128c4555fdd178b6c612ac6_dbtyqp.jpg">
   <meta property="og:image:secure_url"
     content="https://res.cloudinary.com/ddhhlkyut/image/upload/v1768226006/a78a29523128c4555fdd178b6c612ac6_dbtyqp.jpg">
+  <meta property="og:image:alt" content="TheaterOrStream — theater or stream movie guide">
   <meta property="og:site_name" content="TheaterOrStream">
 
   <!-- Twitter / X (must use name=, not property=) -->
@@ -57,22 +65,87 @@
   <meta name="twitter:image"
     content="https://res.cloudinary.com/ddhhlkyut/image/upload/v1768226006/a78a29523128c4555fdd178b6c612ac6_dbtyqp.jpg">
 
-  <!-- Canonical URL -->
+  <!-- Canonical + discovery -->
   <link rel="canonical" href="https://www.theaterorstream.com/">
+  <link rel="sitemap" type="application/xml" title="Sitemap" href="https://www.theaterorstream.com/sitemap.xml">
+  <link rel="alternate" type="text/plain" title="LLMs" href="https://www.theaterorstream.com/llms.txt">
 
-  <!-- Structured Data / Schema.org -->
+  <!-- Structured Data / Schema.org (Google Search Console rich results) -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
-    "@type": "WebSite",
-    "name": "TheaterOrStream",
-    "url": "https://theaterorstream.com/",
-    "description": "TheaterOrStream helps you decide whether to watch movies in theaters or stream them at home. Get honest movie reviews, ratings, and cinema vs streaming recommendations.",
-    "potentialAction": {
-      "@type": "SearchAction",
-      "target": "https://theaterorstream.com/search?q={search_term_string}",
-      "query-input": "required name=search_term_string"
-    }
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": "https://www.theaterorstream.com/#organization",
+        "name": "TheaterOrStream",
+        "url": "https://www.theaterorstream.com/",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://res.cloudinary.com/ddhhlkyut/image/upload/v1768226006/a78a29523128c4555fdd178b6c612ac6_dbtyqp.jpg"
+        },
+        "sameAs": []
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://www.theaterorstream.com/#website",
+        "name": "TheaterOrStream",
+        "url": "https://www.theaterorstream.com/",
+        "description": "TheaterOrStream helps you decide whether to watch movies in theaters or stream them at home. Get honest movie reviews, ratings, and cinema vs streaming recommendations.",
+        "publisher": { "@id": "https://www.theaterorstream.com/#organization" },
+        "inLanguage": "en-US",
+        "potentialAction": {
+          "@type": "SearchAction",
+          "target": {
+            "@type": "EntryPoint",
+            "urlTemplate": "https://www.theaterorstream.com/search?q={search_term_string}"
+          },
+          "query-input": "required name=search_term_string"
+        }
+      },
+      {
+        "@type": "WebApplication",
+        "name": "TheaterOrStream",
+        "url": "https://www.theaterorstream.com/",
+        "applicationCategory": "EntertainmentApplication",
+        "operatingSystem": "Web",
+        "description": "Decide whether to watch movies in theaters or stream at home with ratings, parent guides, and curated lists.",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        }
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Should I watch a movie in theaters or stream it at home?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "TheaterOrStream rates each title for theatrical impact vs home viewing — use the title page scores, vibes, and parent guide to decide for that release."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What is TheaterOrStream?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "TheaterOrStream is a cinema decision guide and film community with theater-vs-stream recommendations, ratings, parent guides, boards, and lists for new movies."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does TheaterOrStream have parent guides?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. Browse by violence, sex/nudity, profanity, and frightening content at https://www.theaterorstream.com/parent-guide."
+            }
+          }
+        ]
+      }
+    ]
   }
   </script>
 

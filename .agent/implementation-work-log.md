@@ -6,6 +6,38 @@ Session log for production architecture Phase 1 work (DB-first performance + Ver
 
 ---
 
+## Session: Jul 18, 2026 — Sitemap, GEO (llms.txt), Search Console SEO
+
+### Sitemap index + child sitemaps ✅
+
+**Problem:** Sitemap only listed a few static pages + homepage-section movies; missing legal hubs, boards, blogs, tags, parent-guide, and most of `movies_library`. Wrong/incomplete for Google Search Console.
+
+**Files changed:**
+- `api/sitemap.xml.js` — sitemap **index**
+- `api/sitemap-pages.xml.js`, `api/sitemap-movies.xml.js`, `api/sitemap-lists.xml.js`, `api/sitemap-community.xml.js`
+- `api/_lib/sitemap-utils.js` — shared slug/XML helpers
+- `vercel.json` — rewrites for child sitemaps
+
+**Behavior:** `https://www.theaterorstream.com/sitemap.xml` indexes four sitemaps covering hubs, movies/TV (library + rails), public lists/boards, and blogs/tags.
+
+### GEO + Google Search Console SEO ✅
+
+**Problem:** No Generative Engine Optimization surface; www mismatch in JSON-LD; weak crawl/AI bot policy; crawler HTML lacked Movie/Article schema.
+
+**Files changed:**
+- `public/llms.txt` — curated AI/GEO site map
+- `public/robots.txt` — GSC sitemaps + AI crawlers (GPTBot, ClaudeBot, PerplexityBot, etc.)
+- `index.html` — www-canonical WebSite/Organization/WebApplication/FAQPage JSON-LD; geo meta; sitemap/llms links
+- `middleware.js` — AI crawlers; Movie/TVSeries + Article JSON-LD for bots
+
+**Behavior:** Search Console can ingest the sitemap index; answer engines get `llms.txt`; Googlebot/AI bots get richer crawl HTML with schema.
+
+**Next recommended:** Deploy, then in Google Search Console → Sitemaps → submit `https://www.theaterorstream.com/sitemap.xml`. Confirm `/llms.txt` and child sitemaps return 200.
+
+**Off-git:** GSC property must be the **www** URL (or domain property covering both). Re-verify if the existing meta tag verification was set on the apex only.
+
+---
+
 ## Session: Jul 17, 2026 — In-Theaters web ratings + movie details polish
 
 ### In-Theaters web ratings (TMDB reviews → LLM → TOS 7-axis) ✅

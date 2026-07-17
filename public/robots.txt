@@ -1,20 +1,88 @@
-# Allow all crawlers
+# TheaterOrStream — crawl policy (Google Search Console + AI / GEO)
+# Canonical host: https://www.theaterorstream.com
+
 User-agent: *
 Allow: /
-
-# Sitemap location
-Sitemap: https://www.theaterorstream.com/sitemap.xml
-
-# Disallow admin areas
 Disallow: /admin
-Disallow: /admin/*
-
-# Disallow auth pages
+Disallow: /admin/
 Disallow: /auth
 Disallow: /onboarding
+Disallow: /reset-password
+Disallow: /settings
+Disallow: /settings/
+Disallow: /watch
+Disallow: /diary
+Disallow: /achievements
 
-# Allow static assets
-Allow: /assets/*
+# Google
+User-agent: Googlebot
+Allow: /
+Disallow: /admin
+Disallow: /admin/
+Disallow: /auth
+Disallow: /settings
+Disallow: /settings/
 
-# Crawl-delay (be nice to servers)
-Crawl-delay: 1
+# Bing
+User-agent: Bingbot
+Allow: /
+Disallow: /admin
+Disallow: /admin/
+Disallow: /auth
+
+# AI / Generative Engine crawlers (GEO)
+User-agent: GPTBot
+Allow: /
+Disallow: /admin
+Disallow: /auth
+Disallow: /settings
+
+User-agent: ChatGPT-User
+Allow: /
+Disallow: /admin
+Disallow: /auth
+
+User-agent: OAI-SearchBot
+Allow: /
+Disallow: /admin
+Disallow: /auth
+
+User-agent: ClaudeBot
+Allow: /
+Disallow: /admin
+Disallow: /auth
+
+User-agent: anthropic-ai
+Allow: /
+Disallow: /admin
+Disallow: /auth
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /admin
+Disallow: /auth
+
+User-agent: Google-Extended
+Allow: /
+Disallow: /admin
+Disallow: /auth
+
+User-agent: Applebot-Extended
+Allow: /
+Disallow: /admin
+Disallow: /auth
+
+User-agent: Bytespider
+Allow: /
+Disallow: /admin
+Disallow: /auth
+
+# Sitemaps (submit the index in Google Search Console)
+Sitemap: https://www.theaterorstream.com/sitemap.xml
+Sitemap: https://www.theaterorstream.com/sitemap-pages.xml
+Sitemap: https://www.theaterorstream.com/sitemap-movies.xml
+Sitemap: https://www.theaterorstream.com/sitemap-lists.xml
+Sitemap: https://www.theaterorstream.com/sitemap-community.xml
+
+# GEO: curated map for answer engines
+# https://www.theaterorstream.com/llms.txt

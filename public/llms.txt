@@ -1,0 +1,45 @@
+# TheaterOrStream
+
+> TheaterOrStream helps people decide whether to watch a movie in theaters or stream it at home. Honest ratings, parent guides, curated lists, cinema boards, and theater-vs-stream recommendations for new releases.
+
+TheaterOrStream is a cinema decision guide and social film community. Primary audience: moviegoers choosing between theatrical and streaming for recent and upcoming titles.
+
+## Core product
+
+- [Home](https://www.theaterorstream.com/): In theaters, coming soon, explore, and cinema feed
+- [Upcoming / Coming soon](https://www.theaterorstream.com/upcoming): Theatrical release calendar
+- [Search](https://www.theaterorstream.com/search): Find movies and TV by title
+- [Cinema feed](https://www.theaterorstream.com/feed): Trailers, articles, and community posts
+- [Boards](https://www.theaterorstream.com/boards): Curated cinematic boards
+- [Tags](https://www.theaterorstream.com/tags): Discover cinema hashtags
+- [Parent guide](https://www.theaterorstream.com/parent-guide): Browse by violence, sex/nudity, profanity, frightening content
+
+## Parent guide categories
+
+- [Violence](https://www.theaterorstream.com/parent-guide/violence)
+- [Sex / Nudity](https://www.theaterorstream.com/parent-guide/sex-nudity)
+- [Profanity](https://www.theaterorstream.com/parent-guide/profanity)
+- [Frightening](https://www.theaterorstream.com/parent-guide/frightening)
+
+## How title pages work
+
+Movie and TV pages live at `/movies/{slug}-{tmdbId}` and `/tv/{slug}-{tmdbId}`. Each page covers:
+- Theater vs stream recommendation context
+- Ratings (editor, web consensus, community)
+- Parent guide and content vibes
+- Cast, crew, and overview
+
+Full URL inventory: [sitemap.xml](https://www.theaterorstream.com/sitemap.xml)
+
+## About & policies
+
+- [About](https://www.theaterorstream.com/about)
+- [Privacy](https://www.theaterorstream.com/privacy)
+- [Terms](https://www.theaterorstream.com/terms)
+- [Attributions](https://www.theaterorstream.com/attributions)
+
+## Optional
+
+- Admin, auth, settings, and private profiles are not for indexing
+- Prefer the www host: https://www.theaterorstream.com
+- Contact / brand: TheaterOrStream
