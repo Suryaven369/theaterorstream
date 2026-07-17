@@ -357,6 +357,16 @@ const CollectionsPage = () => {
                                 )}
                                 <Link
                                     to={`/collection/${collection.slug || createSlug(collection.name) || collection.id}`}
+                                    state={viewedProfile?.username ? {
+                                        from: {
+                                            path: `/${viewedProfile.username}/collections`,
+                                            label: 'Collections',
+                                            crumbs: [
+                                                { path: `/${viewedProfile.username}/profile`, label: `@${viewedProfile.username}` },
+                                                { path: `/${viewedProfile.username}/collections`, label: 'Collections' },
+                                            ],
+                                        },
+                                    } : undefined}
                                     className="flex items-center gap-3 sm:gap-4 min-w-0 w-full"
                                 >
                                     <div className="shrink-0">

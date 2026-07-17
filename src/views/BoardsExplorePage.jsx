@@ -21,6 +21,13 @@ function BoardCard({ board, imageURL }) {
     return (
         <Link
             to={href}
+            state={{
+                from: {
+                    path: '/boards',
+                    label: 'Boards',
+                    crumbs: [{ path: '/boards', label: 'Boards' }],
+                },
+            }}
             className="group relative block overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0e0e0e] hover:border-amber-500/30 transition-all duration-300"
         >
             <div className="relative aspect-[16/10] overflow-hidden">

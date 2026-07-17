@@ -12,10 +12,16 @@ import {
     getUnderratedMasterpieces,
     getOutsideComfortZone,
 } from '../_lib/recommendation-server.js';
-import { recordEvents, getTasteDashboard, shouldRelearn } from '../_lib/events-server.js';
+import {
+    recordEvents,
+    getTasteDashboard,
+    shouldRelearn,
+    shouldRebuildForLikes,
+    CACHE_BUST_EVENTS,
+} from '../_lib/events-server.js';
 import { getFollowingFeed } from '../_lib/following-feed-server.js';
 import { getTastePreferences, updateTastePreferences } from '../_lib/taste-preferences-server.js';
-import { rebuildUserTasteProfile } from '../_lib/taste-profile-server.js';
+import { rebuildUserTasteProfile, invalidateRecommendationCache } from '../_lib/taste-profile-server.js';
 import { isEmbeddingConfigured } from '../_lib/embedding-server.js';
 
 export const config = {
@@ -79,12 +85,30 @@ export default async function handler(req, res) {
             const events = body.events || body.event || body;
             const result = await recordEvents(userId, events);
 
-            // Event-triggered re-learning: once enough new meaningful signals
-            // accumulate, rebuild the taste profile + embedding so recommendations
-            // reflect what the user just did. Debounced + non-fatal.
+            const list = Array.isArray(events) ? events : [events];
+            const types = list.map((e) => String(e?.eventType || e?.event_type || ''));
+            const hasLike = types.includes('movie_liked');
+            const hasRatingOrDislike = types.some(
+                (t) => CACHE_BUST_EVENTS.has(t) || t.startsWith('rated_'),
+            );
+            // Likes: only re-analyse after ≥3 hearts. Watches never bust cache.
+            const likesReady = hasLike ? await shouldRebuildForLikes(userId) : false;
+            const shouldBustCache = result.recorded > 0 && (hasRatingOrDislike || likesReady);
+
+            if (shouldBustCache) {
+                try {
+                    await invalidateRecommendationCache(null, userId);
+                } catch (err) {
+                    console.warn('[events] cache invalidate failed:', err.message);
+                }
+            }
+
             let relearned = false;
             try {
-                if (result.recorded > 0 && await shouldRelearn(userId)) {
+                const hasRating = types.some((t) => t.startsWith('rated_'));
+                const hasDislike = types.includes('movie_disliked');
+                const mayRelearn = hasRating || hasDislike || likesReady;
+                if (result.recorded > 0 && mayRelearn && await shouldRelearn(userId)) {
                     await rebuildUserTasteProfile(userId, {
                         includeEmbedding: isEmbeddingConfigured(),
                     });
@@ -94,7 +118,7 @@ export default async function handler(req, res) {
                 console.warn('[events] relearn failed:', err.message);
             }
 
-            return res.status(200).json({ ok: true, ...result, relearned });
+            return res.status(200).json({ ok: true, ...result, relearned, likesReady });
         });
     }
 

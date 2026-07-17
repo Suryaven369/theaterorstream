@@ -98,9 +98,13 @@ export async function createMovieLog(userId, input) {
         if (watchedErr) console.warn('log -> user_watched_movies failed:', watchedErr.message);
     });
 
-    import('./tasteProfileApi.js').then(({ requestTasteProfileRebuild }) => {
-        requestTasteProfileRebuild().catch(() => {});
-    });
+    // Seen ≠ loved: watching only excludes from recs. Rebuild taste when the
+    // log includes a rating (opinion), not for watch-only diary entries.
+    if (row.rating != null) {
+        import('./tasteProfileApi.js').then(({ requestTasteProfileRebuild }) => {
+            requestTasteProfileRebuild().catch(() => {});
+        });
+    }
     import('./socialApi.js').then(({ checkBadges, updateStreak }) => {
         checkBadges().catch(() => {});
         updateStreak().catch(() => {});

@@ -162,6 +162,16 @@ const UserBoardsPage = () => {
                                 <Link
                                     key={board.id}
                                     to={boardPath(board, viewedProfile.username)}
+                                    state={viewedProfile?.username ? {
+                                        from: {
+                                            path: `/${viewedProfile.username}/boards`,
+                                            label: 'Boards',
+                                            crumbs: [
+                                                { path: `/${viewedProfile.username}/profile`, label: `@${viewedProfile.username}` },
+                                                { path: `/${viewedProfile.username}/boards`, label: 'Boards' },
+                                            ],
+                                        },
+                                    } : undefined}
                                     className="group flex items-center gap-4 p-4 rounded-2xl bg-[#121212] border border-white/5 hover:border-amber-500/25 transition"
                                 >
                                     <div className="w-16 h-16 rounded-xl overflow-hidden grid grid-cols-2 gap-px bg-black shrink-0">

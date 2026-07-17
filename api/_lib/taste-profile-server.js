@@ -219,8 +219,9 @@ function vectorToPgLiteral(vector) {
     return `[${vector.join(',')}]`;
 }
 
-async function invalidateRecommendationCache(supabase, userId) {
-    const { error } = await supabase
+export async function invalidateRecommendationCache(supabase, userId) {
+    const client = supabase || getSupabaseAdmin();
+    const { error } = await client
         .from('recommendation_cache')
         .delete()
         .eq('user_id', userId);
@@ -228,6 +229,20 @@ async function invalidateRecommendationCache(supabase, userId) {
     if (error) {
         console.warn('recommendation_cache invalidate failed:', error.message);
     }
+}
+
+/** Genre affinity from hearted titles — treated like a high rating for taste. */
+function computeGenreWeightsFromLikes(likedTmdbIds, movieByTmdbId) {
+    const raw = {};
+    (likedTmdbIds || []).forEach((id) => {
+        const movie = movieByTmdbId.get(String(id));
+        const genreIds = extractGenreIds(movie);
+        if (!genreIds.length) return;
+        genreIds.forEach((genreId) => {
+            raw[genreId] = (raw[genreId] || 0) + 0.85;
+        });
+    });
+    return normalizeWeights(raw);
 }
 
 /**
@@ -268,7 +283,19 @@ export async function rebuildUserTasteProfile(userId, options = {}) {
     }
 
     const ratingRows = ratings || [];
-    const tmdbIds = [...new Set(ratingRows.map((r) => String(r.movie_id)))];
+
+    // Likes are taste signals; watches/logs are NOT (seen ≠ loved).
+    const { data: likedRows } = await supabase
+        .from('user_liked_movies')
+        .select('movie_id')
+        .eq('user_id', userId)
+        .limit(300);
+    const likedTmdbIds = (likedRows || []).map((r) => String(r.movie_id));
+
+    const tmdbIds = [...new Set([
+        ...ratingRows.map((r) => String(r.movie_id)),
+        ...likedTmdbIds,
+    ])];
 
     let movieByTmdbId = new Map();
     if (tmdbIds.length) {
@@ -302,9 +329,9 @@ export async function rebuildUserTasteProfile(userId, options = {}) {
     if (totalRatingsError) throw new Error(totalRatingsError.message);
 
     const ratingGenres = computeGenreWeightsFromRatings(ratingRows, movieByTmdbId);
+    const likeGenres = computeGenreWeightsFromLikes(likedTmdbIds, movieByTmdbId);
 
-    // Fold in recency-decayed behavioural signal (views, trailers, watchlists,
-    // shares, reco clicks). Best-effort: never block a rebuild on it.
+    // Behavioural genre signal is likes + ratings only (see TASTE_SIGNAL_EVENTS).
     let behavioralGenres = {};
     try {
         const signals = await getBehavioralSignals(userId);
@@ -313,9 +340,14 @@ export async function rebuildUserTasteProfile(userId, options = {}) {
         console.warn('behavioral signals unavailable during rebuild:', err.message);
     }
 
-    const computedGenres = blendGenreSources(ratingGenres, behavioralGenres);
+    const computedGenres = blendGenreSources(
+        blendGenreSources(ratingGenres, likeGenres),
+        behavioralGenres,
+    );
     const declaredGenres = existing?.genre_weights || {};
-    const hasSignal = ratingRows.length > 0 || Object.keys(behavioralGenres).length > 0;
+    const hasSignal = ratingRows.length > 0
+        || likedTmdbIds.length > 0
+        || Object.keys(behavioralGenres).length > 0;
     const genreWeights = mergeGenreWeights(declaredGenres, computedGenres, hasSignal);
 
     const axisFromRatings = computeAxisPreferences(ratingRows);
@@ -339,10 +371,13 @@ export async function rebuildUserTasteProfile(userId, options = {}) {
     const preferredDecades = computePreferredDecades(ratingRows, movieByTmdbId);
     const preferredLanguages = computePreferredLanguages(ratingRows, movieByTmdbId);
 
-    // Aggregate Taste DNA from the movie_dna of loved titles (best-effort).
+    // Aggregate Taste DNA from loved ratings + likes (not mere watches).
     let dnaPreferences = existing?.dna_preferences || {};
     try {
-        const dna = await computeUserDnaPreferences(userId, { ratings: ratingRows });
+        const dna = await computeUserDnaPreferences(userId, {
+            ratings: ratingRows,
+            likedTmdbIds,
+        });
         if (Object.keys(dna).length) dnaPreferences = dna;
     } catch (err) {
         console.warn('dna preferences compute failed:', err.message);
@@ -381,13 +416,15 @@ export async function rebuildUserTasteProfile(userId, options = {}) {
             .map(([id]) => GENRE_NAMES[id])
             .filter(Boolean);
 
-        const lovedTitles = ratingRows
-            .filter((r) => {
-                const o = computeOverallFromRatingRow(r);
-                return o != null && o >= HIGH_RATING;
-            })
-            .map((r) => movieByTmdbId.get(String(r.movie_id))?.title)
-            .filter(Boolean);
+        const lovedTitles = [
+            ...ratingRows
+                .filter((r) => {
+                    const o = computeOverallFromRatingRow(r);
+                    return o != null && o >= HIGH_RATING;
+                })
+                .map((r) => movieByTmdbId.get(String(r.movie_id))?.title),
+            ...likedTmdbIds.map((id) => movieByTmdbId.get(String(id))?.title),
+        ].filter(Boolean);
 
         const llmSummary = await summarizeTaste({
             genres: topGenreNames,

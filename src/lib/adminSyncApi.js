@@ -119,7 +119,7 @@ export async function approveFeedArticleViaApi(articleIdOrCandidate, { regenerat
     };
 }
 
-export async function triggerBackfill(job, { limit } = {}) {
+export async function triggerBackfill(job, { limit, tmdbIds, region, force } = {}) {
     const token = await getAccessToken();
     if (!token) {
         throw new Error('You must be signed in as admin to run a backfill.');
@@ -132,7 +132,13 @@ export async function triggerBackfill(job, { limit } = {}) {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ job, limit }),
+        body: JSON.stringify({
+            job,
+            limit,
+            ...(Array.isArray(tmdbIds) ? { tmdbIds } : {}),
+            ...(region ? { region } : {}),
+            ...(force ? { force: true } : {}),
+        }),
     });
 
     const payload = await response.json().catch(() => ({}));

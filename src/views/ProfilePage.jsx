@@ -616,7 +616,21 @@ const ProfilePage = () => {
                   <>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {pageSlice(allCollections).map((c) => (
-                            <Link key={c.id} to={`/collection/${slugifyName(c.name)}`} className="flex items-center gap-3 p-3 rounded-xl bg-[#1a1d1f] border border-white/5 hover:border-white/15 transition-colors">
+                            <Link
+                                key={c.id}
+                                to={`/collection/${slugifyName(c.name)}`}
+                                state={viewedProfile?.username ? {
+                                    from: {
+                                        path: `/${viewedProfile.username}/profile?tab=lists`,
+                                        label: 'Profile',
+                                        crumbs: [
+                                            { path: `/${viewedProfile.username}/profile`, label: `@${viewedProfile.username}` },
+                                            { path: `/${viewedProfile.username}/profile?tab=lists`, label: 'Lists' },
+                                        ],
+                                    },
+                                } : undefined}
+                                className="flex items-center gap-3 p-3 rounded-xl bg-[#1a1d1f] border border-white/5 hover:border-white/15 transition-colors"
+                            >
                                 <div className="flex -space-x-3 shrink-0">
                                     {((c.collection_movies || []).slice(0, 3)).map((m, i) => (
                                         <div key={i} className="w-10 h-14 rounded overflow-hidden bg-white/10 border-2 border-[#1a1d1f]">
@@ -684,7 +698,21 @@ const ProfilePage = () => {
                   <>
                     <div className="space-y-2">
                         {pageSlice(blogs).map((b) => (
-                            <Link key={b.id} to={`/blog/${b.id}`} className="block p-4 rounded-xl bg-[#1a1d1f] border border-white/5 hover:border-white/15 transition-colors">
+                            <Link
+                                key={b.id}
+                                to={`/blog/${b.id}`}
+                                state={viewedProfile?.username ? {
+                                    from: {
+                                        path: `/${viewedProfile.username}/profile?tab=blogs`,
+                                        label: 'Profile',
+                                        crumbs: [
+                                            { path: `/${viewedProfile.username}/profile`, label: `@${viewedProfile.username}` },
+                                            { path: `/${viewedProfile.username}/profile?tab=blogs`, label: 'Blogs' },
+                                        ],
+                                    },
+                                } : undefined}
+                                className="block p-4 rounded-xl bg-[#1a1d1f] border border-white/5 hover:border-white/15 transition-colors"
+                            >
                                 <p className="text-sm font-semibold text-white">{b.title}</p>
                                 {b.created_at && <p className="text-[11px] text-white/40 mt-1">{new Date(b.created_at).toLocaleDateString()}</p>}
                             </Link>

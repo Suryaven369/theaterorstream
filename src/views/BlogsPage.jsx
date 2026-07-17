@@ -239,7 +239,20 @@ const BlogsPage = () => {
                                         type="button"
                                         onClick={() => {
                                             if (isOwnProfile) openEditor(blog);
-                                            else navigate(`/blog/${blog.id}`);
+                                            else {
+                                                navigate(`/blog/${blog.id}`, {
+                                                    state: viewedProfile?.username ? {
+                                                        from: {
+                                                            path: `/${viewedProfile.username}/blogs`,
+                                                            label: 'Blogs',
+                                                            crumbs: [
+                                                                { path: `/${viewedProfile.username}/profile`, label: `@${viewedProfile.username}` },
+                                                                { path: `/${viewedProfile.username}/blogs`, label: 'Blogs' },
+                                                            ],
+                                                        },
+                                                    } : undefined,
+                                                });
+                                            }
                                         }}
                                         className="flex items-center gap-4 min-w-0 flex-1 text-left"
                                     >
@@ -289,7 +302,20 @@ const BlogsPage = () => {
                                     ) : null}
 
                                     {!isOwnProfile && (
-                                        <Link to={`/blog/${blog.id}`} className="text-white/40 hover:text-purple-400 text-sm shrink-0">
+                                        <Link
+                                            to={`/blog/${blog.id}`}
+                                            state={viewedProfile?.username ? {
+                                                from: {
+                                                    path: `/${viewedProfile.username}/blogs`,
+                                                    label: 'Blogs',
+                                                    crumbs: [
+                                                        { path: `/${viewedProfile.username}/profile`, label: `@${viewedProfile.username}` },
+                                                        { path: `/${viewedProfile.username}/blogs`, label: 'Blogs' },
+                                                    ],
+                                                },
+                                            } : undefined}
+                                            className="text-white/40 hover:text-purple-400 text-sm shrink-0"
+                                        >
                                             View
                                         </Link>
                                     )}

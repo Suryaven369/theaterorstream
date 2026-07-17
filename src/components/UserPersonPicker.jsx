@@ -46,7 +46,7 @@ const UserPersonPicker = ({ query, onInsert, onClose }) => {
     return (
         <div
             onMouseDown={(e) => e.preventDefault()}
-            className="absolute left-0 right-0 top-full mt-1 z-50 bg-[#1a1a1a] border border-white/10 rounded-xl shadow-2xl overflow-hidden"
+            className="absolute left-0 right-0 top-full mt-1 z-[60] max-h-[min(22rem,55vh)] bg-[#1a1a1a] border border-white/10 rounded-xl shadow-2xl overflow-hidden"
         >
             <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
                 <span className="text-[11px] text-white/40">{query.trim() ? `Mention "${query.trim()}"` : "Mention a user or person…"}</span>
@@ -60,7 +60,7 @@ const UserPersonPicker = ({ query, onInsert, onClose }) => {
             ) : empty ? (
                 <div className="p-3 text-xs text-white/40">{query.trim() ? "No matches found." : "Type a name to search."}</div>
             ) : (
-                <div className="max-h-72 overflow-y-auto">
+                <div className="max-h-[min(18rem,45vh)] overflow-y-auto overscroll-contain">
                     {users.length > 0 && (
                         <>
                             <p className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider text-white/30">Users</p>

@@ -13,6 +13,8 @@ export const EVENT_TYPES = {
     TRAILER_COMPLETED: 'trailer_completed',
     WATCHLISTED: 'watchlisted',
     WATCHLIST_REMOVED: 'watchlist_removed',
+    /** Marked as seen — excludes from recs; does NOT feed taste (seen ≠ loved). */
+    MOVIE_WATCHED: 'movie_watched',
     MOVIE_LIKED: 'movie_liked',
     MOVIE_DISLIKED: 'movie_disliked',
     SHARED: 'shared',

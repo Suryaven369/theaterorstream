@@ -108,8 +108,9 @@ export default function TasteSettingsPage() {
                 <div className="mb-8 flex items-start gap-2.5 rounded-xl border border-white/8 bg-white/[0.03] px-4 py-3 text-xs text-white/55">
                     <FaInfoCircle className="mt-0.5 shrink-0 text-[var(--accent-green)]" />
                     <p>
-                        Your actual viewing behaviour — what you watch, rate, watchlist, and share — always
-                        takes priority. These preferences just give the engine a nudge while it learns you.
+                        Taste is driven by what you like and rate. Marking a film watched only hides it
+                        from recommendations — it does not mean you loved it. These prefs nudge the engine
+                        until you have enough likes and ratings.
                     </p>
                 </div>
 

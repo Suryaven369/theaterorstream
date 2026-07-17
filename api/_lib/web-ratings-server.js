@@ -12,11 +12,14 @@ const CATEGORY_KEYS = [
     'cinematography',
 ];
 
-const MIN_REVIEWS = 3;
 const MAX_REVIEWS = 15;
 const MAX_REVIEW_CHARS = 1200;
+const MIN_REVIEW_CHARS = 25;
 const STALE_DAYS = 7;
-const DEFAULT_ANALYZE_LIMIT = 5;
+/** Score the full In Theaters rail (9) in one Control Tower / cron pass */
+const DEFAULT_ANALYZE_LIMIT = 9;
+/** Home "In Theaters" rail — top popular now-playing only */
+export const IN_THEATERS_RAIL_LIMIT = 9;
 
 function clampScore(value) {
     const n = Number(value);
@@ -35,38 +38,81 @@ function extractReviewTexts(reviews) {
     return reviews
         .map((r) => (typeof r === 'string' ? r : r?.content || r?.review || ''))
         .map((text) => String(text).trim())
-        .filter((text) => text.length >= 40)
+        .filter((text) => text.length >= MIN_REVIEW_CHARS)
         .slice(0, MAX_REVIEWS)
         .map((text) => (text.length > MAX_REVIEW_CHARS ? `${text.slice(0, MAX_REVIEW_CHARS)}…` : text));
 }
 
-async function ensureReviews(supabase, row) {
-    const existing = extractReviewTexts(row.reviews);
-    if (existing.length >= MIN_REVIEWS) return existing;
+function mergeReviewResults(...lists) {
+    const seen = new Set();
+    const out = [];
+    for (const list of lists) {
+        for (const r of list || []) {
+            const key = String(r?.id || r?.content || '').slice(0, 120);
+            if (!key || seen.has(key)) continue;
+            seen.add(key);
+            out.push(r);
+        }
+    }
+    return out;
+}
 
+/**
+ * Pull TMDB reviews across languages — English-only often returns nothing
+ * for India / regional theatrical titles.
+ */
+async function ensureReviews(supabase, row) {
+    const existingRaw = Array.isArray(row.reviews) ? row.reviews : [];
+    let existing = extractReviewTexts(existingRaw);
+    if (existing.length >= 3) return { texts: existing, raw: existingRaw };
+
+    const collected = [...existingRaw];
     try {
-        const detail = await fetchTmdbApi(`/movie/${row.tmdb_id}`, {
-            append_to_response: 'reviews',
-        });
-        const texts = extractReviewTexts(detail?.reviews?.results || []);
-        if (texts.length > 0) {
+        // Default + no language filter + a few common locales
+        const langs = [undefined, '', 'en-US', 'hi-IN', 'ta-IN', 'te-IN'];
+        for (const language of langs) {
+            const params = { page: 1 };
+            if (language !== undefined) params.language = language;
+            const payload = await fetchTmdbApi(`/movie/${row.tmdb_id}/reviews`, params);
+            const batch = payload?.results || [];
+            if (batch.length) {
+                collected.splice(0, collected.length, ...mergeReviewResults(collected, batch));
+            }
+            existing = extractReviewTexts(collected);
+            if (existing.length >= 5) break;
+        }
+
+        // Detail append as a final pass
+        if (existing.length < 2) {
+            const detail = await fetchTmdbApi(`/movie/${row.tmdb_id}`, {
+                append_to_response: 'reviews',
+            });
+            collected.splice(
+                0,
+                collected.length,
+                ...mergeReviewResults(collected, detail?.reviews?.results || []),
+            );
+            existing = extractReviewTexts(collected);
+        }
+
+        if (collected.length > 0) {
             await supabase
                 .from('movies_library')
-                .update({ reviews: detail.reviews?.results || [] })
+                .update({ reviews: collected.slice(0, 40) })
                 .eq('tmdb_id', String(row.tmdb_id))
                 .eq('media_type', 'movie');
         }
-        return texts;
     } catch (err) {
         console.warn(`[web-ratings] TMDB reviews fetch failed for ${row.tmdb_id}:`, err.message);
-        return existing;
     }
+
+    return { texts: extractReviewTexts(collected), raw: collected };
 }
 
-function buildPrompt(title, reviewTexts) {
+function buildReviewPrompt(title, reviewTexts) {
     const joined = reviewTexts.map((t, i) => `[${i + 1}] ${t}`).join('\n\n');
     return [
-        `You are a film critic assistant. Analyze TMDB user reviews for "${title}".`,
+        `You are a film critic assistant. Analyze audience reviews for "${title}".`,
         'Return ONLY valid JSON with these numeric fields (0-10 scale, one decimal max):',
         'acting, screenplay, sound, direction, entertainment, pacing, cinematography.',
         'Also include verdict: a short phrase (max 40 chars) like "Worth theaters" or "Wait for stream".',
@@ -77,7 +123,28 @@ function buildPrompt(title, reviewTexts) {
     ].join('\n');
 }
 
-function normalizeLlmResult(parsed, reviewCount) {
+function buildSynopsisPrompt(row) {
+    const genres = Array.isArray(row.genres)
+        ? row.genres.map((g) => (typeof g === 'string' ? g : g?.name)).filter(Boolean).join(', ')
+        : '';
+    const vote = row.vote_average != null ? Number(row.vote_average).toFixed(1) : 'n/a';
+    return [
+        `You are a film critic assistant. There are few or no public TMDB user reviews yet for "${row.title}".`,
+        'Estimate Theater-or-Stream style scores from the synopsis, genre, and TMDB audience score.',
+        'Return ONLY valid JSON with these numeric fields (0-10 scale, one decimal max):',
+        'acting, screenplay, sound, direction, entertainment, pacing, cinematography.',
+        'Also include verdict: a short phrase (max 40 chars) like "Worth theaters" or "Wait for stream".',
+        'Keep scores realistic and close to the TMDB score; do not invent extreme praise or hate.',
+        '',
+        `Title: ${row.title || 'Unknown'}`,
+        `TMDB score: ${vote}/10 (from ${row.vote_count || 0} votes)`,
+        `Genres: ${genres || 'n/a'}`,
+        `Tagline: ${row.tagline || 'n/a'}`,
+        `Overview: ${(row.overview || '').slice(0, 900) || 'n/a'}`,
+    ].join('\n');
+}
+
+function normalizeLlmResult(parsed, { reviewCount = 0, source = 'reviews' } = {}) {
     if (!parsed || typeof parsed !== 'object') return null;
 
     const scores = {};
@@ -104,12 +171,39 @@ function normalizeLlmResult(parsed, reviewCount) {
         overall,
         verdict,
         review_count: reviewCount,
+        source,
         analyzed_at: new Date().toISOString(),
         model: process.env.GEMINI_MODEL || process.env.MISTRAL_MODEL || 'gemini-2.0-flash',
     };
 }
 
-export async function analyzeWebRatingsForMovie(tmdbId) {
+/** Fill missing overview / scores from TMDB so synopsis fallback can always run. */
+async function enrichRowFromTmdb(row) {
+    const needsOverview = !(row.overview && String(row.overview).trim().length >= 40);
+    const needsVote = row.vote_average == null;
+    if (!needsOverview && !needsVote) return row;
+
+    try {
+        const detail = await fetchTmdbApi(`/movie/${row.tmdb_id}`);
+        if (!detail?.id) return row;
+        return {
+            ...row,
+            title: row.title || detail.title || row.title,
+            overview: (row.overview && String(row.overview).trim()) || detail.overview || '',
+            tagline: row.tagline || detail.tagline || null,
+            vote_average: row.vote_average ?? detail.vote_average ?? null,
+            vote_count: row.vote_count ?? detail.vote_count ?? null,
+            genres: (Array.isArray(row.genres) && row.genres.length)
+                ? row.genres
+                : (detail.genres || []),
+        };
+    } catch (err) {
+        console.warn(`[web-ratings] TMDB enrich failed for ${row.tmdb_id}:`, err.message);
+        return row;
+    }
+}
+
+export async function analyzeWebRatingsForMovie(tmdbId, { force = false } = {}) {
     if (!isLlmEnabled()) {
         return { tmdb_id: String(tmdbId), skipped: true, reason: 'llm_disabled' };
     }
@@ -119,7 +213,7 @@ export async function analyzeWebRatingsForMovie(tmdbId) {
 
     const { data: row, error } = await supabase
         .from('movies_library')
-        .select('tmdb_id, title, reviews, web_ratings, media_type')
+        .select('tmdb_id, title, overview, tagline, genres, vote_average, vote_count, reviews, web_ratings, media_type')
         .eq('tmdb_id', id)
         .eq('media_type', 'movie')
         .maybeSingle();
@@ -127,21 +221,63 @@ export async function analyzeWebRatingsForMovie(tmdbId) {
     if (error) throw error;
     if (!row) return { tmdb_id: id, skipped: true, reason: 'not_in_library' };
 
-    if (row.web_ratings?.analyzed_at && !isStale(row.web_ratings.analyzed_at)) {
+    // Already scored from real reviews — skip unless force re-run
+    if (
+        !force
+        && row.web_ratings?.analyzed_at
+        && !isStale(row.web_ratings.analyzed_at)
+        && (row.web_ratings.source === 'reviews' || (row.web_ratings.review_count || 0) > 0)
+    ) {
         return { tmdb_id: id, skipped: true, reason: 'fresh', web_ratings: row.web_ratings };
     }
 
-    const reviewTexts = await ensureReviews(supabase, row);
-    if (reviewTexts.length < MIN_REVIEWS) {
-        return { tmdb_id: id, skipped: true, reason: 'insufficient_reviews', count: reviewTexts.length };
+    // Synopsis-only scores: re-run when force, or when we can upgrade to reviews
+    if (
+        !force
+        && row.web_ratings?.analyzed_at
+        && !isStale(row.web_ratings.analyzed_at)
+        && row.web_ratings.source === 'synopsis'
+    ) {
+        // Fall through only if we might now have reviews; otherwise keep synopsis
+        const probe = await ensureReviews(supabase, row);
+        if (probe.texts.length < 1) {
+            return { tmdb_id: id, skipped: true, reason: 'fresh', web_ratings: row.web_ratings };
+        }
     }
 
-    const parsed = await generateJson(buildPrompt(row.title || 'this film', reviewTexts), {
-        maxOutputTokens: 400,
+    let working = await enrichRowFromTmdb(row);
+    const { texts: reviewTexts } = await ensureReviews(supabase, working);
+    const useReviews = reviewTexts.length >= 1;
+    const hasSynopsis = !!(working.overview && String(working.overview).trim().length >= 20);
+    const hasVote = working.vote_average != null;
+
+    if (!useReviews && !hasSynopsis && !hasVote) {
+        return {
+            tmdb_id: id,
+            skipped: true,
+            reason: 'no_signal',
+            count: 0,
+            title: working.title || id,
+        };
+    }
+
+    const prompt = useReviews
+        ? buildReviewPrompt(working.title || 'this film', reviewTexts)
+        : buildSynopsisPrompt(working);
+
+    const parsed = await generateJson(prompt, { maxOutputTokens: 400 });
+    const webRatings = normalizeLlmResult(parsed, {
+        reviewCount: reviewTexts.length,
+        source: useReviews ? 'reviews' : 'synopsis',
     });
-    const webRatings = normalizeLlmResult(parsed, reviewTexts.length);
     if (!webRatings) {
-        return { tmdb_id: id, skipped: true, reason: 'llm_parse_failed' };
+        return {
+            tmdb_id: id,
+            skipped: true,
+            reason: 'llm_parse_failed',
+            title: working.title || id,
+            review_count: reviewTexts.length,
+        };
     }
 
     const { error: updateError } = await supabase
@@ -152,18 +288,44 @@ export async function analyzeWebRatingsForMovie(tmdbId) {
 
     if (updateError) throw updateError;
 
-    return { tmdb_id: id, analyzed: true, web_ratings: webRatings };
+    // Persist enriched overview/votes when library row was thin
+    if (needsLibraryEnrich(row, working)) {
+        await supabase
+            .from('movies_library')
+            .update({
+                overview: working.overview || row.overview,
+                tagline: working.tagline || row.tagline,
+                vote_average: working.vote_average ?? row.vote_average,
+                vote_count: working.vote_count ?? row.vote_count,
+            })
+            .eq('tmdb_id', id)
+            .eq('media_type', 'movie');
+    }
+
+    return {
+        tmdb_id: id,
+        analyzed: true,
+        source: webRatings.source,
+        review_count: webRatings.review_count,
+        title: working.title || id,
+        web_ratings: webRatings,
+    };
 }
 
-export async function analyzeWebRatingsForTmdbIds(tmdbIds, { limit = DEFAULT_ANALYZE_LIMIT } = {}) {
+function needsLibraryEnrich(before, after) {
+    const thinOverview = !(before.overview && String(before.overview).trim().length >= 40);
+    return thinOverview || before.vote_average == null;
+}
+
+export async function analyzeWebRatingsForTmdbIds(tmdbIds, { limit = DEFAULT_ANALYZE_LIMIT, force = false } = {}) {
     const unique = [...new Set((tmdbIds || []).map(String))].slice(0, limit);
     const results = [];
 
     for (const id of unique) {
         try {
-            results.push(await analyzeWebRatingsForMovie(id));
+            results.push(await analyzeWebRatingsForMovie(id, { force }));
         } catch (err) {
-            results.push({ tmdb_id: id, error: err.message });
+            results.push({ tmdb_id: id, error: err.message, skipped: true, reason: 'error' });
         }
     }
 
@@ -171,6 +333,7 @@ export async function analyzeWebRatingsForTmdbIds(tmdbIds, { limit = DEFAULT_ANA
         processed: results.length,
         analyzed: results.filter((r) => r.analyzed).length,
         skipped: results.filter((r) => r.skipped).length,
+        fresh: results.filter((r) => r.reason === 'fresh').length,
         results,
     };
 }
@@ -205,9 +368,9 @@ function collectSectionTmdbIds(moviesByRegion) {
 }
 
 /**
- * Merge TMDB now-playing into the In Theaters CMS row without wiping
- * manually added titles. Synced titles are refreshed/ordered first;
- * existing manual titles that aren't in the sync stay at the end.
+ * Replace the In Theaters CMS rail for a region with the top N synced
+ * now-playing titles (by popularity). Caps at IN_THEATERS_RAIL_LIMIT (9).
+ * When tmdbIds is empty, trims the existing rail to the limit without a full replace.
  */
 export async function syncInTheatersCmsSection(region, tmdbIds) {
     const supabase = getSupabaseAdmin();
@@ -237,12 +400,15 @@ export async function syncInTheatersCmsSection(region, tmdbIds) {
             .map((m) => [String(m.tmdb_id), m]),
     );
 
-    const lookupIds = [...new Set([...syncedIds, ...existingById.keys()])];
+    const lookupIds = [...new Set([
+        ...syncedIds,
+        ...existingById.keys(),
+    ])];
     let libraryById = new Map();
     if (lookupIds.length > 0) {
         const { data: libraryRows, error: libError } = await supabase
             .from('movies_library')
-            .select('tmdb_id, title, poster_path, backdrop_path, release_date, vote_average, overview')
+            .select('tmdb_id, title, poster_path, backdrop_path, release_date, vote_average, overview, popularity')
             .eq('media_type', 'movie')
             .in('tmdb_id', lookupIds);
 
@@ -250,22 +416,29 @@ export async function syncInTheatersCmsSection(region, tmdbIds) {
         libraryById = new Map((libraryRows || []).map((r) => [String(r.tmdb_id), r]));
     }
 
+    const popularityOf = (id) => {
+        const lib = libraryById.get(id);
+        const existing = existingById.get(id);
+        return Number(lib?.popularity ?? existing?.popularity ?? existing?.vote_average ?? 0) || 0;
+    };
+
+    let orderedIds;
+    if (syncedIds.length > 0) {
+        // Prefer sync order (already popularity-sorted from Control Tower),
+        // then fill gaps by library popularity — never more than the rail limit.
+        orderedIds = syncedIds.slice(0, IN_THEATERS_RAIL_LIMIT);
+    } else {
+        orderedIds = [...existingById.keys()]
+            .sort((a, b) => popularityOf(b) - popularityOf(a))
+            .slice(0, IN_THEATERS_RAIL_LIMIT);
+    }
+
     const cmsMovies = [];
     const used = new Set();
-
-    // 1) Synced now-playing titles first (refreshed from library when possible)
-    for (const id of syncedIds) {
+    for (const id of orderedIds) {
         if (used.has(id)) continue;
         const row = libraryById.get(id) || existingById.get(id);
         if (!row) continue;
-        cmsMovies.push(toCmsMovie(row, cmsMovies.length + 1));
-        used.add(id);
-    }
-
-    // 2) Keep manual / other-region titles already on this rail
-    for (const [id, existing] of existingById) {
-        if (used.has(id)) continue;
-        const row = libraryById.get(id) || existing;
         cmsMovies.push(toCmsMovie(row, cmsMovies.length + 1));
         used.add(id);
     }
@@ -279,7 +452,6 @@ export async function syncInTheatersCmsSection(region, tmdbIds) {
 
     if (updateError) throw updateError;
 
-    // Score every title currently on the In Theaters section (all regions)
     const allSectionIds = collectSectionTmdbIds(moviesByRegion);
 
     return {
@@ -289,6 +461,7 @@ export async function syncInTheatersCmsSection(region, tmdbIds) {
         count: cmsMovies.length,
         tmdb_ids: allSectionIds,
         synced_count: syncedIds.length,
+        limit: IN_THEATERS_RAIL_LIMIT,
     };
 }
 
@@ -317,13 +490,17 @@ export async function pickMoviesNeedingWebRatings(tmdbIds, { limit = DEFAULT_ANA
 
 export async function runNowPlayingPostSync({ region = 'IN', tmdbIds = [] } = {}) {
     const cms = await syncInTheatersCmsSection(region, tmdbIds);
-    // Include cron-synced + every title already on the In Theaters rail (manual adds too)
+    // Include cron-synced + every title already on the In Theaters rail
     const candidateIds = [...new Set([
         ...(cms.tmdb_ids || []),
         ...(tmdbIds || []).map(String),
     ])];
-    const toAnalyze = await pickMoviesNeedingWebRatings(candidateIds);
-    const ratings = await analyzeWebRatingsForTmdbIds(toAnalyze);
+    const toAnalyze = await pickMoviesNeedingWebRatings(candidateIds, {
+        limit: IN_THEATERS_RAIL_LIMIT,
+    });
+    const ratings = await analyzeWebRatingsForTmdbIds(toAnalyze, {
+        limit: IN_THEATERS_RAIL_LIMIT,
+    });
 
     return { cms, ratings };
 }

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import {
     FaArrowLeft, FaPlus, FaTrash, FaHeart, FaGlobe, FaLock, FaEdit, FaSave,
@@ -56,6 +56,7 @@ const posterFullUrl = (path, size = 'w500') => resolveTmdbImageUrl(path, { size 
 const BoardDetailsPage = () => {
     const { slug, username: routeUsername } = useParams();
     const navigate = useNavigate();
+    const location = useLocation();
     const { user, profile, isAuthenticated } = useAuth();
     const imageURL = useSelector((s) => s.movieData.imageURL);
 
@@ -757,12 +758,48 @@ const BoardDetailsPage = () => {
                 </div>
 
                 <div className="relative max-w-6xl mx-auto">
-                    <Link
-                        to={ownerUsername ? `/${ownerUsername}/boards` : '/boards'}
-                        className="inline-flex items-center gap-2 text-white/50 hover:text-white text-sm mb-5 transition-colors"
-                    >
-                        <FaArrowLeft /> Boards
-                    </Link>
+                    {(() => {
+                        const from = location.state?.from;
+                        const ownerBoardsPath = ownerUsername ? `/${ownerUsername}/boards` : '/boards';
+                        const backPath = from?.path || ownerBoardsPath;
+                        const backLabel = from?.label ? `Back to ${from.label}` : 'Boards';
+                        const trailCrumbs = from?.crumbs?.length
+                            ? from.crumbs
+                            : ownerUsername
+                                ? [
+                                    { path: `/${ownerUsername}/profile`, label: `@${ownerUsername}` },
+                                    { path: ownerBoardsPath, label: 'Boards' },
+                                ]
+                                : [{ path: '/boards', label: 'Boards' }];
+                        return (
+                            <>
+                                <Link
+                                    to={backPath}
+                                    className="inline-flex items-center gap-2 text-white/50 hover:text-white text-sm mb-3 transition-colors"
+                                >
+                                    <FaArrowLeft /> {backLabel}
+                                </Link>
+                                {trailCrumbs.length > 0 && (
+                                    <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs sm:text-sm text-white/40 mb-5 min-w-0">
+                                        {trailCrumbs.map((crumb, i) => (
+                                            <React.Fragment key={`${crumb.path || crumb.label}-${i}`}>
+                                                {i > 0 && <span className="text-white/20" aria-hidden>/</span>}
+                                                {crumb.path ? (
+                                                    <Link to={crumb.path} className="hover:text-white/70 transition-colors truncate max-w-[40vw] sm:max-w-none">
+                                                        {crumb.label}
+                                                    </Link>
+                                                ) : (
+                                                    <span className="truncate max-w-[40vw] sm:max-w-none">{crumb.label}</span>
+                                                )}
+                                            </React.Fragment>
+                                        ))}
+                                        <span className="text-white/20" aria-hidden>/</span>
+                                        <span className="text-white/70 truncate max-w-[50vw] sm:max-w-xs">{board.title}</span>
+                                    </nav>
+                                )}
+                            </>
+                        );
+                    })()}
 
                     {/* Compact board header */}
                     <div className="bg-[#141414] border border-white/[0.07] rounded-2xl p-4 sm:p-6 mb-8">

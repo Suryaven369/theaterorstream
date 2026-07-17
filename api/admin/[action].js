@@ -528,15 +528,18 @@ async function handleRss(req, res, auth) {
         return res.status(200).json({ ok: true, clusters, count: clusters.length });
     }
 
-    // Re-extract listicle carousel items for approved articles without summary_items
+    // Re-summarize + extract listicle carousels for approved articles missing summary_items
     if (job === 'reextract-listicles') {
         const supabase = getSupabaseAdmin();
-        const { isListicleArticle, parseSummaryForDisplay } = await import('../../src/lib/articleSummary.js');
+        const {
+            isListicleArticle,
+            parseSummaryForDisplay,
+            summarizeArticleForFeed,
+        } = await import('../../src/lib/articleSummary.js');
         const { buildListicleSummaryItems } = await import('../_lib/listicle-media.js');
-        
+
         const limit = body.limit || 20;
-        
-        // Find approved articles without summary_items that look like listicles
+
         const { data: articles, error } = await supabase
             .from('feed_articles')
             .select('id, title, summary, body_html')
@@ -545,60 +548,77 @@ async function handleRss(req, res, auth) {
             .is('summary_items', null)
             .order('published_at', { ascending: false })
             .limit(limit);
-        
+
         if (error) {
             return res.status(500).json({ error: error.message });
         }
-        
+
         const results = { processed: 0, extracted: 0, skipped: 0, errors: [], details: [] };
-        
+
         for (const article of articles || []) {
             results.processed++;
             try {
-                if (!isListicleArticle(article.title, article.summary)) {
+                if (!isListicleArticle(article.title, article.summary || article.body_html || '')) {
                     results.skipped++;
                     continue;
                 }
-                
-                const parsed = parseSummaryForDisplay(article.summary || '');
+
+                let parsed = parseSummaryForDisplay(article.summary || '');
+                let nextSummary = article.summary || '';
+
+                // Prose summaries from the old detector need a full re-summarize
+                if (parsed.kind !== 'list' || parsed.items.length < 2) {
+                    nextSummary = summarizeArticleForFeed({
+                        title: article.title,
+                        summary: '',
+                        bodyHtml: article.body_html || '',
+                    }) || '';
+                    parsed = parseSummaryForDisplay(nextSummary);
+                }
+
                 if (parsed.kind !== 'list' || parsed.items.length < 2) {
                     results.skipped++;
                     continue;
                 }
-                
+
                 const summaryItems = await buildListicleSummaryItems(parsed.items, article.body_html || '');
                 if (!summaryItems || summaryItems.length < 2) {
                     results.skipped++;
                     continue;
                 }
-                
+
+                const patch = { summary_items: summaryItems };
+                if (nextSummary && nextSummary !== article.summary) {
+                    patch.summary = nextSummary;
+                }
+
                 const { error: updateErr } = await supabase
                     .from('feed_articles')
-                    .update({ summary_items: summaryItems })
+                    .update(patch)
                     .eq('id', article.id);
-                
+
                 if (updateErr) {
                     results.errors.push({ id: article.id, title: article.title, error: updateErr.message });
                 } else {
                     results.extracted++;
-                    results.details.push({ 
-                        id: article.id, 
-                        title: article.title.slice(0, 60), 
-                        items: summaryItems.length 
+                    results.details.push({
+                        id: article.id,
+                        title: article.title.slice(0, 60),
+                        items: summaryItems.length,
                     });
                 }
             } catch (err) {
                 results.errors.push({ id: article.id, title: article.title, error: err.message });
             }
         }
-        
+
         return res.status(200).json({ ok: true, ...results });
     }
 
     return res.status(400).json({
         error: 'Invalid job',
         allowed: [
-            'refresh-source', 'refresh-all', 'approve-article', 'regenerate-summary',
+            'refresh-source', 'refresh-all', 'approve-article', 'regenerate-summary', 'reextract-listicles',
             'analyze-keywords', 'keyword-stats',
             'classify-article', 'classify-text', 'batch-classify', 'classifier-status', 'pending-classification',
             'normalize-entities', 'normalize-entities-raw', 'entity-overlap',
@@ -624,9 +644,45 @@ async function handleBackfill(req, res, auth) {
         return res.status(200).json({ ok: true, ...result });
     }
 
+    // Score In Theaters (or explicit tmdbIds) from TMDB reviews → LLM TOS axes + verdict
+    if (job === 'analyze-web-ratings') {
+        const {
+            analyzeWebRatingsForTmdbIds,
+            pickMoviesNeedingWebRatings,
+            syncInTheatersCmsSection,
+        } = await import('../_lib/web-ratings-server.js');
+        const limit = Math.min(Number(body.limit) || 8, 20);
+
+        if (Array.isArray(body.tmdbIds) && body.tmdbIds.length) {
+            const ids = body.tmdbIds.map(String).filter(Boolean);
+            const idLimit = Math.min(Number(body.limit) || ids.length, 20);
+            const result = await analyzeWebRatingsForTmdbIds(ids, {
+                limit: idLimit,
+                force: !!body.force,
+            });
+            return res.status(200).json({ ok: true, ...result });
+        }
+
+        // Refresh CMS rail ids, then analyze titles still missing web_ratings
+        const cms = await syncInTheatersCmsSection(body.region || 'IN', []);
+        const toAnalyze = await pickMoviesNeedingWebRatings(cms.tmdb_ids || [], { limit });
+        if (!toAnalyze.length) {
+            return res.status(200).json({
+                ok: true,
+                processed: 0,
+                analyzed: 0,
+                skipped: 0,
+                message: 'All In Theaters titles already have fresh web_ratings (or none on rail)',
+                cms,
+            });
+        }
+        const ratings = await analyzeWebRatingsForTmdbIds(toAnalyze, { limit });
+        return res.status(200).json({ ok: true, cms, ...ratings });
+    }
+
     return res.status(400).json({
         error: 'Invalid job',
-        allowed: ['tv-seasons'],
+        allowed: ['tv-seasons', 'analyze-web-ratings'],
     });
 }
 

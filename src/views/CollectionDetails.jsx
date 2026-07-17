@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, Link, useParams } from 'react-router-dom';
+import { useNavigate, Link, useParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSelector } from 'react-redux';
 import {
@@ -280,6 +280,7 @@ const ShareModal = ({ collection, movies, imageURL, shareUrl, onClose }) => {
 
 const CollectionDetails = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const { slug } = useParams();
     const { user, profile, loading: authLoading } = useAuth();
     const imageURL = useSelector((state) => state.movieData.imageURL);
@@ -526,6 +527,23 @@ const CollectionDetails = () => {
 
     const movies = collection.collection_movies || [];
     const shareUrl = `${window.location.origin}/collection/${slug}`;
+    const from = location.state?.from;
+    const ownerUsername = collection.user_profiles?.username;
+    const ownerCollectionsPath = ownerUsername ? `/${ownerUsername}/collections` : '/';
+    const backPath = from?.path || ownerCollectionsPath;
+    const backLabel = from?.label
+        ? `Back to ${from.label}`
+        : ownerUsername
+            ? 'Back to Collections'
+            : 'Back home';
+    const trailCrumbs = from?.crumbs?.length
+        ? from.crumbs
+        : ownerUsername
+            ? [
+                { path: `/${ownerUsername}/profile`, label: `@${ownerUsername}` },
+                { path: ownerCollectionsPath, label: 'Collections' },
+            ]
+            : [];
 
     // Get first poster for OG image
     const ogImage = movies.length > 0 && movies[0].poster_path
@@ -552,12 +570,30 @@ const CollectionDetails = () => {
                     {/* Header */}
                     <div className="mb-6 sm:mb-8">
                         <Link
-                            to={collection.user_profiles ? `/${collection.user_profiles.username}/collections` : '/'}
-                            className="inline-flex items-center gap-2 text-white/50 hover:text-white mb-5 sm:mb-6 transition-colors min-h-[44px]"
+                            to={backPath}
+                            className="inline-flex items-center gap-2 text-white/50 hover:text-white mb-3 sm:mb-4 transition-colors min-h-[44px]"
                         >
                             <FaArrowLeft />
-                            <span>Back to Collections</span>
+                            <span>{backLabel}</span>
                         </Link>
+                        {trailCrumbs.length > 0 && (
+                            <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs sm:text-sm text-white/40 mb-5 sm:mb-6 min-w-0">
+                                {trailCrumbs.map((crumb, i) => (
+                                    <React.Fragment key={`${crumb.path || crumb.label}-${i}`}>
+                                        {i > 0 && <span className="text-white/20" aria-hidden>/</span>}
+                                        {crumb.path ? (
+                                            <Link to={crumb.path} className="hover:text-white/70 transition-colors truncate max-w-[40vw] sm:max-w-none">
+                                                {crumb.label}
+                                            </Link>
+                                        ) : (
+                                            <span className="truncate max-w-[40vw] sm:max-w-none">{crumb.label}</span>
+                                        )}
+                                    </React.Fragment>
+                                ))}
+                                <span className="text-white/20" aria-hidden>/</span>
+                                <span className="text-white/70 truncate max-w-[50vw] sm:max-w-xs">{collection.name}</span>
+                            </nav>
+                        )}
 
                         <div className="bg-[#1a1a1a] p-4 sm:p-6 md:p-8 rounded-xl sm:rounded-2xl border border-white/5">
                             {isEditing ? (

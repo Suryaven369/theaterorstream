@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link, useParams } from 'react-router-dom';
+import { useNavigate, Link, useParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getBlogPost, deleteBlogPost, toggleBlogLike } from '../lib/blogs';
 import { FaArrowLeft, FaHeart, FaTrash, FaShareAlt } from 'react-icons/fa';
@@ -11,6 +11,7 @@ const stripHtml = (html) => String(html || '').replace(/<[^>]+>/g, ' ').replace(
 
 const BlogDetails = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const { id } = useParams();
     const { user } = useAuth();
 
@@ -122,13 +123,50 @@ const BlogDetails = () => {
 
             <div className={`min-h-screen bg-[#0a0a0a] ${blog.cover_image ? '-mt-20 relative z-10' : 'pt-20 sm:pt-24'} pb-20 sm:pb-12 px-3 sm:px-4 safe-area-bottom`}>
                 <div className="max-w-2xl mx-auto">
-                    <Link
-                        to={blog.user_profiles?.username ? `/${blog.user_profiles.username}/blogs` : '/'}
-                        className="inline-flex items-center gap-2 text-white/50 hover:text-white mb-6 transition-colors"
-                    >
-                        <FaArrowLeft />
-                        <span>Back to Blogs</span>
-                    </Link>
+                    {(() => {
+                        const from = location.state?.from;
+                        const authorUsername = blog.user_profiles?.username;
+                        const authorBlogsPath = authorUsername ? `/${authorUsername}/blogs` : '/';
+                        const backPath = from?.path || authorBlogsPath;
+                        const backLabel = from?.label ? `Back to ${from.label}` : 'Back to Blogs';
+                        const trailCrumbs = from?.crumbs?.length
+                            ? from.crumbs
+                            : authorUsername
+                                ? [
+                                    { path: `/${authorUsername}/profile`, label: `@${authorUsername}` },
+                                    { path: authorBlogsPath, label: 'Blogs' },
+                                ]
+                                : [];
+                        return (
+                            <>
+                                <Link
+                                    to={backPath}
+                                    className="inline-flex items-center gap-2 text-white/50 hover:text-white mb-3 transition-colors"
+                                >
+                                    <FaArrowLeft />
+                                    <span>{backLabel}</span>
+                                </Link>
+                                {trailCrumbs.length > 0 && (
+                                    <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs sm:text-sm text-white/40 mb-6 min-w-0">
+                                        {trailCrumbs.map((crumb, i) => (
+                                            <React.Fragment key={`${crumb.path || crumb.label}-${i}`}>
+                                                {i > 0 && <span className="text-white/20" aria-hidden>/</span>}
+                                                {crumb.path ? (
+                                                    <Link to={crumb.path} className="hover:text-white/70 transition-colors truncate max-w-[40vw] sm:max-w-none">
+                                                        {crumb.label}
+                                                    </Link>
+                                                ) : (
+                                                    <span className="truncate max-w-[40vw] sm:max-w-none">{crumb.label}</span>
+                                                )}
+                                            </React.Fragment>
+                                        ))}
+                                        <span className="text-white/20" aria-hidden>/</span>
+                                        <span className="text-white/70 truncate max-w-[50vw] sm:max-w-xs">{blog.title}</span>
+                                    </nav>
+                                )}
+                            </>
+                        );
+                    })()}
 
                     <article className="bg-[#1a1a1a] p-6 sm:p-8 rounded-2xl border border-white/5">
                         <h1 className="text-2xl sm:text-3xl font-bold text-white mb-3 break-words">{blog.title}</h1>

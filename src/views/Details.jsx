@@ -421,12 +421,13 @@ const Details = () => {
     const web = data?.web_ratings;
     if (web?.acting != null) {
       const reviewCount = web.review_count || 0;
+      const fromSynopsis = web.source === 'synopsis' || reviewCount === 0;
       setDisplayRatings({
         ratings: mapWebRatingsToDisplay(web),
         source: 'web',
-        sourceLabel: reviewCount > 0
-          ? `Web consensus · ${reviewCount} TMDB reviews`
-          : 'Web consensus',
+        sourceLabel: fromSynopsis
+          ? 'AI estimate · synopsis + TMDB score (few reviews yet)'
+          : `Web consensus · ${reviewCount} TMDB reviews`,
         secondaryLabel: communityOverallLabel,
       });
       return;
@@ -451,7 +452,11 @@ const Details = () => {
     }
 
     if (data?.vote_average) {
-      setDisplayRatings(generateFallbackRatings(data.vote_average));
+      const fallback = generateFallbackRatings(data.vote_average);
+      setDisplayRatings({
+        ...fallback,
+        sourceLabel: 'Estimated from TMDB score · web analysis pending',
+      });
     } else {
       setDisplayRatings(null);
     }

@@ -16,6 +16,7 @@ import { REGIONS } from "../../constants/regions";
 import { invalidateHomepageSections } from "../../store/movieSlice";
 import { pickBestPosterPath } from "../../utils/imageHelper";
 import { detectHotTags, formatHotTagLabel, checkRecentAnnouncement } from "../../utils/hotContentTags";
+import { triggerBackfill } from "../../lib/adminSyncApi";
 
 function isLiveHotSection(section) {
     return section.api_source === 'trending_live';
@@ -86,6 +87,7 @@ const AdminSectionsPage = () => {
     const [searchLoading, setSearchLoading] = useState(false);
     const [draggedIndex, setDraggedIndex] = useState(null);
     const [fetchingApi, setFetchingApi] = useState(null);
+    const [analyzingSectionId, setAnalyzingSectionId] = useState(null);
 
     // Region selection for API fetches
     const [selectedRegion, setSelectedRegion] = useState(REGIONS[0]); // Default India
@@ -206,23 +208,23 @@ const AdminSectionsPage = () => {
                 endpoint = API_ENDPOINTS[section.api_source] || "/trending/movie/week";
 
                 if (section.api_source === 'now_playing' || section.api_source === 'on_the_air') {
-                    // In Theaters = ALL movies currently in cinemas for the region
-                    // Use discover with regional release dates for accurate results
+                    // In Theaters = regional theatrical releases in the last ~4 weeks
                     const today = new Date();
-                    const fiveWeeksAgo = new Date(today);
-                    fiveWeeksAgo.setDate(fiveWeeksAgo.getDate() - 35); // ~5 weeks theatrical window
-                    
+                    const windowStart = new Date(today);
+                    windowStart.setDate(windowStart.getDate() - 28);
+
                     endpoint = "/discover/movie";
                     baseParams = {
                         region: regionCode,
-                        'release_date.gte': fiveWeeksAgo.toISOString().split('T')[0],
+                        'release_date.gte': windowStart.toISOString().split('T')[0],
                         'release_date.lte': todayStr,
-                        'with_release_type': '2|3', // Theatrical releases
+                        'with_release_type': '2|3', // Theatrical limited | Theatrical
                         sort_by: 'popularity.desc',
-                        'vote_count.gte': 10, // Filter out obscure releases
+                        'vote_count.gte': 5,
+                        include_adult: false,
                     };
                     tvCompanion = null;
-                    console.log(`🎬 In Theaters (${regionCode}): ${fiveWeeksAgo.toISOString().split('T')[0]} to ${todayStr}, sorted by popularity`);
+                    console.log(`🎬 In Theaters (${regionCode}): ${windowStart.toISOString().split('T')[0]} to ${todayStr}, theatrical only`);
                 } else if (section.api_source === 'upcoming') {
                     baseParams = { region: regionCode };
                     tvCompanion = {
@@ -290,17 +292,18 @@ const AdminSectionsPage = () => {
                 } else if (section.api_source === 'airing_today') {
                     // Remap legacy airing_today → In Theaters (movies only)
                     const today = new Date();
-                    const fiveWeeksAgo = new Date(today);
-                    fiveWeeksAgo.setDate(fiveWeeksAgo.getDate() - 35);
-                    
+                    const windowStart = new Date(today);
+                    windowStart.setDate(windowStart.getDate() - 28);
+
                     endpoint = "/discover/movie";
                     baseParams = {
                         region: regionCode,
-                        'release_date.gte': fiveWeeksAgo.toISOString().split('T')[0],
+                        'release_date.gte': windowStart.toISOString().split('T')[0],
                         'release_date.lte': todayStr,
                         'with_release_type': '2|3',
                         sort_by: 'popularity.desc',
-                        'vote_count.gte': 10,
+                        'vote_count.gte': 5,
+                        include_adult: false,
                     };
                     tvCompanion = null;
                 }
@@ -312,9 +315,14 @@ const AdminSectionsPage = () => {
             const OTT_MOVIE_COUNT = 3;
             const OTT_SERIES_COUNT = 3;
 
+            const isTheaterFetch =
+                section.api_source === 'now_playing'
+                || section.api_source === 'on_the_air'
+                || section.api_source === 'airing_today';
+            // In Theaters rail = top 9 popular theatrical titles only
             const desiredCount = isOttProvider
                 ? OTT_MOVIE_COUNT + OTT_SERIES_COUNT
-                : (section.max_movies || 10);
+                : (isTheaterFetch ? 9 : (section.max_movies || 10));
             const isUpcomingFilter = section.api_source === 'upcoming' || section.api_source === 'coming_soon';
             const isLiveHot = isLiveHotSection(section);
             const pagesToFetch = Math.min(10, Math.ceil(
@@ -423,11 +431,23 @@ const AdminSectionsPage = () => {
                 }
             }
 
-            // In Theaters: movies only — drop any series
+            // In Theaters: movies only, released in the last 28 days (drop old catalog noise)
             if (isTheaterSection) {
+                const cutoff = new Date();
+                cutoff.setHours(0, 0, 0, 0);
+                cutoff.setDate(cutoff.getDate() - 28);
+                const todayEnd = new Date();
+                todayEnd.setHours(23, 59, 59, 999);
                 items = items
                     .filter((item) => (item.media_type || 'movie') !== 'tv')
-                    .map((item) => ({ ...item, media_type: 'movie' }));
+                    .map((item) => ({ ...item, media_type: 'movie' }))
+                    .filter((item) => {
+                        const dateStr = item.release_date;
+                        if (!dateStr) return false;
+                        const d = new Date(dateStr);
+                        return d >= cutoff && d <= todayEnd;
+                    })
+                    .sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
             }
 
             // Filter for upcoming (movies only) BEFORE truncating to max_movies — filtering after
@@ -566,6 +586,54 @@ const AdminSectionsPage = () => {
             toast.error("Failed to fetch content. Check console for details.");
         }
         setFetchingApi(null);
+    };
+
+    /** Run AI web ratings (TMDB reviews → TOS scores + verdict) for movies on this section / region */
+    const handleAnalyzeSectionRatings = async (section) => {
+        const regionCode = selectedRegion.code;
+        const regionMovies = section.movies_by_region?.[regionCode] || [];
+        const tmdbIds = regionMovies
+            .map((m) => String(m.tmdb_id || m.id || ''))
+            .filter(Boolean);
+
+        if (!tmdbIds.length) {
+            toast.warning(`No movies in ${selectedRegion.flag} ${selectedRegion.name} for this section. Fetch or add titles first.`);
+            return;
+        }
+
+        setAnalyzingSectionId(section.id);
+        try {
+            // force: re-score synopsis titles + try again for movies with 0 TMDB reviews
+            const result = await triggerBackfill('analyze-web-ratings', {
+                tmdbIds,
+                limit: Math.min(tmdbIds.length, 20),
+                region: regionCode,
+                force: true,
+            });
+            const rows = result.results || [];
+            const analyzed = result.analyzed || 0;
+            const fromReviews = rows.filter((r) => r.analyzed && r.source === 'reviews').length;
+            const fromSynopsis = rows.filter((r) => r.analyzed && r.source === 'synopsis').length;
+            const failed = rows.filter((r) => r.skipped || r.error);
+            const failBits = failed
+                .map((r) => `${r.title || r.tmdb_id}:${r.reason || r.error || 'fail'}`)
+                .slice(0, 5);
+            const detail = [
+                fromReviews ? `${fromReviews} from reviews` : null,
+                fromSynopsis ? `${fromSynopsis} from synopsis` : null,
+                failBits.length ? `issues: ${failBits.join(', ')}` : null,
+            ].filter(Boolean).join(' · ');
+
+            toast.success(
+                `${section.name} · ${selectedRegion.flag}: ${analyzed}/${tmdbIds.length} scored`
+                + (detail ? ` — ${detail}` : ''),
+            );
+        } catch (error) {
+            console.error('Analyze section ratings failed:', error);
+            toast.error(error?.message || 'Failed to analyze ratings');
+        } finally {
+            setAnalyzingSectionId(null);
+        }
     };
 
     // Create section (immediate save since it's a new item)
@@ -1121,6 +1189,19 @@ const AdminSectionsPage = () => {
                                             {fetchingApi === section.id ? "⏳ Fetching…" : "🔄 Fetch"}
                                         </button>
                                     )}
+                                    {(section.movies_by_region?.[selectedRegion.code]?.length > 0) && (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleAnalyzeSectionRatings(section)}
+                                            disabled={analyzingSectionId === section.id}
+                                            title={`AI web ratings for ${selectedRegion.flag} ${selectedRegion.name} titles on this row`}
+                                            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors disabled:opacity-50 whitespace-nowrap"
+                                        >
+                                            {analyzingSectionId === section.id
+                                                ? "⏳ Analyzing…"
+                                                : `✨ Analyze ratings (${section.movies_by_region[selectedRegion.code].length})`}
+                                        </button>
+                                    )}
                                     <button
                                         onClick={() => handleToggle(section.id)}
                                         className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${section.is_active
@@ -1342,6 +1423,18 @@ const AdminSectionsPage = () => {
                                                     className="px-4 py-2 rounded-lg text-xs font-medium bg-purple-500 text-white hover:bg-purple-600 transition-colors disabled:opacity-50 shadow-lg shadow-purple-500/20"
                                                 >
                                                     {fetchingApi === section.id ? "⏳ Fetching…" : "🔄 Fetch Movies + Series"}
+                                                </button>
+                                            )}
+                                            {(section.movies_by_region?.[selectedRegion.code]?.length > 0) && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleAnalyzeSectionRatings(section)}
+                                                    disabled={analyzingSectionId === section.id}
+                                                    className="px-4 py-2 rounded-lg text-xs font-medium bg-emerald-500 text-white hover:bg-emerald-600 transition-colors disabled:opacity-50 shadow-lg shadow-emerald-500/20"
+                                                >
+                                                    {analyzingSectionId === section.id
+                                                        ? "⏳ Analyzing…"
+                                                        : `✨ Analyze ratings (${selectedRegion.flag})`}
                                                 </button>
                                             )}
                                             {Object.values(section.movies_by_region || {}).some(arr => arr?.length > 0) && (

@@ -263,8 +263,9 @@ export default function FeedComposer({
       ? 'Body text (optional)… / movie · @ people · # hashtags'
       : "What's happening? / movie · @ people · # hashtags";
 
+  // overflow-visible so @ / # / movie pickers aren't clipped on mobile/iPad
   return (
-    <div className="border-b border-[var(--color-border)] bg-transparent overflow-hidden">
+    <div className="relative z-30 border-b border-[var(--color-border)] bg-transparent overflow-visible">
       {!isAuthenticated ? (
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-4">
           <p className="text-sm text-[var(--color-text-muted)]">
@@ -279,8 +280,8 @@ export default function FeedComposer({
           </Link>
         </div>
       ) : (
-        <div className="px-4 pt-3 pb-2">
-          <div className="flex gap-3">
+        <div className="px-4 pt-3 pb-2 overflow-visible">
+          <div className="flex gap-3 overflow-visible">
             <div className="w-10 h-10 rounded-full bg-[var(--color-surface-subtle)] flex items-center justify-center text-base shrink-0 overflow-hidden mt-0.5">
               {profile?.avatar_url || user?.user_metadata?.avatar_url ? (
                 <img
@@ -293,7 +294,7 @@ export default function FeedComposer({
               )}
             </div>
 
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 overflow-visible relative z-40">
               <MentionEditor
                 value={postText}
                 onChange={(val) => {

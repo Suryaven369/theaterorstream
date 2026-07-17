@@ -2,7 +2,6 @@ import React, { useMemo } from "react";
 import { useSelector } from "react-redux";
 import moment from "moment";
 import { Link } from "react-router-dom";
-import { FaStar } from "react-icons/fa";
 import { generateSlugWithId } from "../lib/slugUtils";
 import { pickBestPosterPath, resolveTmdbImageUrl } from "../utils/imageHelper";
 import { formatHotTagLabel } from "../utils/hotContentTags";
@@ -25,13 +24,10 @@ const Card = ({ data, trending, index, media_type }) => {
     return `${basePath}/${slug}`;
   }, [data, mediaType]);
 
-  // Show TOS badge only for movies the signed-in user has rated
+  // Prefer TOS when present (section cache or user's own rating); else TMDB
   const userRated = userRatedMovieIds[movieId];
-  const tosRating = userRated
-    ? (data.tos_rating || { score: userRated.score, count: 1 })
-    : null;
-  const displayRating = tosRating ? tosRating.score : (data.vote_average || 0);
-  const isTosRating = tosRating !== null;
+  const tosScore = data.tos_rating?.score ?? userRated?.score;
+  const displayRating = Number(tosScore ?? data.vote_average ?? 0);
 
   const posterPath = pickBestPosterPath(data);
 
@@ -45,18 +41,6 @@ const Card = ({ data, trending, index, media_type }) => {
       className="group relative block animate-fadeInUp hover:z-40 focus-within:z-50"
       style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
     >
-      {/* Quick-add menu (Watchlist / Favorite / Collection). Sits OUTSIDE the
-          overflow-hidden image wrapper below so its dropdown isn't clipped. */}
-      <div
-        className={`absolute z-20 top-2 ${trending ? 'left-11' : 'left-2'} opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100 transition-opacity`}
-      >
-        <PosterQuickActions
-          movieId={movieId}
-          movieTitle={data?.title || data?.name}
-          posterPath={posterPath || data.poster_path}
-          mediaType={mediaType}
-        />
-      </div>
       <div className="relative overflow-hidden rounded-xl bg-white/5 card-hover">
         {/* Image */}
         <div className="aspect-[2/3] overflow-hidden">
@@ -78,44 +62,30 @@ const Card = ({ data, trending, index, media_type }) => {
           </div>
         </div>
 
-        {/* Gradient overlay on hover */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-
-        {/* Rating badge - TOS or TMDB */}
-        <div className="absolute top-2 right-2">
-          <span
-            className={`flex items-center gap-1 px-2 py-0.5 rounded-md backdrop-blur-sm text-xs font-medium ${isTosRating
-              ? 'bg-gradient-to-r from-orange-500/80 to-red-500/80 text-white'
-              : 'bg-black/60 text-yellow-400'
-              }`}
-            title={isTosRating ? `TOS Rating (${tosRating.count} votes)` : 'TMDB Rating'}
-          >
-            {isTosRating ? (
-              <>
-                <span className="text-[8px] font-bold">TOS</span>
-                {displayRating.toFixed(1)}
-              </>
-            ) : (
-              <>
-                <FaStar className="text-[10px]" />
-                {Number(displayRating).toFixed(1)}
-              </>
-            )}
-          </span>
-        </div>
+        {/* Rating badge — yellow number only (TOS if available, else TMDB) */}
+        {displayRating > 0 && (
+          <div className="absolute top-2 right-2 z-10">
+            <span
+              className="px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-sm text-xs font-medium text-yellow-400"
+              title={tosScore != null ? 'TOS Rating' : 'TMDB Rating'}
+            >
+              {displayRating.toFixed(1)}
+            </span>
+          </div>
+        )}
 
         {/* Trending badge */}
         {trending && (
-          <div className="absolute top-2 left-2">
+          <div className="absolute top-2 left-2 z-10">
             <span className="px-2 py-0.5 rounded-md bg-gradient-to-r from-orange-500 to-red-500 text-black text-xs font-bold">
               #{index + 1}
             </span>
           </div>
         )}
 
-        {/* Content tags (Trailer / Announcement) */}
+        {/* Content tags — sit above the action bar */}
         {data.hot_tags?.length > 0 && (
-          <div className="absolute bottom-2 left-2 right-2 flex flex-wrap gap-1 z-10">
+          <div className="absolute left-2 right-2 bottom-12 z-10 flex flex-wrap gap-1">
             {data.hot_tags.map((tag) => (
               <span
                 key={tag}
@@ -131,11 +101,14 @@ const Card = ({ data, trending, index, media_type }) => {
           </div>
         )}
 
-        {/* Hover overlay with details */}
-        <div className="absolute bottom-0 left-0 right-0 p-3 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
-          <p className="text-[11px] text-white/70 line-clamp-2 leading-relaxed">
-            {data.overview || "No description available"}
-          </p>
+        {/* Always available on mobile; fade in on desktop hover */}
+        <div className="opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
+          <PosterQuickActions
+            movieId={movieId}
+            movieTitle={data?.title || data?.name}
+            posterPath={posterPath || data.poster_path}
+            mediaType={mediaType}
+          />
         </div>
       </div>
 

@@ -2,7 +2,39 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 2026 · HEAD `0b895ea` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 2026 · HEAD `PENDING` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Jul 18, 2026 — Watch session cache, poster actions, taste signals
+
+### Watch tab: keep picks on return; slower re-analysis ✅
+
+**Problem:** Leaving Watch and coming back re-ran the full recommendation analysis (slow). Marking watched also felt like it should not force a rebuild. Likes of 1–2 titles were too noisy to re-score taste.
+
+**Files changed:**
+- `src/lib/watchSessionCache.js` — 45‑minute in-memory SPA cache for Watch rows
+- `src/views/WatchPage.jsx` — hydrate from session cache; dismiss titles without refetch; hero `onDismiss`
+- `api/_lib/events-server.js` — watches do not bust cache; `MIN_LIKES_FOR_TASTE_REBUILD = 3` + `shouldRebuildForLikes`
+- `api/recommendations/[...route].js` — cache bust / relearn only for ratings, dislikes, or ≥3 likes
+- `api/_lib/recommendation-server.js` — watched/liked in `seenIds`; taste from likes+ratings; seed-genre gating
+- `api/_lib/taste-profile-server.js`, `movie-dna-server.js`, `src/lib/eventTracking.js`, `movieDiary.js`
+
+**Behavior:** Tab switch reuses session picks instantly. Full reload refreshes from server cache. Watched drops the card only. Taste rebuild needs ratings/dislikes or ≥3 likes.
+
+### Poster quick actions + hero carousel ✅
+
+**Problem:** Like / watched / watchlist required opening details; hero carousel felt fast and had a redundant View details CTA.
+
+**Files changed:**
+- `src/components/PosterQuickActions.jsx` — watchlist / watched / like / dislike; `overlay` + `inline` variants
+- `src/components/Card.jsx`, `RecommendationCard.jsx`, `FollowingFeed.jsx` — poster actions
+- `src/components/discover/SpotlightHero.jsx` — 6s rotate, inline actions, title link (no View details)
+- Explore back-nav: `ExplorePanels.jsx`, `CollectionDetails.jsx`, `BoardDetailsPage.jsx`, `BlogDetails.jsx`, Profile/Collections/Search/etc.
+
+**Behavior:** Quick actions work on posters and the Watch hero; carousel holds 6s and pauses on hover; Explore detail Back returns to Explore Collections/Boards/Blogs.
+
+**Next recommended:** Deploy API routes (Vercel) so events/reco cache-bust rules are live; smoke-test Watch tab switch + ≥3 likes rebuild.
 
 ---
 
@@ -1070,6 +1102,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `PENDING` | Jul 2026 | Watch session cache, poster actions, taste ≥3 likes |
 | `0b895ea` | Jul 2026 | Sitemap index, GEO llms.txt, Search Console SEO |
 | `5213bb1` | Jul 2026 | Watch page laptop alignment nudge |
 | `176f0d0` | Jul 2026 | In-Theaters web ratings (TMDB→LLM), details polish, review delete RLS |

@@ -20,8 +20,8 @@ const SYNC_JOBS = [
     {
         id: "now-playing-daily",
         label: "Now Playing",
-        description: "In theaters by region",
-        schedule: "Fridays 06:30 UTC",
+        description: "Top 9 theatrical (28 days) + AI web ratings",
+        schedule: "Daily 06:30 UTC",
     },
     {
         id: "upcoming-weekly",
@@ -117,8 +117,12 @@ const AdminControlTowerPage = () => {
         setRunningJob(jobName);
         try {
             const result = await triggerSyncJob(jobName);
+            const wr = result?.metadata?.inTheaters?.ratings;
+            const wrNote = wr
+                ? ` · web ratings: ${wr.analyzed || 0} analyzed, ${wr.skipped || 0} skipped`
+                : '';
             showMessage(
-                `${jobName}: +${result.added} added, ${result.updated} updated, ${result.skipped} skipped`,
+                `${jobName}: +${result.added} added, ${result.updated} updated, ${result.skipped} skipped${wrNote}`,
             );
             await loadData();
         } catch (error) {
@@ -135,6 +139,27 @@ const AdminControlTowerPage = () => {
             const remaining = result.checked === 100 ? ' Click again to continue with the rest.' : '';
             showMessage(`TV seasons backfill: checked ${result.checked}, updated ${result.updated}, failed ${result.failed}.${remaining}`);
             await refreshBackfillRemaining();
+        } catch (error) {
+            showMessage(error.message, true);
+        } finally {
+            setBackfillRunning(false);
+        }
+    };
+
+    const handleAnalyzeWebRatings = async () => {
+        setBackfillRunning(true);
+        try {
+            const result = await triggerBackfill('analyze-web-ratings', { limit: 9 });
+            const reasons = (result.results || [])
+                .filter((r) => r.skipped)
+                .map((r) => `${r.tmdb_id}:${r.reason}${r.count != null ? `(${r.count})` : ''}`)
+                .slice(0, 6)
+                .join(', ');
+            showMessage(
+                `Web ratings: ${result.analyzed || 0} analyzed, ${result.skipped || 0} skipped`
+                + (reasons ? ` · ${reasons}` : '')
+                + (result.message ? ` · ${result.message}` : ''),
+            );
         } catch (error) {
             showMessage(error.message, true);
         } finally {
@@ -257,6 +282,26 @@ const AdminControlTowerPage = () => {
                     Maintenance
                 </h2>
                 <div className="grid gap-4 md:grid-cols-3">
+                    <div className="bg-white/5 rounded-xl p-4 border border-white/10">
+                        <h3 className="text-white font-medium mb-1">Analyze In Theaters ratings</h3>
+                        <p className="text-white/40 text-xs mb-4">
+                            TMDB reviews → AI 7-axis scores + theater/stream verdict for the current
+                            In Theaters rail. Needs <code className="text-white/50">web_ratings</code> migration
+                            + <code className="text-white/50">GEMINI_API_KEY</code> on Vercel.
+                        </p>
+                        <button
+                            onClick={handleAnalyzeWebRatings}
+                            disabled={backfillRunning}
+                            className="w-full py-2 rounded-lg text-xs font-medium bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50 flex items-center justify-center gap-2"
+                        >
+                            {backfillRunning ? (
+                                <>
+                                    <Loader size="sm" colorClass="border-white" />
+                                    Running…
+                                </>
+                            ) : 'Analyze web ratings'}
+                        </button>
+                    </div>
                     <div className="bg-white/5 rounded-xl p-4 border border-white/10">
                         <h3 className="text-white font-medium mb-1">Backfill TV Seasons</h3>
                         <p className="text-white/40 text-xs mb-2">

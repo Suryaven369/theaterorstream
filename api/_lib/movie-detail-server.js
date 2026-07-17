@@ -32,7 +32,16 @@ export async function fetchMovieDetail(tmdbId, mediaType = null) {
         query = query.eq('media_type', mediaType);
     }
 
-    const { data, error } = await query.single();
+    let { data, error } = await query.single();
+
+    // Pre-migration DBs may not have web_ratings yet — retry without it.
+    if (error && /web_ratings/i.test(error.message || '')) {
+        const selectWithoutWeb = MOVIE_DETAIL_SELECT.replace(', web_ratings', '');
+        let retry = supabase.from('movies_library').select(selectWithoutWeb).eq('tmdb_id', String(tmdbId));
+        if (mediaType) retry = retry.eq('media_type', mediaType);
+        ({ data, error } = await retry.single());
+        if (data) data = { ...data, web_ratings: null };
+    }
 
     if (error) {
         // Not in the local library — fall back to TMDB so any title resolves

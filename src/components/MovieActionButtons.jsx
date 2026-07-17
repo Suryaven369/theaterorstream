@@ -102,10 +102,10 @@ const MovieActionButtons = ({ movieId, movieTitle, posterPath, mediaType = 'movi
             return;
         }
         setStatus(prev => ({ ...prev, isLiked: result.added }));
-        trackEvent(
-            result.added ? EVENT_TYPES.MOVIE_LIKED : EVENT_TYPES.MOVIE_DISLIKED,
-            { tmdbId: movieId, mediaType },
-        );
+        // Unlike is not a dislike — only an explicit dislike should train negative taste.
+        if (result.added) {
+            trackEvent(EVENT_TYPES.MOVIE_LIKED, { tmdbId: movieId, mediaType });
+        }
     };
 
     const handleWatched = async () => {
@@ -190,6 +190,8 @@ const MovieActionButtons = ({ movieId, movieTitle, posterPath, mediaType = 'movi
                 }}
                 onLogged={() => {
                     setStatus((prev) => ({ ...prev, isWatched: true }));
+                    // Seen ≠ loved: busts reco cache; does not train taste genres.
+                    trackEvent(EVENT_TYPES.MOVIE_WATCHED, { tmdbId: movieId, mediaType });
                 }}
             />
         </>

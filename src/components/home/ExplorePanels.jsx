@@ -156,6 +156,16 @@ export function ExploreCollectionsPanel() {
             <Link
               key={c.id}
               to={`/collection/${c.slug || collectionSlug(c.name)}`}
+              state={{
+                from: {
+                  path: '/?tab=explore&view=collections',
+                  label: 'Collections',
+                  crumbs: [
+                    { path: '/?tab=explore', label: 'Explore' },
+                    { path: '/?tab=explore&view=collections', label: 'Collections' },
+                  ],
+                },
+              }}
               className="group relative block overflow-hidden rounded-xl sm:rounded-2xl border border-white/[0.06] bg-[#0e0e0e] hover:border-[var(--primary)]/35 transition-all"
             >
               <div className="relative aspect-[4/3] sm:aspect-[16/11] overflow-hidden">
@@ -248,6 +258,16 @@ export function ExploreBoardsPanel() {
               <Link
                 key={board.id}
                 to={href}
+                state={{
+                  from: {
+                    path: '/?tab=explore&view=boards',
+                    label: 'Boards',
+                    crumbs: [
+                      { path: '/?tab=explore', label: 'Explore' },
+                      { path: '/?tab=explore&view=boards', label: 'Boards' },
+                    ],
+                  },
+                }}
                 className="group relative block overflow-hidden rounded-xl sm:rounded-2xl border border-white/[0.06] bg-[#0e0e0e] hover:border-amber-500/30 transition-all"
               >
                 <div className="relative aspect-[4/3] sm:aspect-[16/10] overflow-hidden">
@@ -317,6 +337,16 @@ export function ExploreBlogsPanel() {
             <li key={b.id}>
               <Link
                 to={`/blog/${b.id}`}
+                state={{
+                  from: {
+                    path: '/?tab=explore&view=blogs',
+                    label: 'Blogs',
+                    crumbs: [
+                      { path: '/?tab=explore', label: 'Explore' },
+                      { path: '/?tab=explore&view=blogs', label: 'Blogs' },
+                    ],
+                  },
+                }}
                 className="flex gap-2.5 sm:gap-3 p-2.5 sm:p-3 rounded-xl border border-white/[0.06] bg-[#141414]/60 hover:border-white/15 transition-colors group min-h-[64px]"
               >
                 {b.cover_image ? (

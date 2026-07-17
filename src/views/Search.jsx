@@ -65,6 +65,13 @@ function CollectionRow({ collection }) {
   return (
     <Link
       to={`/collection/${slug}`}
+      state={{
+        from: {
+          path: '/search',
+          label: 'Search',
+          crumbs: [{ path: '/search', label: 'Search' }],
+        },
+      }}
       className="flex items-center gap-4 px-4 py-3 rounded-xl hover:bg-white/[0.04] transition-colors group"
     >
       <div className="w-12 h-12 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center shrink-0">

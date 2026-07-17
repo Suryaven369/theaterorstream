@@ -10,12 +10,14 @@ import { extractGenreIds } from './taste-profile-server.js';
  */
 
 // Weighted scores per spec. Negative weights penalise.
+// movie_watched = "I've seen it" only — never a taste / love signal.
 export const EVENT_WEIGHTS = {
     movie_view: 2,
     trailer_played: 5,
     trailer_completed: 8,
     watchlisted: 10,
     watchlist_removed: -8,
+    movie_watched: 0,
     rated_5: 15,
     rated_4: 10,
     rated_3: 2,
@@ -40,11 +42,26 @@ export const SUPPRESS_EVENTS = new Set([
 ]);
 const SUPPRESS_MIN_COUNT = 3; // must be rejected this many times to demote
 
-// Events that signal positive engagement with a specific title.
+// Taste map + reco affinity: likes + ratings only (not watches / views / watchlist).
+export const TASTE_SIGNAL_EVENTS = new Set([
+    'movie_liked', 'movie_disliked',
+    'rated_5', 'rated_4', 'rated_3', 'rated_2', 'rated_1',
+]);
+
+// Events that may invalidate reco cache — watches do NOT (client drops the card;
+// full reload / 3+ likes refreshes analysis). Ratings & dislikes still bust.
+export const CACHE_BUST_EVENTS = new Set([
+    'movie_disliked',
+    'rated_5', 'rated_4', 'rated_3', 'rated_2', 'rated_1',
+]);
+
+/** Need this many hearted titles before a like triggers taste re-analysis. */
+export const MIN_LIKES_FOR_TASTE_REBUILD = 3;
+
+// Events that signal positive engagement with a specific title (for suppress logic).
 const POSITIVE_EVENTS = new Set([
-    'movie_view', 'trailer_played', 'trailer_completed', 'watchlisted',
     'rated_5', 'rated_4', 'movie_liked', 'shared', 'collection_added',
-    'recommendation_clicked', 'search_result_clicked',
+    'recommendation_clicked',
 ]);
 
 const HALF_LIFE_DAYS = 30;       // recent behaviour decays to half weight after ~30d
@@ -148,6 +165,20 @@ export async function shouldRelearn(userId, threshold = RELEARN_THRESHOLD) {
     return (count || 0) >= threshold;
 }
 
+/**
+ * Likes only trigger taste rebuild + reco cache bust once the user has
+ * hearted at least MIN_LIKES_FOR_TASTE_REBUILD titles (1–2 likes are too noisy).
+ */
+export async function shouldRebuildForLikes(userId) {
+    const supabase = getSupabaseAdmin();
+    const { count, error } = await supabase
+        .from('user_liked_movies')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId);
+    if (error) return false;
+    return (count || 0) >= MIN_LIKES_FOR_TASTE_REBUILD;
+}
+
 async function loadRecentEvents(supabase, userId, { lookbackDays = SIGNAL_LOOKBACK_DAYS } = {}) {
     const since = new Date();
     since.setDate(since.getDate() - lookbackDays);
@@ -214,9 +245,14 @@ export async function getBehavioralSignals(userId, options = {}) {
         if (event.event_type === 'recommendation_ignored') recoIgnores += 1;
 
         // Count explicit rejections only (not passive views).
+        // One dislike is enough to hide a title; ignores still need repeats.
         if (event.tmdb_id && SUPPRESS_EVENTS.has(event.event_type)) {
             const id = String(event.tmdb_id);
-            rejectCounts.set(id, (rejectCounts.get(id) || 0) + 1);
+            if (event.event_type === 'movie_disliked') {
+                rejectCounts.set(id, SUPPRESS_MIN_COUNT);
+            } else {
+                rejectCounts.set(id, (rejectCounts.get(id) || 0) + 1);
+            }
         }
 
         if (!event.tmdb_id) return;
@@ -230,6 +266,10 @@ export async function getBehavioralSignals(userId, options = {}) {
             );
             engaged.add(String(event.tmdb_id));
         }
+
+        // Genre / mood taste signal: likes + ratings only.
+        // Watching a film must not look like "you love this genre".
+        if (!TASTE_SIGNAL_EVENTS.has(event.event_type)) return;
 
         extractGenreIds(movie).forEach((gid) => {
             genreSignal[gid] = (genreSignal[gid] || 0) + weightedScore;
@@ -436,10 +476,12 @@ async function computeEvolvingInterests(supabase, userId) {
     const recentSince = new Date(now); recentSince.setDate(now.getDate() - 14);
     const priorSince = new Date(now); priorSince.setDate(now.getDate() - 45);
 
+    const tasteTypes = [...TASTE_SIGNAL_EVENTS].filter((t) => t !== 'movie_disliked');
     const { data: events } = await supabase
         .from('user_events')
-        .select('tmdb_id, weight, created_at')
+        .select('tmdb_id, weight, created_at, event_type')
         .eq('user_id', userId)
+        .in('event_type', tasteTypes)
         .gte('created_at', priorSince.toISOString())
         .gt('weight', 0)
         .order('created_at', { ascending: false })

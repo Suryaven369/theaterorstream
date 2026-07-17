@@ -14,7 +14,7 @@ export default function OnePerfectTonight({ movie, loading }) {
     const reduxImageURL = useSelector((state) => state.movieData.imageURL);
 
     if (loading) {
-        return <div className="mx-4 h-56 animate-pulse rounded-2xl skeleton sm:mx-6" />;
+        return <div className="mx-3 h-40 animate-pulse rounded-2xl skeleton sm:mx-6 sm:h-56" />;
     }
     if (!movie) return null;
 
@@ -35,27 +35,27 @@ export default function OnePerfectTonight({ movie, loading }) {
     };
 
     return (
-        <section className="mx-4 sm:mx-6">
+        <section className="mx-3 sm:mx-6">
             <div className="mb-2 flex items-center gap-2">
                 <FaMoon className="text-[var(--primary)]" />
-                <h2 className="text-lg font-bold text-white sm:text-xl">One Perfect Movie Tonight</h2>
+                <h2 className="text-base font-bold text-white sm:text-xl">One Perfect Movie Tonight</h2>
             </div>
 
             <Link
                 to={to}
                 onClick={handleClick}
-                className="group flex max-w-2xl gap-4 overflow-hidden rounded-2xl border border-[var(--primary)]/20 bg-gradient-to-br from-[var(--bg-elevated)] to-[var(--bg-card)] p-3 transition-all hover:border-[var(--primary)]/45 sm:p-4"
+                className="group flex max-w-2xl gap-3 overflow-hidden rounded-2xl border border-[var(--primary)]/20 bg-gradient-to-br from-[var(--bg-elevated)] to-[var(--bg-card)] p-2.5 transition-all active:scale-[0.99] sm:gap-4 sm:p-4 hover:border-[var(--primary)]/45"
             >
-                <div className="h-44 w-28 shrink-0 overflow-hidden rounded-xl bg-black/30 sm:h-52 sm:w-36">
+                <div className="h-32 w-[5.25rem] shrink-0 overflow-hidden rounded-xl bg-black/30 sm:h-52 sm:w-36">
                     {poster
                         ? <img src={poster} alt={title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                         : <div className="flex h-full w-full items-center justify-center text-2xl text-white/20">🎬</div>}
                 </div>
 
-                <div className="flex min-w-0 flex-1 flex-col justify-center">
-                    <h3 className="text-xl font-extrabold leading-tight text-white sm:text-2xl">{title}</h3>
+                <div className="flex min-w-0 flex-1 flex-col justify-center py-0.5">
+                    <h3 className="text-base font-extrabold leading-tight text-white sm:text-2xl">{title}</h3>
 
-                    <div className="mt-1.5 flex flex-wrap items-center gap-3 text-sm text-white/70">
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-white/70 sm:mt-1.5 sm:gap-3 sm:text-sm">
                         {matchPct != null && (
                             <span className="rounded-full bg-[var(--accent-green)]/15 px-2 py-0.5 font-bold text-[var(--accent-green)]">
                                 {matchPct}% match
@@ -63,19 +63,19 @@ export default function OnePerfectTonight({ movie, loading }) {
                         )}
                         {rating > 0 && (
                             <span className="flex items-center gap-1 text-yellow-400">
-                                <FaStar className="text-xs" /> {rating.toFixed(1)}
+                                <FaStar className="text-[10px]" /> {rating.toFixed(1)}
                             </span>
                         )}
                         {year && <span>{year}</span>}
                     </div>
 
                     {movie.reason && (
-                        <p className="mt-2.5 line-clamp-3 text-sm leading-relaxed text-white/75">
+                        <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-white/75 sm:mt-2.5 sm:line-clamp-3 sm:text-sm">
                             {movie.reason}
                         </p>
                     )}
 
-                    <span className="mt-3 inline-flex w-fit items-center gap-2 rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-bold text-black transition-transform group-hover:scale-[1.03]">
+                    <span className="mt-2.5 inline-flex min-h-[40px] w-fit items-center gap-2 rounded-full bg-[var(--primary)] px-3.5 py-1.5 text-xs font-bold text-black transition-transform sm:mt-3 sm:min-h-0 sm:px-4 sm:py-2 sm:text-sm group-hover:scale-[1.03]">
                         <FaInfoCircle /> View details
                     </span>
                 </div>

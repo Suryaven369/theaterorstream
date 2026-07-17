@@ -58,8 +58,8 @@ const MovieMentionPicker = ({ query, onInsert, onClose }) => {
                 // around inside the picker — losing focus mid-flow would blur the
                 // editor and tear down this whole dropdown before "Insert" runs.
                 onMouseDown={(e) => e.preventDefault()}
-                className="absolute left-0 right-0 top-full mt-1 z-50 bg-[#1a1a1a] border border-white/10 rounded-xl shadow-2xl overflow-hidden">
-                <div className="flex items-center gap-2 px-3 py-2 border-b border-white/10">
+                className="absolute left-0 right-0 top-full mt-1 z-[60] max-h-[min(22rem,55vh)] overflow-y-auto bg-[#1a1a1a] border border-white/10 rounded-xl shadow-2xl">
+                <div className="sticky top-0 z-10 flex items-center gap-2 px-3 py-2 border-b border-white/10 bg-[#1a1a1a]">
                     <button type="button" onClick={() => setPicked(null)} className="text-white/40 hover:text-white">
                         <FaArrowLeft className="text-xs" />
                     </button>
@@ -118,7 +118,7 @@ const MovieMentionPicker = ({ query, onInsert, onClose }) => {
     return (
         <div
             onMouseDown={(e) => e.preventDefault()}
-            className="absolute left-0 right-0 top-full mt-1 z-50 bg-[#1a1a1a] border border-white/10 rounded-xl shadow-2xl overflow-hidden"
+            className="absolute left-0 right-0 top-full mt-1 z-[60] max-h-[min(22rem,55vh)] bg-[#1a1a1a] border border-white/10 rounded-xl shadow-2xl overflow-hidden"
         >
             <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
                 <span className="text-[11px] text-white/40">
@@ -138,7 +138,7 @@ const MovieMentionPicker = ({ query, onInsert, onClose }) => {
                     {query.trim() ? "No matches found." : "Type a title to search."}
                 </div>
             ) : (
-                <div className="max-h-64 overflow-y-auto">
+                <div className="max-h-[min(16rem,45vh)] overflow-y-auto overscroll-contain">
                     {results.map((movie) => (
                         <button
                             key={`${movie.media_type}-${movie.tmdb_id}`}

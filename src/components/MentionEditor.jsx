@@ -297,7 +297,7 @@ const MentionEditor = ({ value, onChange, placeholder, className = "", minHeight
     };
 
     return (
-        <div className="relative">
+        <div className={`relative overflow-visible ${mentionQuery !== null ? "z-50" : ""}`}>
             <div
                 ref={containerRef}
                 contentEditable

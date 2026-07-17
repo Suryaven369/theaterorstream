@@ -151,13 +151,13 @@ const TOSRating = ({ ratings, verdict, onRateClick, hasUserRated, sourceLabel, s
                     <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-md shadow-green-500/20 shrink-0">
                         <span className="text-white font-bold text-xs">TOS</span>
                     </div>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                         <h3 className="text-base font-bold text-white">TOS Rating</h3>
-                        <p className="text-[11px] text-white/40 truncate">
+                        <p className="text-[11px] text-white/40 leading-snug break-words">
                             {sourceLabel || 'Theater or Stream Analysis'}
                         </p>
                         {secondaryLabel && (
-                            <p className="text-[11px] text-white/50 mt-0.5 truncate">{secondaryLabel}</p>
+                            <p className="text-[11px] text-white/50 mt-0.5 leading-snug break-words">{secondaryLabel}</p>
                         )}
                     </div>
                 </div>
@@ -208,7 +208,7 @@ const TOSRating = ({ ratings, verdict, onRateClick, hasUserRated, sourceLabel, s
                         {overallScore >= 7 ? "🎬 Theater" : overallScore >= 5 ? "📺 Stream" : "⏭️ Skip"}
                     </span>
                     {verdict && (
-                        <p className={`text-white/60 text-xs sm:text-sm flex-1 ${vertical ? '' : 'truncate'}`}>{verdict}</p>
+                        <p className={`text-white/60 text-xs sm:text-sm flex-1 min-w-0 ${vertical ? '' : 'line-clamp-2'}`}>{verdict}</p>
                     )}
                 </div>
 

@@ -1,126 +1,234 @@
-import React, { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
-import { FaEllipsisV, FaBookmark, FaHeart, FaFolderPlus } from "react-icons/fa";
-import { useAuth } from "../context/AuthContext";
-import { toggleWatchlist, toggleLikedMovie } from "../lib/supabase";
-import { trackEvent, EVENT_TYPES } from "../lib/eventTracking";
-import CollectionsModal from "./CollectionsModal";
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { FaBookmark, FaHeart, FaEye, FaThumbsDown } from 'react-icons/fa';
+import { useAuth } from '../context/AuthContext';
+import {
+    getUserMovieStatus,
+    toggleWatchlist,
+    toggleLikedMovie,
+    toggleWatchedMovie,
+} from '../lib/supabase';
+import { trackEvent, EVENT_TYPES } from '../lib/eventTracking';
 
-const MenuItem = ({ icon: Icon, label, busy, onClick }) => (
-    <button
-        onClick={onClick}
-        disabled={busy}
-        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-white/80 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-50"
-    >
-        <Icon className="text-xs shrink-0" />
-        <span>{label}</span>
-    </button>
-);
+function ActionBtn({
+    label,
+    active,
+    activeClass,
+    busy,
+    onClick,
+    size = 'sm',
+    children,
+}) {
+    const sizeClass = size === 'lg'
+        ? 'h-10 w-10 sm:h-11 sm:w-11'
+        : 'h-7 w-7 sm:h-8 sm:w-8';
+    return (
+        <button
+            type="button"
+            title={label}
+            aria-label={label}
+            aria-pressed={!!active}
+            disabled={busy}
+            onClick={onClick}
+            className={`flex items-center justify-center rounded-full backdrop-blur-md transition-all active:scale-90 disabled:opacity-50 ${sizeClass} ${
+                active
+                    ? `${activeClass} bg-black/75`
+                    : 'bg-black/55 text-white/85 hover:bg-black/80 hover:text-white'
+            }`}
+        >
+            {children}
+        </button>
+    );
+}
 
 /**
- * Three-dots quick menu overlaid on a poster: add to Watchlist, Favorite, or a
- * Collection/List — without leaving the grid. Stops click propagation so it
- * never triggers the surrounding poster <Link>.
+ * Like / Dislike / Watched / Watchlist controls — works without opening details.
+ * Stops click propagation so a parent <Link> doesn't navigate.
+ *
+ * @param {{
+ *   onAction?: (action: string, result: object) => void,
+ *   variant?: 'overlay' | 'inline',
+ * }} props
  */
-const PosterQuickActions = ({ movieId, movieTitle, posterPath, mediaType = "movie" }) => {
+export default function PosterQuickActions({
+    movieId,
+    movieTitle,
+    posterPath,
+    mediaType = 'movie',
+    onAction,
+    className = '',
+    variant = 'overlay',
+}) {
     const navigate = useNavigate();
     const { user, isAuthenticated } = useAuth();
-    const [open, setOpen] = useState(false);
-    const [showCollections, setShowCollections] = useState(false);
+    const [status, setStatus] = useState({
+        inWatchlist: false,
+        isLiked: false,
+        isWatched: false,
+        isDisliked: false,
+    });
     const [busy, setBusy] = useState(null);
-    const [toast, setToast] = useState(null);
-    const ref = useRef(null);
+    const [loaded, setLoaded] = useState(false);
+
+    const loadStatus = useCallback(async () => {
+        if (!user?.id || !movieId) {
+            setLoaded(true);
+            return;
+        }
+        const s = await getUserMovieStatus(user.id, movieId);
+        setStatus((prev) => ({ ...prev, ...s }));
+        setLoaded(true);
+    }, [user?.id, movieId]);
 
     useEffect(() => {
-        if (!open) return;
-        const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-        document.addEventListener("mousedown", onDoc);
-        return () => document.removeEventListener("mousedown", onDoc);
-    }, [open]);
+        loadStatus();
+    }, [loadStatus]);
 
-    // Keep clicks inside the menu from bubbling to the poster link / navigating.
-    const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
+    const stop = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    };
 
     const requireAuth = () => {
-        sessionStorage.setItem("authMessage", "Please sign up or login to save movies");
-        navigate("/auth");
+        sessionStorage.setItem('authMessage', 'Please sign up or login to save movies');
+        navigate('/auth');
     };
 
-    const toggleMenu = (e) => {
+    const run = async (e, key, fn) => {
         stop(e);
-        if (!isAuthenticated) return requireAuth();
-        setOpen((o) => !o);
+        if (!isAuthenticated || !user?.id) return requireAuth();
+        if (busy) return;
+        setBusy(key);
+        try {
+            await fn();
+        } finally {
+            setBusy(null);
+        }
     };
 
-    const flash = (msg) => {
-        setToast(msg);
-        setTimeout(() => { setOpen(false); setToast(null); }, 750);
-    };
-
-    const handleWatchlist = async (e) => {
-        stop(e);
-        setBusy("watchlist");
+    const handleWatchlist = (e) => run(e, 'watchlist', async () => {
+        const next = !status.inWatchlist;
+        setStatus((prev) => ({ ...prev, inWatchlist: next }));
         const r = await toggleWatchlist(user.id, movieId, movieTitle, posterPath, mediaType);
-        setBusy(null);
-        if (r.success) {
-            trackEvent(r.added ? EVENT_TYPES.WATCHLISTED : EVENT_TYPES.WATCHLIST_REMOVED, { tmdbId: movieId, mediaType });
-            flash(r.added ? "Added to Watchlist" : "Removed from Watchlist");
+        if (!r.success) {
+            setStatus((prev) => ({ ...prev, inWatchlist: !next }));
+            return;
         }
-    };
+        setStatus((prev) => ({ ...prev, inWatchlist: r.added }));
+        trackEvent(r.added ? EVENT_TYPES.WATCHLISTED : EVENT_TYPES.WATCHLIST_REMOVED, {
+            tmdbId: movieId,
+            mediaType,
+        });
+        onAction?.('watchlist', r);
+    });
 
-    const handleFavorite = async (e) => {
-        stop(e);
-        setBusy("fav");
+    const handleWatched = (e) => run(e, 'watched', async () => {
+        const next = !status.isWatched;
+        setStatus((prev) => ({ ...prev, isWatched: next }));
+        const r = await toggleWatchedMovie(user.id, movieId, movieTitle, posterPath, mediaType);
+        if (!r.success) {
+            setStatus((prev) => ({ ...prev, isWatched: !next }));
+            return;
+        }
+        setStatus((prev) => ({ ...prev, isWatched: r.added }));
+        if (r.added) {
+            trackEvent(EVENT_TYPES.MOVIE_WATCHED, { tmdbId: movieId, mediaType });
+        }
+        onAction?.('watched', r);
+    });
+
+    const handleLike = (e) => run(e, 'like', async () => {
+        const next = !status.isLiked;
+        setStatus((prev) => ({
+            ...prev,
+            isLiked: next,
+            isDisliked: next ? false : prev.isDisliked,
+        }));
         const r = await toggleLikedMovie(user.id, movieId, movieTitle, posterPath, mediaType);
-        setBusy(null);
-        if (r.success) {
-            trackEvent(r.added ? EVENT_TYPES.MOVIE_LIKED : EVENT_TYPES.MOVIE_DISLIKED, { tmdbId: movieId, mediaType });
-            flash(r.added ? "Added to Favorites" : "Removed from Favorites");
+        if (!r.success) {
+            setStatus((prev) => ({ ...prev, isLiked: !next }));
+            return;
         }
-    };
+        setStatus((prev) => ({ ...prev, isLiked: r.added, isDisliked: r.added ? false : prev.isDisliked }));
+        if (r.added) {
+            trackEvent(EVENT_TYPES.MOVIE_LIKED, { tmdbId: movieId, mediaType });
+        }
+        onAction?.('like', r);
+    });
 
-    const openCollections = (e) => {
-        stop(e);
-        setOpen(false);
-        setShowCollections(true);
-    };
+    const handleDislike = (e) => run(e, 'dislike', async () => {
+        // One-shot: dislike trains negative taste + hides from recs (≠ watched).
+        if (status.isDisliked) {
+            onAction?.('dislike', { success: true, added: true });
+            return;
+        }
+        if (status.isLiked) {
+            await toggleLikedMovie(user.id, movieId, movieTitle, posterPath, mediaType);
+        }
+        setStatus((prev) => ({ ...prev, isLiked: false, isDisliked: true }));
+        trackEvent(EVENT_TYPES.MOVIE_DISLIKED, { tmdbId: movieId, mediaType });
+        onAction?.('dislike', { success: true, added: true });
+    });
+
+    if (!loaded && !isAuthenticated) {
+        // Still show buttons so guests get auth redirect on tap.
+    }
+
+    const isInline = variant === 'inline';
+    const btnSize = isInline ? 'lg' : 'sm';
+    const iconClass = isInline ? 'text-sm sm:text-base' : 'text-[11px] sm:text-xs';
+    const wrapClass = isInline
+        ? `pointer-events-auto relative z-20 flex items-center gap-2 ${className}`
+        : `pointer-events-auto absolute inset-x-0 bottom-0 z-20 flex items-center justify-center gap-1 bg-gradient-to-t from-black/90 via-black/55 to-transparent px-1 pb-1.5 pt-8 sm:gap-1.5 sm:pb-2.5 ${className}`;
 
     return (
-        <div ref={ref} onClick={stop}>
-            <button
-                onClick={toggleMenu}
-                title="Add to…"
-                aria-label="Add to watchlist, favorites or collection"
-                className="w-7 h-7 flex items-center justify-center rounded-full bg-black/60 backdrop-blur-sm text-white/90 hover:bg-black/80 transition-colors"
+        <div
+            className={wrapClass}
+            onClick={stop}
+            onKeyDown={stop}
+            role="group"
+            aria-label="Quick movie actions"
+        >
+            <ActionBtn
+                label={status.inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
+                active={status.inWatchlist}
+                activeClass="text-yellow-400"
+                busy={busy === 'watchlist'}
+                onClick={handleWatchlist}
+                size={btnSize}
             >
-                <FaEllipsisV className="text-xs" />
-            </button>
-
-            {open && (
-                <div className="absolute left-0 mt-1 w-48 rounded-xl bg-[#1c1f22] border border-white/10 shadow-2xl overflow-hidden z-30 animate-fadeInUp">
-                    {toast ? (
-                        <div className="px-3 py-3 text-sm text-green-400 text-center">✓ {toast}</div>
-                    ) : (
-                        <>
-                            <MenuItem icon={FaBookmark} label="Watchlist" busy={busy === "watchlist"} onClick={handleWatchlist} />
-                            <MenuItem icon={FaHeart} label="Favorite" busy={busy === "fav"} onClick={handleFavorite} />
-                            <MenuItem icon={FaFolderPlus} label="Add to Collection" onClick={openCollections} />
-                        </>
-                    )}
-                </div>
-            )}
-
-            <CollectionsModal
-                isOpen={showCollections}
-                onClose={() => setShowCollections(false)}
-                movieId={movieId}
-                movieTitle={movieTitle}
-                posterPath={posterPath}
-                mediaType={mediaType}
-                userId={user?.id}
-            />
+                <FaBookmark className={iconClass} />
+            </ActionBtn>
+            <ActionBtn
+                label={status.isWatched ? 'Unmark watched' : 'Mark watched'}
+                active={status.isWatched}
+                activeClass="text-emerald-400"
+                busy={busy === 'watched'}
+                onClick={handleWatched}
+                size={btnSize}
+            >
+                <FaEye className={iconClass} />
+            </ActionBtn>
+            <ActionBtn
+                label={status.isLiked ? 'Unlike' : 'Like'}
+                active={status.isLiked}
+                activeClass="text-red-400"
+                busy={busy === 'like'}
+                onClick={handleLike}
+                size={btnSize}
+            >
+                <FaHeart className={iconClass} />
+            </ActionBtn>
+            <ActionBtn
+                label={status.isDisliked ? 'Disliked' : 'Dislike'}
+                active={status.isDisliked}
+                activeClass="text-orange-400"
+                busy={busy === 'dislike'}
+                onClick={handleDislike}
+                size={btnSize}
+            >
+                <FaThumbsDown className={iconClass} />
+            </ActionBtn>
         </div>
     );
-};
-
-export default PosterQuickActions;
+}

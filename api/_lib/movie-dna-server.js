@@ -110,7 +110,7 @@ export async function backfillMovieDna({ limit = 20 } = {}) {
  * positively (rated >= 7 or strong events), weighted by how much they loved it.
  * Returns {trait: 0-100}.
  */
-export async function computeUserDnaPreferences(userId, { ratings = null } = {}) {
+export async function computeUserDnaPreferences(userId, { ratings = null, likedTmdbIds = null } = {}) {
     const supabase = getSupabaseAdmin();
 
     let ratingRows = ratings;
@@ -119,10 +119,31 @@ export async function computeUserDnaPreferences(userId, { ratings = null } = {})
         ratingRows = data || [];
     }
 
+    let likedIds = likedTmdbIds;
+    if (!likedIds) {
+        const { data } = await supabase
+            .from('user_liked_movies')
+            .select('movie_id')
+            .eq('user_id', userId)
+            .limit(200);
+        likedIds = (data || []).map((r) => String(r.movie_id));
+    }
+
     const loved = [];
+    const seen = new Set();
     ratingRows.forEach((r) => {
         const overall = computeOverallFromRatingRow(r);
-        if (overall != null && overall >= 6.5) loved.push({ tmdbId: String(r.movie_id), weight: overall / 10 });
+        if (overall != null && overall >= 6.5) {
+            const id = String(r.movie_id);
+            seen.add(id);
+            loved.push({ tmdbId: id, weight: overall / 10 });
+        }
+    });
+    (likedIds || []).forEach((id) => {
+        const tid = String(id);
+        if (seen.has(tid)) return;
+        seen.add(tid);
+        loved.push({ tmdbId: tid, weight: 0.85 });
     });
 
     if (!loved.length) return {};

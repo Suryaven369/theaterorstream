@@ -36,10 +36,31 @@ export const SYNC_JOBS = {
     },
     'now-playing-daily': {
         region: 'IN',
+        // Theatrical discover (not /movie/now_playing) — TMDB's convenience list
+        // often keeps stale/older titles. Restrict to regional theatrical releases
+        // in the last ~4 weeks, then keep the top 9 by popularity.
         sources: [
-            { path: '/movie/now_playing', mediaType: 'movie', pages: 3, useRegion: true },
+            {
+                path: '/discover/movie',
+                mediaType: 'movie',
+                pages: 2,
+                useRegion: true,
+                customParams: () => {
+                    const { from, to } = getDateRange(28, 0);
+                    return {
+                        'release_date.gte': from,
+                        'release_date.lte': to,
+                        with_release_type: '2|3', // Theatrical limited | Theatrical
+                        sort_by: 'popularity.desc',
+                        'vote_count.gte': 5,
+                        include_adult: false,
+                    };
+                },
+            },
         ],
-        maxItems: 45,
+        maxItems: 9,
+        sortByPopularity: true,
+        maxReleaseAgeDays: 28,
     },
     'upcoming-weekly': {
         region: 'IN',
@@ -360,9 +381,29 @@ export async function runSyncJob(jobName) {
             });
         }
 
-        const deduped = Array.from(
+        let deduped = Array.from(
             new Map(collected.map((item) => [String(item.id), item])).values(),
-        ).slice(0, config.maxItems);
+        );
+
+        // Drop titles whose primary/list release_date is outside the theatrical window
+        // (guards against remasters / old catalog noise slipping through discover).
+        if (config.maxReleaseAgeDays != null) {
+            const cutoff = new Date();
+            cutoff.setDate(cutoff.getDate() - Number(config.maxReleaseAgeDays));
+            const cutoffStr = cutoff.toISOString().split('T')[0];
+            const todayStr = new Date().toISOString().split('T')[0];
+            deduped = deduped.filter((item) => {
+                const d = item.release_date || item.first_air_date;
+                if (!d) return false;
+                return d >= cutoffStr && d <= todayStr;
+            });
+        }
+
+        // In Theaters: top N by TMDB popularity (not raw page order)
+        if (config.sortByPopularity) {
+            deduped = deduped.sort((a, b) => (Number(b.popularity) || 0) - (Number(a.popularity) || 0));
+        }
+        deduped = deduped.slice(0, config.maxItems);
 
         await processItems(supabase, deduped, stats);
         stats.metadata.processed = deduped.length;

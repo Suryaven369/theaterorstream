@@ -205,16 +205,26 @@ export function resolveListEntry(raw) {
     return toListTitle(plain) || extractEmbeddedTitle(plain) || '';
 }
 
-/** Title-only: clear "Top N / N best / ranked…" list signals (not genre words). */
+/**
+ * Title-only: clear "Top N / N best / ranked…" list signals (not genre words).
+ * Also matches "4 Cult Horror Movies…", "10 Classic Sci-Fi Films…" (adjectives
+ * between the count and movies/films) — previously only "4 Movies" / "4 best Movies".
+ */
 export function titleLooksLikeListicle(title = '') {
     const t = String(title || '').toLowerCase();
-    return /\b(top\s+\d+|\d+\s+(best|greatest|great|scariest|worst|essential|forgotten|underrated|perfect)|best\s+\d+|ranked|rankings?|must[- ]see|watchlist|listicle|our\s+picks|the\s+list|hidden\s+gems?|best\s+(shows?|series|movies|films)|shows?\s+to\s+watch|series\s+(to|you\s+should)|which\s+.+\s+are\s+you)\b/i.test(t);
+    if (/\b(top\s+\d+|\d+\s+(best|greatest|great|scariest|worst|essential|forgotten|underrated|perfect)|best\s+\d+|ranked|rankings?|must[- ]see|watchlist|listicle|our\s+picks|the\s+list|hidden\s+gems?|best\s+(shows?|series|movies|films)|shows?\s+to\s+watch|series\s+(to|you\s+should)|which\s+.+\s+are\s+you)\b/i.test(t)) {
+        return true;
+    }
+    // "4 Cult Horror Movies From 1976…", "7 Underrated Thriller Films You…"
+    // Skip time-unit false positives ("2 weeks until the movie").
+    return /\b\d{1,2}\s+(?!(?:days?|weeks?|months?|years?|hours?|minutes?|times?|dollars?|million|billion)\b)(?:[\w'-]+\s+){0,5}(movies?|films?|shows?|series|titles?|picks?)\b/i.test(t);
 }
 
 /** Detect "reasons/ways/facts" type listicles that need full heading extraction. */
 export function isReasonBasedListicle(title = '') {
     const t = String(title || '').toLowerCase();
-    return /\b\d+\s+(reasons?|ways?|facts?|things?|tips?|steps?|signs?|secrets?|mistakes?|lessons?|rules?|truths?|problems?|actors?|movies?|films?|shows?|characters?|scenes?|moments?|episodes?)\b/i.test(t);
+    // Allow adjectives between count and noun: "4 Cult Horror Movies", "5 Weird Facts"
+    return /\b\d+\s+(?!(?:days?|weeks?|months?|years?|hours?|minutes?|times?)\b)(?:[\w'-]+\s+){0,5}(reasons?|ways?|facts?|things?|tips?|steps?|signs?|secrets?|mistakes?|lessons?|rules?|truths?|problems?|actors?|movies?|films?|shows?|characters?|scenes?|moments?|episodes?|titles?|picks?)\b/i.test(t);
 }
 
 /**
@@ -226,7 +236,10 @@ export function isListicleArticle(title = '', text = '') {
     if (isReasonBasedListicle(title)) return true;
     const hay = String(text || '').slice(0, 500).toLowerCase();
     // Body can confirm ranking language, but never genre-only keywords.
-    return /\b(top\s+\d+|\d+\s+(best|greatest|great|scariest|worst|essential|forgotten|underrated)|ranked|rankings?|listicle|our\s+picks|the\s+list|hidden\s+gems?)\b/i.test(hay);
+    if (/\b(top\s+\d+|\d+\s+(best|greatest|great|scariest|worst|essential|forgotten|underrated)|ranked|rankings?|listicle|our\s+picks|the\s+list|hidden\s+gems?)\b/i.test(hay)) {
+        return true;
+    }
+    return /\b\d{1,2}\s+(?!(?:days?|weeks?|months?|years?)\b)(?:[\w'-]+\s+){0,5}(movies?|films?|shows?|series)\b/i.test(hay);
 }
 
 function extractTitleFromLiHtml(liInnerHtml) {

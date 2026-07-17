@@ -48,6 +48,21 @@ const WEIGHTS_NO_EMBEDDING = {
     popularity: 0.20,
 };
 
+/** Seed-similar rows ("Because you loved X") — prioritize likeness to the seed, not general taste. */
+const WEIGHTS_SEED_SIMILAR = {
+    content: 0.50,
+    genre: 0.35,
+    axis: 0.05,
+    collaborative: 0.05,
+    popularity: 0.05,
+};
+
+// Drama alone is too broad to justify "like The Witch → Moana".
+const BROAD_GENRE_IDS = new Set(['18']);
+// Dark / tense seed genres vs light family tones (hard clash when no dark overlap).
+const DARK_GENRE_IDS = new Set(['27', '53', '9648', '80', '10752', '37']); // horror, thriller, mystery, crime, war, western
+const LIGHT_GENRE_IDS = new Set(['10751', '16', '10749', '10402']); // family, animation, romance, music
+
 const CACHE_TTL_HOURS = 6;
 
 export const RECO_MOVIE_SELECT =
@@ -194,6 +209,91 @@ function genreMatchScore(genreWeights, movie) {
     return Math.min(1, sum / hits);
 }
 
+/** Core (non-drama) genres that define a seed title's identity. */
+function coreGenreIds(genreIds) {
+    return (genreIds || []).map(String).filter((id) => !BROAD_GENRE_IDS.has(id));
+}
+
+/**
+ * Overlap with the seed movie's genres — used for "Because you loved X".
+ * Prefers shared horror/mystery/etc. over a lonely Drama match.
+ */
+function seedGenreOverlapScore(seedGenreIds, movie) {
+    const seed = (seedGenreIds || []).map(String);
+    const seedSet = new Set(seed);
+    const ids = extractGenreIds(movie).map(String);
+    if (!seed.length || !ids.length) return 0;
+
+    const seedCore = coreGenreIds(seed);
+    const overlap = ids.filter((id) => seedSet.has(id));
+    if (!overlap.length) return 0;
+
+    // Seed has specific genres (e.g. Horror) but candidate only shares Drama → near-zero.
+    if (seedCore.length && !ids.some((id) => seedCore.includes(id))) {
+        return 0.05;
+    }
+
+    const unionSize = new Set([...seed, ...ids]).size;
+    const jaccard = overlap.length / Math.max(unionSize, 1);
+    const coreHits = ids.filter((id) => seedCore.includes(id)).length;
+    return Math.min(1, 0.3 + jaccard * 0.55 + Math.min(coreHits, 2) * 0.1);
+}
+
+/** True when candidate shares a defining genre with the seed (not Drama-only). */
+function passesSeedGenreGate(seedGenreIds, movie) {
+    const seed = (seedGenreIds || []).map(String);
+    const seedCore = coreGenreIds(seed);
+    const ids = extractGenreIds(movie).map(String);
+    if (!ids.length) return false;
+    if (!seedCore.length) {
+        return ids.some((id) => seed.includes(id));
+    }
+    return ids.some((id) => seedCore.includes(id));
+}
+
+/**
+ * Soft penalty when a dark seed (horror/thriller) is paired with family/animation
+ * that has no dark-genre overlap — blocks Moana-next-to-The-Witch style noise.
+ */
+function seedToneMultiplier(seedGenreIds, movie) {
+    const seed = (seedGenreIds || []).map(String);
+    const ids = extractGenreIds(movie).map(String);
+    const seedDark = seed.some((id) => DARK_GENRE_IDS.has(id));
+    if (!seedDark) return 1;
+
+    const movieDark = ids.some((id) => DARK_GENRE_IDS.has(id));
+    const movieLight = ids.some((id) => LIGHT_GENRE_IDS.has(id));
+    if (movieLight && !movieDark) return 0.12;
+    return 1;
+}
+
+/** TMDB similar + recommendations IDs to reinforce weak/missing embeddings. */
+async function fetchTmdbNeighborIds(tmdbId, mediaType, limit = 40) {
+    const type = mediaType === 'tv' ? 'tv' : 'movie';
+    const id = String(tmdbId);
+    try {
+        const [similar, recs] = await Promise.all([
+            fetchTmdbApi(`/${type}/${id}/similar`, { page: 1 }).catch(() => null),
+            fetchTmdbApi(`/${type}/${id}/recommendations`, { page: 1 }).catch(() => null),
+        ]);
+        const out = [];
+        const seen = new Set();
+        for (const list of [similar?.results, recs?.results]) {
+            for (const item of list || []) {
+                const tid = String(item.id);
+                if (!tid || seen.has(tid) || tid === id) continue;
+                seen.add(tid);
+                out.push(tid);
+                if (out.length >= limit) return out;
+            }
+        }
+        return out;
+    } catch (err) {
+        console.warn('[reco] tmdb neighbors failed:', err.message);
+        return [];
+    }
+}
+
 function moodMatchScore(moodPreferences, movie) {
     const prefs = moodPreferences || {};
     const tags = movie.mood_tags || [];
@@ -293,7 +393,20 @@ function buildReason(profile, movie, breakdown, extra = {}) {
         .find((tag) => (moodPrefs[tag] > 0 || moodPrefs[`vibe_${tag}`] > 0) && MOOD_LABELS[tag]);
 
     let lead;
-    if (extra.isExploration) {
+    if (extra.seedMode) {
+        const seedCore = coreGenreIds(extra.seedGenreIds || []);
+        const shared = genreIds
+            .map(String)
+            .filter((id) => seedCore.includes(id) && GENRE_NAMES[id])
+            .map((id) => GENRE_NAMES[id]);
+        if (shared.length) {
+            lead = `Same ${shared.slice(0, 2).join(' / ')} vibe as a film you loved`;
+        } else if (breakdown.content >= 0.55) {
+            lead = 'Closely related to a film you loved';
+        } else {
+            lead = 'Similar to a film you loved';
+        }
+    } else if (extra.isExploration) {
         lead = 'A fresh pick to broaden your taste';
     } else if (matchedGenre && matchedMood) {
         lead = `Because you love ${MOOD_LABELS[matchedMood]} ${GENRE_NAMES[matchedGenre.id]}`;
@@ -369,6 +482,7 @@ async function loadUserContext(supabase, userId) {
         { data: ratings, error: ratingsError },
         { data: watchedRows },
         { data: logRows },
+        { data: likedRows },
         { data: account },
     ] = await Promise.all([
         supabase.from('user_taste_profiles').select('*').eq('user_id', userId).maybeSingle(),
@@ -377,6 +491,7 @@ async function loadUserContext(supabase, userId) {
         // "Seen" history — never recommend these back. Best-effort (missing tables ignored).
         supabase.from('user_watched_movies').select('movie_id').eq('user_id', userId).limit(2000),
         supabase.from('movie_logs').select('tmdb_id').eq('user_id', userId).limit(2000),
+        supabase.from('user_liked_movies').select('movie_id').eq('user_id', userId).limit(500),
         supabase.from('user_profiles').select('display_name, username').eq('id', userId).maybeSingle(),
     ]);
 
@@ -399,20 +514,33 @@ async function loadUserContext(supabase, userId) {
 
     const serviceIds = (streamingRows || []).map((r) => r.service_id);
     const ratedIds = new Set((ratings || []).map((r) => String(r.movie_id)));
+    const likedIds = new Set((likedRows || []).map((r) => String(r.movie_id)));
 
-    // Everything the user has already seen (rated, marked watched, or logged).
-    // These are always excluded from recommendations and never relaxed.
+    // Seen ≠ loved: watches/logs/ratings/likes all exclude from recs,
+    // but only high ratings + likes feed lovedGenreSets / taste affinity.
     const seenIds = new Set(ratedIds);
+    likedIds.forEach((id) => seenIds.add(id));
     (watchedRows || []).forEach((r) => seenIds.add(String(r.movie_id)));
     (logRows || []).forEach((r) => seenIds.add(String(r.tmdb_id)));
 
     const lovedGenreSets = [];
     const lovedTmdbIds = [];
+    const lovedSet = new Set();
 
     (ratings || []).forEach((rating) => {
         const overall = computeOverallFromRatingRow(rating);
         if (overall != null && overall >= 7) {
-            lovedTmdbIds.push(String(rating.movie_id));
+            const id = String(rating.movie_id);
+            if (!lovedSet.has(id)) {
+                lovedSet.add(id);
+                lovedTmdbIds.push(id);
+            }
+        }
+    });
+    likedIds.forEach((id) => {
+        if (!lovedSet.has(id)) {
+            lovedSet.add(id);
+            lovedTmdbIds.push(id);
         }
     });
 
@@ -447,10 +575,12 @@ async function fetchCandidateMovies(supabase, context, options) {
         candidateLimit = 200,
         seedTmdbId = null,
         useEmbeddingPool = true,
+        seedMediaType = null,
     } = options;
 
     const tmdbIdSet = new Set();
     const embeddingSimilarity = new Map();
+    const isSeedMode = !!seedTmdbId;
 
     if (seedTmdbId) {
         const { data: similarRows, error } = await supabase.rpc('match_similar_to_movie', {
@@ -464,6 +594,18 @@ async function fetchCandidateMovies(supabase, context, options) {
                 embeddingSimilarity.set(String(row.tmdb_id), Number(row.similarity) || 0);
             });
         }
+
+        // TMDB genre/keyword neighbors — fills gaps when embeddings are sparse or noisy.
+        const tmdbNeighbors = await fetchTmdbNeighborIds(
+            seedTmdbId,
+            seedMediaType || mediaType || 'movie',
+            Math.min(candidateLimit, 40),
+        );
+        tmdbNeighbors.forEach((id) => {
+            tmdbIdSet.add(id);
+            // Mild prior so TMDB-only neighbors aren't scored as pure zeros on content.
+            if (!embeddingSimilarity.has(id)) embeddingSimilarity.set(id, 0.42);
+        });
     } else if (useEmbeddingPool && context.userEmbedding) {
         const literal = embeddingToRpcLiteral(context.userEmbedding);
         if (literal) {
@@ -484,19 +626,36 @@ async function fetchCandidateMovies(supabase, context, options) {
         }
     }
 
-    let popularityQuery = supabase
-        .from('movies_library')
-        .select(RECO_MOVIE_SELECT)
-        .eq('is_active', true)
-        .order('popularity', { ascending: false, nullsFirst: false })
-        .limit(candidateLimit);
+    // Popularity backfill is for general For You feeds only.
+    // Mixing it into seed-similar pools is what lets Moana rank under "Because you loved The Witch".
+    if (!isSeedMode) {
+        let popularityQuery = supabase
+            .from('movies_library')
+            .select(RECO_MOVIE_SELECT)
+            .eq('is_active', true)
+            .order('popularity', { ascending: false, nullsFirst: false })
+            .limit(candidateLimit);
 
-    if (mediaType) popularityQuery = popularityQuery.eq('media_type', mediaType);
+        if (mediaType) popularityQuery = popularityQuery.eq('media_type', mediaType);
 
-    const { data: popularRows, error: popError } = await popularityQuery;
-    if (popError) throw new Error(popError.message);
+        const { data: popularRows, error: popError } = await popularityQuery;
+        if (popError) throw new Error(popError.message);
 
-    (popularRows || []).forEach((m) => tmdbIdSet.add(String(m.tmdb_id)));
+        (popularRows || []).forEach((m) => tmdbIdSet.add(String(m.tmdb_id)));
+    } else if (!tmdbIdSet.size) {
+        // Last-resort: genre-discover from library using seed genres (handled by caller filter).
+        let popularityQuery = supabase
+            .from('movies_library')
+            .select(RECO_MOVIE_SELECT)
+            .eq('is_active', true)
+            .order('vote_average', { ascending: false, nullsFirst: false })
+            .limit(Math.min(candidateLimit, 120));
+        if (seedMediaType || mediaType) {
+            popularityQuery = popularityQuery.eq('media_type', seedMediaType || mediaType);
+        }
+        const { data: fallbackRows } = await popularityQuery;
+        (fallbackRows || []).forEach((m) => tmdbIdSet.add(String(m.tmdb_id)));
+    }
 
     if (!tmdbIdSet.size) return [];
 
@@ -526,6 +685,9 @@ function applyHardFilters(movies, context, filters) {
         // Never recommend something the user has already seen (watched/logged/rated).
         // Always on, regardless of which filters get relaxed.
         if (context.seenIds?.has(String(movie.tmdb_id))) return false;
+
+        // Explicit dislikes / repeated ignores — hard exclude.
+        if (context.suppressTmdbIds?.has(String(movie.tmdb_id))) return false;
 
         if (excludeRated && context.ratedIds.has(String(movie.tmdb_id))) return false;
 
@@ -649,9 +811,16 @@ function applyFiltersWithFallback(candidates, context, filters, minCount) {
 }
 
 async function scoreAndRankMovies(supabase, movies, context, options = {}) {
-    const { limit = 24 } = options;
+    const {
+        limit = 24,
+        seedGenreIds = null,
+        skipDiversity = false,
+    } = options;
+    const isSeedMode = Array.isArray(seedGenreIds) && seedGenreIds.length > 0;
     const hasEmbedding = !!context.userEmbedding;
-    const weights = hasEmbedding ? WEIGHTS_WITH_EMBEDDING : WEIGHTS_NO_EMBEDDING;
+    const weights = isSeedMode
+        ? WEIGHTS_SEED_SIMILAR
+        : (hasEmbedding ? WEIGHTS_WITH_EMBEDDING : WEIGHTS_NO_EMBEDDING);
     const suppress = context.suppressTmdbIds || new Set();
 
     const movieIds = movies.map((m) => String(m.tmdb_id));
@@ -669,11 +838,14 @@ async function scoreAndRankMovies(supabase, movies, context, options = {}) {
             : 0;
 
         const dna = dnaMatchScore(context.profile.dna_preferences, movie.movie_dna);
-        const genre = Math.max(
+        const tasteGenre = Math.max(
             genreMatchScore(context.profile.genre_weights, movie),
             moodMatchScore(context.profile.mood_preferences, movie) * 0.85,
             dna != null ? dna : 0,
         );
+        const genre = isSeedMode
+            ? Math.max(seedGenreOverlapScore(seedGenreIds, movie), tasteGenre * 0.25)
+            : tasteGenre;
 
         const axis = axisMatchScore(
             context.profile.axis_preferences,
@@ -692,6 +864,10 @@ async function scoreAndRankMovies(supabase, movies, context, options = {}) {
             + weights.collaborative * collaborative
             + weights.popularity * popularity;
 
+        if (isSeedMode) {
+            finalScore *= seedToneMultiplier(seedGenreIds, movie);
+        }
+
         // Freshness layer: demote titles recently shown and ignored.
         if (suppress.has(tmdbId)) finalScore *= FRESHNESS_PENALTY;
 
@@ -706,14 +882,20 @@ async function scoreAndRankMovies(supabase, movies, context, options = {}) {
     scored.sort((a, b) => (b.score - a.score)
         || (Number(a.tmdb_id) - Number(b.tmdb_id)));
 
-    const dominantGenres = topGenreIds(context.profile.genre_weights, 2);
-    const ranked = diversifyRanking(scored, limit, dominantGenres);
+    // Seed-similar rows must stay on-theme — do not inject off-genre "exploration" hits.
+    const ranked = (skipDiversity || isSeedMode)
+        ? scored.slice(0, limit)
+        : diversifyRanking(scored, limit, topGenreIds(context.profile.genre_weights, 2));
 
     return ranked.map(({ _embeddingSimilarity, _isExploration, scores, ...rest }) => ({
         ...rest,
         scores,
         score: rest.score,
-        reason: buildReason(context.profile, rest, scores, { isExploration: _isExploration }),
+        reason: buildReason(context.profile, rest, scores, {
+            isExploration: _isExploration,
+            seedMode: isSeedMode,
+            seedGenreIds,
+        }),
     }));
 }
 
@@ -817,18 +999,68 @@ export async function getRecommendations(userId, cacheKey, options = {}) {
     if (!refresh) {
         const cached = await readCache(supabase, userId, cacheKey);
         if (cached?.items?.length) {
-            return { ...cached, fromCache: true };
+            // Serve cached analysis (fast). Light-filter titles the user has
+            // since watched / liked / disliked — no full re-score / LLM.
+            try {
+                const ctx = await loadUserContext(supabase, userId);
+                const items = (cached.items || []).filter((m) => {
+                    const id = String(m.tmdb_id ?? m.id);
+                    if (ctx.seenIds?.has(id)) return false;
+                    if (ctx.suppressTmdbIds?.has(id)) return false;
+                    return true;
+                });
+                return {
+                    ...cached,
+                    items,
+                    meta: { ...(cached.meta || {}), count: items.length, cacheFiltered: true },
+                    fromCache: true,
+                };
+            } catch {
+                return { ...cached, fromCache: true };
+            }
         }
     }
 
     const context = await loadUserContext(supabase, userId);
 
+    let seedGenreIds = null;
+    let seedMediaType = mediaType;
+    if (seedTmdbId) {
+        const { data: seedRow } = await supabase
+            .from('movies_library')
+            .select('genres, genre_ids, media_type, mood_tags')
+            .eq('tmdb_id', String(seedTmdbId))
+            .maybeSingle();
+        if (seedRow) {
+            seedGenreIds = extractGenreIds(seedRow);
+            seedMediaType = seedRow.media_type || mediaType || 'movie';
+        }
+    }
+
     let candidates = await fetchCandidateMovies(supabase, context, {
-        mediaType,
+        mediaType: seedTmdbId ? (seedMediaType || mediaType) : mediaType,
         candidateLimit,
         seedTmdbId,
+        seedMediaType,
         useEmbeddingPool: !seedTmdbId,
     });
+
+    // Keep "Because you loved X" on-theme: drop titles that don't share a core genre.
+    if (seedTmdbId && seedGenreIds?.length) {
+        const gated = candidates.filter((m) => passesSeedGenreGate(seedGenreIds, m));
+        if (gated.length >= Math.min(limit, 4)) {
+            candidates = gated;
+        } else if (gated.length) {
+            candidates = gated;
+        }
+        // Prefer same media type as the seed (movie→movie), with soft fallback.
+        const sameType = candidates.filter(
+            (m) => !seedMediaType || (m.media_type || 'movie') === seedMediaType,
+        );
+        if (sameType.length >= Math.min(limit, 4)) {
+            candidates = sameType;
+        }
+    }
 
     const filterResult = applyFiltersWithFallback(candidates, context, {
         requireOtt,
@@ -839,11 +1071,16 @@ export async function getRecommendations(userId, cacheKey, options = {}) {
     }, Math.min(limit, 8));
     candidates = filterResult.items;
 
-    let items = await scoreAndRankMovies(supabase, candidates, context, { limit });
+    let items = await scoreAndRankMovies(supabase, candidates, context, {
+        limit,
+        seedGenreIds: seedTmdbId ? seedGenreIds : null,
+        skipDiversity: !!seedTmdbId,
+    });
 
     // Optional LLM polish (re-rank + richer reasons). Cached below like any result.
+    // Skip for seed-similar rows — LLM can reintroduce off-genre popular titles.
     let personalMessage = null;
-    if (useLlm) {
+    if (useLlm && !seedTmdbId) {
         items = await applyLlmRerank(context.profile, items);
 
         // Warm, personalised intro to the user's picks. Best-effort + cached.
@@ -870,8 +1107,10 @@ export async function getRecommendations(userId, cacheKey, options = {}) {
             hasUserEmbedding: !!context.userEmbedding,
             ottFiltered: requireOtt && context.serviceIds.length > 0 && !filterResult.relaxed.includes('ott'),
             relaxedFilters: filterResult.relaxed,
-            llmRanked: useLlm && isLlmEnabled() && items.some((m) => m.llmRanked),
+            llmRanked: useLlm && !seedTmdbId && isLlmEnabled() && items.some((m) => m.llmRanked),
             message: personalMessage,
+            seedTmdbId: seedTmdbId || null,
+            seedGenreGate: !!seedTmdbId,
         },
     };
 
@@ -922,6 +1161,7 @@ export async function getBecauseYouLoved(userId, options = {}) {
         .from('ratings').select('*').eq('user_id', userId)
         .order('updated_at', { ascending: false }).limit(60);
 
+    // Prefer a high score with identifiable genres (avoid seeding on untitled / empty DNA).
     let seed = null;
     let best = 0;
     (ratings || []).forEach((r) => {
@@ -931,9 +1171,16 @@ export async function getBecauseYouLoved(userId, options = {}) {
     if (!seed || best < 7) return null;
 
     const { data: seedMovie } = await supabase
-        .from('movies_library').select('title').eq('tmdb_id', seed).maybeSingle();
+        .from('movies_library')
+        .select('title, genres, genre_ids, media_type')
+        .eq('tmdb_id', seed)
+        .maybeSingle();
 
-    const res = await getSimilarRecommendations(userId, seed, { limit: options.limit || 18 });
+    const res = await getSimilarRecommendations(userId, seed, {
+        limit: options.limit || 18,
+        excludeRated: true,
+        mediaType: seedMovie?.media_type || null,
+    });
     return {
         ...res,
         seedTitle: seedMovie?.title || null,
@@ -1001,9 +1248,10 @@ export async function getOutsideComfortZone(userId, options = {}) {
 }
 
 export async function getForYouRecommendations(userId, options) {
-    return getRecommendations(userId, 'for_you', {
+    return getRecommendations(userId, 'for_you_v2', {
         requireOtt: options?.ottMode !== false,
-        excludeRated: false,
+        // seenIds always excludes watched/logged/liked/rated; excludeRated is redundant.
+        excludeRated: true,
         useLlm: true,
         ...options,
     });
@@ -1030,11 +1278,13 @@ export async function getFamilyRecommendations(userId, options) {
 }
 
 export async function getSimilarRecommendations(userId, tmdbId, options) {
-    return getRecommendations(userId, `similar_${tmdbId}`, {
+    // Cache key v2 busts stale pools that mixed popular off-genre titles into seed rows.
+    return getRecommendations(userId, `similar_v2_${tmdbId}`, {
         seedTmdbId: tmdbId,
-        excludeRated: false,
+        excludeRated: options?.excludeRated ?? true,
         requireOtt: options?.ottMode === true,
         candidateLimit: 80,
+        useLlm: false,
         ...options,
     });
 }
