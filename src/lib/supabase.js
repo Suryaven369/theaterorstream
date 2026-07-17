@@ -119,6 +119,7 @@ export {
     toggleWatchlist,
     toggleLikedMovie,
     toggleWatchedMovie,
+    ensureWatchedMovie,
     getUserWatchlist,
     getUserLikedMovies,
     getUserWatchedMovies,

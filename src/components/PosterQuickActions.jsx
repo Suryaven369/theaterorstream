@@ -7,6 +7,7 @@ import {
     toggleWatchlist,
     toggleLikedMovie,
     toggleWatchedMovie,
+    ensureWatchedMovie,
 } from '../lib/supabase';
 import { trackEvent, EVENT_TYPES } from '../lib/eventTracking';
 
@@ -143,21 +144,31 @@ export default function PosterQuickActions({
             ...prev,
             isLiked: next,
             isDisliked: next ? false : prev.isDisliked,
+            // Like implies watched.
+            isWatched: next ? true : prev.isWatched,
         }));
         const r = await toggleLikedMovie(user.id, movieId, movieTitle, posterPath, mediaType);
         if (!r.success) {
             setStatus((prev) => ({ ...prev, isLiked: !next }));
             return;
         }
-        setStatus((prev) => ({ ...prev, isLiked: r.added, isDisliked: r.added ? false : prev.isDisliked }));
+        setStatus((prev) => ({
+            ...prev,
+            isLiked: r.added,
+            isDisliked: r.added ? false : prev.isDisliked,
+            isWatched: r.added ? true : prev.isWatched,
+        }));
         if (r.added) {
             trackEvent(EVENT_TYPES.MOVIE_LIKED, { tmdbId: movieId, mediaType });
+            if (!status.isWatched) {
+                trackEvent(EVENT_TYPES.MOVIE_WATCHED, { tmdbId: movieId, mediaType });
+            }
         }
         onAction?.('like', r);
     });
 
     const handleDislike = (e) => run(e, 'dislike', async () => {
-        // One-shot: dislike trains negative taste + hides from recs (≠ watched).
+        // Dislike trains negative taste, hides from recs, and marks watched.
         if (status.isDisliked) {
             onAction?.('dislike', { success: true, added: true });
             return;
@@ -165,8 +176,12 @@ export default function PosterQuickActions({
         if (status.isLiked) {
             await toggleLikedMovie(user.id, movieId, movieTitle, posterPath, mediaType);
         }
-        setStatus((prev) => ({ ...prev, isLiked: false, isDisliked: true }));
+        const watched = await ensureWatchedMovie(user.id, movieId, movieTitle, posterPath, mediaType);
+        setStatus((prev) => ({ ...prev, isLiked: false, isDisliked: true, isWatched: true }));
         trackEvent(EVENT_TYPES.MOVIE_DISLIKED, { tmdbId: movieId, mediaType });
+        if (watched.added) {
+            trackEvent(EVENT_TYPES.MOVIE_WATCHED, { tmdbId: movieId, mediaType });
+        }
         onAction?.('dislike', { success: true, added: true });
     });
 

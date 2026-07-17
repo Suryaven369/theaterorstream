@@ -2,11 +2,22 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 2026 · HEAD `b53aad7` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 2026 · HEAD `PENDING` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
 
 ---
 
 ## Session: Jul 18, 2026 — Watch session cache, poster actions, taste signals
+
+### Like / dislike also marks watched ✅
+
+**Problem:** Hearting or disliking a title should mean the user has seen it; watched state was separate.
+
+**Files changed:**
+- `src/lib/db/userLists.js` — `ensureWatchedMovie`; `toggleLikedMovie` marks watched on like
+- `src/lib/supabase.js` — export `ensureWatchedMovie`
+- `src/components/PosterQuickActions.jsx`, `MovieActionButtons.jsx` — UI + dislike path mark watched
+
+**Behavior:** Like or dislike sets watched in DB and UI; unlike does not unwatch.
 
 ### Watch tab: keep picks on return; slower re-analysis ✅
 
@@ -1102,6 +1113,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `PENDING` | Jul 2026 | Like/dislike also mark watched |
 | `b53aad7` | Jul 2026 | Watch session cache, poster actions, taste ≥3 likes |
 | `0b895ea` | Jul 2026 | Sitemap index, GEO llms.txt, Search Console SEO |
 | `5213bb1` | Jul 2026 | Watch page laptop alignment nudge |

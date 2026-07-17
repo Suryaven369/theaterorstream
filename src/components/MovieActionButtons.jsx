@@ -95,16 +95,29 @@ const MovieActionButtons = ({ movieId, movieTitle, posterPath, mediaType = 'movi
     const handleLike = async () => {
         if (!isAuthenticated) return handleAuthRequired();
         const next = !status.isLiked;
-        setStatus(prev => ({ ...prev, isLiked: next }));
+        const wasWatched = status.isWatched;
+        setStatus((prev) => ({
+            ...prev,
+            isLiked: next,
+            // Like implies watched (unlike does not unwatch).
+            isWatched: next ? true : prev.isWatched,
+        }));
         const result = await toggleLikedMovie(user.id, movieId, movieTitle, posterPath, mediaType);
         if (!result.success) {
-            setStatus(prev => ({ ...prev, isLiked: !next }));
+            setStatus((prev) => ({ ...prev, isLiked: !next, isWatched: wasWatched }));
             return;
         }
-        setStatus(prev => ({ ...prev, isLiked: result.added }));
+        setStatus((prev) => ({
+            ...prev,
+            isLiked: result.added,
+            isWatched: result.added ? true : prev.isWatched,
+        }));
         // Unlike is not a dislike — only an explicit dislike should train negative taste.
         if (result.added) {
             trackEvent(EVENT_TYPES.MOVIE_LIKED, { tmdbId: movieId, mediaType });
+            if (!wasWatched) {
+                trackEvent(EVENT_TYPES.MOVIE_WATCHED, { tmdbId: movieId, mediaType });
+            }
         }
     };
 

@@ -57,7 +57,40 @@ export const toggleWatchlist = async (userId, movieId, movieTitle, posterPath, m
     return { success: !error, added: true, error: error?.message };
 };
 
-// Toggle Liked
+/**
+ * Mark watched without toggling off (like/dislike imply seen).
+ * @returns {{ success: boolean, added: boolean, error?: string }}
+ */
+export const ensureWatchedMovie = async (userId, movieId, movieTitle, posterPath, mediaType = 'movie') => {
+    if (!userId) return { success: false, added: false, error: 'Not logged in' };
+    const id = String(movieId);
+
+    const { data: existing } = await supabase
+        .from('user_watched_movies')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('movie_id', id)
+        .maybeSingle();
+
+    if (existing) return { success: true, added: false };
+
+    const { error } = await supabase
+        .from('user_watched_movies')
+        .insert({
+            user_id: userId,
+            movie_id: id,
+            movie_title: movieTitle,
+            poster_path: posterPath,
+            media_type: mediaType,
+        });
+    if (error) {
+        console.error('[watched] ensure failed:', error.message);
+        return { success: false, added: false, error: error.message };
+    }
+    return { success: true, added: true };
+};
+
+// Toggle Liked — liking also marks watched (unlike does not unwatch).
 export const toggleLikedMovie = async (userId, movieId, movieTitle, posterPath, mediaType = 'movie') => {
     if (!userId) return { success: false, error: 'Not logged in' };
 
@@ -81,6 +114,7 @@ export const toggleLikedMovie = async (userId, movieId, movieTitle, posterPath, 
             .from('user_liked_movies')
             .insert({ user_id: userId, movie_id: movieId, movie_title: movieTitle, poster_path: posterPath, media_type: mediaType });
         if (!error) {
+            await ensureWatchedMovie(userId, movieId, movieTitle, posterPath, mediaType);
             supabase.from('activity_feed').insert({
                 user_id: userId,
                 event_type: 'like',
