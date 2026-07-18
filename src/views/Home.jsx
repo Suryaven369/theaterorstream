@@ -384,8 +384,12 @@ const Home = () => {
       return () => { cancelled = true; };
     }
 
-    // Skip network fetch if cache is fresh (not stale)
-    if (cached?.items?.length && !isFeedStale(feedScope)) {
+    // Skip network fetch if cache is fresh — unless a list card is missing its cover
+    // (older list posts were saved without image_url; need a refresh to hydrate posters).
+    const listMissingCover = (cached?.items || []).some(
+      (i) => i?.postType === 'list' && !i.image && !i.imageUrl,
+    );
+    if (cached?.items?.length && !isFeedStale(feedScope) && !listMissingCover) {
       return () => { cancelled = true; };
     }
 

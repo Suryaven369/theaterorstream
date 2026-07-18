@@ -102,6 +102,16 @@ export function buildLibrarySearchOrClause(rawQuery) {
     const alnum = q.toLowerCase().replace(/[^a-z0-9]/g, '');
     if (alnum.length >= 2) add(alnum);
 
+    // Compact acronyms: "vhs" → V/H/S, V.H.S, v h s (ilike '%vhs%' misses slashes)
+    if (alnum.length >= 2 && alnum.length <= 5 && !/\s/.test(q)) {
+        const chars = alnum.split('');
+        add(chars.join('%')); // V/H/S, V.H.S
+        add(chars.join('/'));
+        add(chars.join('.'));
+        add(chars.join('-'));
+        add(chars.join(' '));
+    }
+
     if (alnum.length >= 4 && !/\s/.test(q)) {
         for (let i = 2; i <= alnum.length - 2; i += 1) {
             const head = alnum.slice(0, i);

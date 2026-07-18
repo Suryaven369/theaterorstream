@@ -108,6 +108,78 @@ const normalizeTags = (tags) =>
 
 const hasFranchiseTag = (tags) => normalizeTags(tags).includes('franchise');
 
+/** Cover for feed/cards: explicit cover_image, else first movie poster(s). */
+export function resolveCollectionCoverUrl(collection) {
+    const cover = collection?.cover_image || collection?.banner_image || null;
+    if (cover && /^https?:\/\//i.test(cover)) return cover;
+    if (cover && cover.startsWith('/')) {
+        return `https://image.tmdb.org/t/p/w780${cover}`;
+    }
+    if (cover) return cover;
+
+    const posters = (collection?.collection_movies || [])
+        .map((m) => m.poster_path)
+        .filter(Boolean);
+    if (!posters.length) return null;
+    const path = posters[0];
+    if (/^https?:\/\//i.test(path)) return path;
+    return `https://image.tmdb.org/t/p/w780${path}`;
+}
+
+/**
+ * Keep the Home feed list card in sync with the collection's cover / posters.
+ */
+export async function syncListPostCover(collectionId) {
+    if (!collectionId) return;
+
+    const { data: collection } = await supabase
+        .from('user_collections')
+        .select('id, name, user_id, is_public, cover_image, banner_image, collection_movies(poster_path)')
+        .eq('id', collectionId)
+        .maybeSingle();
+
+    if (!collection?.is_public || !collection.user_id) return;
+
+    const cover = resolveCollectionCoverUrl(collection);
+    if (!cover) return;
+
+    const { data: posts } = await supabase
+        .from('feed_posts')
+        .select('id, media_items, image_url')
+        .eq('user_id', collection.user_id)
+        .eq('post_type', 'list')
+        .eq('movie_title', collection.name)
+        .order('created_at', { ascending: false })
+        .limit(3);
+
+    const targets = (posts || []).filter((p) => {
+        const mid = p.media_items?.collectionId;
+        return !mid || mid === collection.id;
+    });
+    if (!targets.length) return;
+
+    await Promise.all(targets.map((p) => {
+        const media = {
+            ...(typeof p.media_items === 'object' && p.media_items && !Array.isArray(p.media_items)
+                ? p.media_items
+                : {}),
+            kind: 'list',
+            collectionId: collection.id,
+            name: collection.name,
+            coverImage: cover,
+        };
+        return supabase
+            .from('feed_posts')
+            .update({
+                has_image: true,
+                image_url: cover,
+                media_items: media,
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', p.id);
+    }));
+}
+
 export const createUserCollection = async (userId, name, description = '', isPublic = false, options = {}) => {
     if (!userId) return { success: false };
     const cleanName = name.trim().slice(0, LIST_NAME_MAX);
@@ -154,13 +226,21 @@ export const createUserCollection = async (userId, name, description = '', isPub
             engagement_score: 5,
         });
 
+        const cover = resolveCollectionCoverUrl(data);
         await supabase.from('feed_posts').insert({
             user_id: userId,
             content: cleanDescription ? `${cleanName}\n${cleanDescription}` : cleanName,
             movie_title: cleanName,
             post_type: 'list',
-            has_image: false,
+            has_image: !!cover,
+            image_url: cover,
             visibility: 'public',
+            media_items: {
+                kind: 'list',
+                collectionId: data.id,
+                name: cleanName,
+                coverImage: cover,
+            },
         }).then(({ error: feedErr }) => {
             if (feedErr) console.warn('list -> feed_posts failed:', feedErr.message);
         });
@@ -328,6 +408,9 @@ export const updateUserCollection = async (collectionId, updates) => {
         .single();
 
     if (error) console.error('Error updating collection:', error);
+    if (!error && (updates.cover_image !== undefined || updates.banner_image !== undefined)) {
+        syncListPostCover(collectionId).catch(() => {});
+    }
     return { success: !error, data, error };
 };
 
@@ -351,6 +434,8 @@ export const addToCollection = async (collectionId, movieId, movieTitle, posterP
         console.error('Error adding to collection:', error);
         return { success: false, error, data };
     }
+    // First posters become the feed thumbnail for "New list" posts
+    syncListPostCover(collectionId).catch(() => {});
     return { success: true, error: null, data };
 };
 

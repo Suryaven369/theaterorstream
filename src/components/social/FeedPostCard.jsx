@@ -137,73 +137,113 @@ export default function FeedPostCard({
           </span>
         </div>
       )}
-      {item.postType === 'list' && (
-        <div className="px-3 pb-1">
-          <Link
-            to={`/collection/${createSlug(item.movieTitle || '')}`}
-            className="inline-block text-[10px] px-2 py-0.5 rounded-md bg-[var(--color-surface-subtle)] text-[var(--color-text-secondary)] hover:bg-[var(--color-border)] transition-colors"
-          >
-            📋 New list — view
-          </Link>
-        </div>
-      )}
 
-      {isEditing ? (
-        <div className="px-3 pb-2">
-          <textarea
-            value={editText}
-            onChange={(e) => onEditTextChange(e.target.value.slice(0, 500))}
-            rows={3}
-            maxLength={500}
-            className="w-full bg-[var(--color-background)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-[13px] text-[var(--color-text)] outline-none focus:border-[var(--color-theater)] resize-none"
-          />
-          <div className="flex items-center justify-end gap-2 mt-2">
-            <button onClick={onCancelEdit} className="px-3 py-1.5 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
-              Cancel
-            </button>
-            <button
-              onClick={() => onSaveEdit(item)}
-              disabled={savingEdit || !editText.trim()}
-              className="px-3 py-1.5 text-xs rounded-lg bg-[var(--color-theater)] text-[var(--color-background)] font-medium disabled:opacity-50"
-            >
-              {savingEdit ? 'Saving…' : 'Save'}
-            </button>
+      {item.postType === 'list' ? (
+        <Link
+          to={`/collection/${createSlug(item.listTitle || item.movieTitle || '')}`}
+          className="block px-3 sm:px-4 pb-2"
+          data-no-thread
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-subtle)] overflow-hidden hover:border-white/20 transition-colors">
+            {(item.image || item.imageUrl) ? (
+              <div className="relative w-full aspect-[16/9] sm:aspect-[2/1] bg-black overflow-hidden">
+                {/* Soft fill so portrait posters aren’t stretched */}
+                <img
+                  src={item.image || item.imageUrl}
+                  alt=""
+                  aria-hidden
+                  className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-55 pointer-events-none"
+                />
+                <div className="absolute inset-0 bg-black/35" />
+                <div className="relative z-[1] h-full flex items-center justify-center px-4 py-3">
+                  <img
+                    src={item.image || item.imageUrl}
+                    alt=""
+                    className="max-h-full w-auto max-w-[42%] sm:max-w-[38%] aspect-[2/3] object-cover rounded-lg shadow-2xl border border-white/15"
+                    loading="lazy"
+                  />
+                </div>
+              </div>
+            ) : null}
+            <div className="px-3.5 py-3">
+              <span className="inline-block text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-white/10 text-white/65 mb-1.5">
+                List
+              </span>
+              <h3 className="text-[15px] sm:text-base font-bold text-white leading-snug">
+                {item.listTitle || item.movieTitle || 'Collection'}
+              </h3>
+              {item.content && item.content !== (item.listTitle || item.movieTitle) && (
+                <p className="text-[12px] sm:text-[13px] text-white/50 mt-1 line-clamp-2 leading-relaxed">
+                  {item.content}
+                </p>
+              )}
+              <p className="text-[12px] text-[var(--color-theater)] mt-2 font-medium">
+                View list →
+              </p>
+            </div>
           </div>
-        </div>
+        </Link>
       ) : (
-        item.content && (
-          <div className={`px-3 sm:px-4 ${isThread ? 'pb-3' : 'pb-1.5'}`}>
-            <MovieMentionText
-              content={item.content}
-              className={`${isThread ? 'text-[16px] sm:text-[17px]' : 'text-[13px]'} text-white leading-relaxed`}
-            />
-          </div>
-        )
-      )}
+        <>
+          {isEditing ? (
+            <div className="px-3 pb-2">
+              <textarea
+                value={editText}
+                onChange={(e) => onEditTextChange(e.target.value.slice(0, 500))}
+                rows={3}
+                maxLength={500}
+                className="w-full bg-[var(--color-background)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-[13px] text-[var(--color-text)] outline-none focus:border-[var(--color-theater)] resize-none"
+              />
+              <div className="flex items-center justify-end gap-2 mt-2">
+                <button onClick={onCancelEdit} className="px-3 py-1.5 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
+                  Cancel
+                </button>
+                <button
+                  onClick={() => onSaveEdit(item)}
+                  disabled={savingEdit || !editText.trim()}
+                  className="px-3 py-1.5 text-xs rounded-lg bg-[var(--color-theater)] text-[var(--color-background)] font-medium disabled:opacity-50"
+                >
+                  {savingEdit ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            item.content && (
+              <div className={`px-3 sm:px-4 ${isThread ? 'pb-3' : 'pb-1.5'}`}>
+                <MovieMentionText
+                  content={item.content}
+                  className={`${isThread ? 'text-[16px] sm:text-[17px]' : 'text-[13px]'} text-white leading-relaxed`}
+                />
+              </div>
+            )
+          )}
 
-      {item.isCarousel && item.mediaItems?.length >= 2 ? (
-        <PostMediaCarousel
-          items={item.mediaItems}
-          caption={item.carouselCaption}
-          variant={isThread ? 'thread' : 'feed'}
-          onDoubleClick={() => onLike(item)}
-        />
-      ) : item.image && (
-        isThread ? (
-          <div className="px-3 pb-3">
-            <RedditMediaFrame src={item.image} alt="" onDoubleClick={() => onLike(item)} />
-          </div>
-        ) : (
-          <div className="relative bg-black flex items-center justify-center max-h-[520px]">
-            <img
-              src={item.image}
-              alt=""
-              className="block max-w-full max-h-[520px] w-auto h-auto object-contain mx-auto"
-              loading="lazy"
+          {item.isCarousel && item.mediaItems?.length >= 2 ? (
+            <PostMediaCarousel
+              items={item.mediaItems}
+              caption={item.carouselCaption}
+              variant={isThread ? 'thread' : 'feed'}
               onDoubleClick={() => onLike(item)}
             />
-          </div>
-        )
+          ) : item.image && (
+            isThread ? (
+              <div className="px-3 pb-3">
+                <RedditMediaFrame src={item.image} alt="" onDoubleClick={() => onLike(item)} />
+              </div>
+            ) : (
+              <div className="relative bg-black flex items-center justify-center max-h-[520px]">
+                <img
+                  src={item.image}
+                  alt=""
+                  className="block max-w-full max-h-[520px] w-auto h-auto object-contain mx-auto"
+                  loading="lazy"
+                  onDoubleClick={() => onLike(item)}
+                />
+              </div>
+            )
+          )}
+        </>
       )}
 
       {item.postType === 'poll' && item.pollData && (

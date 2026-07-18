@@ -2,7 +2,36 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 2026 · HEAD `ca11cc0` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 2026 · HEAD `pending` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Jul 19, 2026 — Search write-through, acronym match, list feed cards
+
+### Search imports missing titles into library ✅
+
+**Problem:** Search was DB-only for titles; obscure films never appeared until manually synced.
+
+**Files changed:**
+- `api/_lib/content-server.js` — TMDB multi search + full upsert (up to 10); person credits import too
+- Acronym variants: `vhs` also queries `v/h/s` / `v.h.s` so V/H/S ranks
+
+**Behavior:** First search can hydrate library rows; later searches hit DB. Compact acronyms match punctuated titles.
+
+### List posts show collection poster in feed ✅
+
+**Problem:** “New list” feed cards were text-only badges with no thumbnail.
+
+**Files changed:**
+- `src/lib/db/collections.js` — cover resolve + sync list `feed_posts.image_url`
+- `src/lib/socialFeedApi.js` — enrich missing covers from `collection_movies`, persist
+- `src/components/social/FeedPostCard.jsx` — inset card, blurred fill + centered poster
+- `src/views/Home.jsx` — refresh cache when list cards lack covers
+- `src/lib/searchUtils.js`, `api/_lib/search-utils.js` — `v%h%s` ilike patterns
+
+**Behavior:** List posts show a structured poster card; covers hydrate from collection movies when `cover_image` is empty.
+
+**Next recommended:** Deploy; hard-refresh Home; smoke-test search `vhs` → V/H/S and list feed thumbnails.
 
 ---
 
@@ -1144,6 +1173,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `pending` | Jul 2026 | Search write-through, acronym match, list feed cards |
 | `ca11cc0` | Jul 2026 | Category browse filters + detail write-through |
 | `d8bf602` | Jul 2026 | Like/dislike also mark watched |
 | `b53aad7` | Jul 2026 | Watch session cache, poster actions, taste ≥3 likes |

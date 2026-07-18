@@ -3,9 +3,225 @@ import { buildLibrarySearchOrClause, rankLibrarySearchHits } from './search-util
 import { fetchTmdbApi } from './tmdb-server.js';
 import { generateJson, isLlmEnabled } from './llm-server.js';
 import { getSupabaseAdmin } from './supabase-admin.js';
+import { mapFullTmdbToLibraryRecord } from './movie-library-server.js';
+import { upsertMoviesLibrary } from '../../src/lib/libraryDedupe.js';
 
 export const LIBRARY_CARD_SELECT =
     'tmdb_id, title, poster_path, backdrop_path, media_type, release_date, first_air_date, vote_average, popularity, overview, genres, runtime, number_of_seasons, number_of_episodes';
+
+/** Cap full imports per search request (live search latency). */
+const SEARCH_IMPORT_MAX = 10;
+const SEARCH_IMPORT_CONCURRENCY = 3;
+const SEARCH_DETAIL_APPEND = 'credits,videos,release_dates,keywords,external_ids';
+
+function libraryKey(tmdbId, mediaType) {
+    return `${String(tmdbId)}:${mediaType === 'tv' ? 'tv' : 'movie'}`;
+}
+
+function pickUsCertification(releaseDates) {
+    const results = releaseDates?.results || releaseDates || [];
+    const us = results.find((r) => r.iso_3166_1 === 'US');
+    if (!us?.release_dates?.length) return null;
+    const theatrical = us.release_dates.find((d) => d.certification && (d.type === 3 || d.type === 2));
+    const any = us.release_dates.find((d) => d.certification);
+    return (theatrical || any)?.certification || null;
+}
+
+function recordToLibraryCard(record) {
+    return normalizeLibraryItem({
+        tmdb_id: record.tmdb_id,
+        title: record.title,
+        poster_path: record.poster_path,
+        backdrop_path: record.backdrop_path,
+        media_type: record.media_type,
+        release_date: record.release_date,
+        first_air_date: record.first_air_date,
+        vote_average: record.vote_average,
+        popularity: record.popularity,
+        overview: record.overview,
+        genres: record.genres,
+        runtime: record.runtime,
+        number_of_seasons: record.number_of_seasons,
+        number_of_episodes: record.number_of_episodes,
+    });
+}
+
+/**
+ * Fetch full TMDB detail and upsert into movies_library (service role).
+ * @returns {object|null} library card or null
+ */
+async function importFullTitleToLibrary(admin, tmdbId, mediaType) {
+    const type = mediaType === 'tv' ? 'tv' : 'movie';
+    const full = await fetchTmdbApi(`/${type}/${tmdbId}`, {
+        append_to_response: SEARCH_DETAIL_APPEND,
+    });
+    if (!full?.id) return null;
+
+    const record = mapFullTmdbToLibraryRecord(full, type);
+    const cert = pickUsCertification(full.release_dates);
+    if (cert) record.certification = cert;
+
+    const { data, error } = await upsertMoviesLibrary(admin, [record], LIBRARY_CARD_SELECT);
+    if (error) {
+        console.warn('[search] library upsert failed:', tmdbId, error.message);
+        return recordToLibraryCard(record);
+    }
+    const row = Array.isArray(data) ? data[0] : data;
+    return normalizeLibraryItem(row || recordToLibraryCard(record));
+}
+
+/**
+ * For TMDB search/person hits: load cards from DB, full-import any missing titles.
+ * @param {{ id: number|string, media_type: string }[]} candidates
+ */
+async function ensureLibraryCardsForCandidates(candidates, { maxImport = SEARCH_IMPORT_MAX } = {}) {
+    if (!candidates?.length) return [];
+
+    const unique = [];
+    const seen = new Set();
+    for (const c of candidates) {
+        const type = c.media_type === 'tv' ? 'tv' : 'movie';
+        const id = String(c.id ?? c.tmdb_id ?? '');
+        if (!id) continue;
+        const key = libraryKey(id, type);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        unique.push({ id, media_type: type });
+    }
+    if (!unique.length) return [];
+
+    const supabase = getSupabase();
+    const ids = unique.map((u) => u.id);
+    const { data: existingRows } = await supabase
+        .from('movies_library')
+        .select(LIBRARY_CARD_SELECT)
+        .eq('is_active', true)
+        .in('tmdb_id', ids);
+
+    const byKey = new Map();
+    (existingRows || []).forEach((row) => {
+        byKey.set(libraryKey(row.tmdb_id, row.media_type), normalizeLibraryItem(row));
+    });
+
+    const missing = unique.filter((u) => !byKey.has(libraryKey(u.id, u.media_type))).slice(0, maxImport);
+    if (missing.length) {
+        let admin;
+        try {
+            admin = getSupabaseAdmin();
+        } catch (err) {
+            console.warn('[search] skip import — no service role:', err.message);
+            admin = null;
+        }
+
+        if (admin) {
+            for (let i = 0; i < missing.length; i += SEARCH_IMPORT_CONCURRENCY) {
+                const batch = missing.slice(i, i + SEARCH_IMPORT_CONCURRENCY);
+                // eslint-disable-next-line no-await-in-loop
+                await Promise.all(batch.map(async (item) => {
+                    try {
+                        const card = await importFullTitleToLibrary(admin, item.id, item.media_type);
+                        if (card) byKey.set(libraryKey(item.id, item.media_type), card);
+                    } catch (err) {
+                        console.warn('[search] import failed:', item.id, err.message);
+                    }
+                }));
+            }
+        }
+    }
+
+    // Preserve candidate order (TMDB relevance)
+    return unique
+        .map((u) => byKey.get(libraryKey(u.id, u.media_type)))
+        .filter(Boolean);
+}
+
+/**
+ * Extra TMDB queries for compact acronyms ("vhs" → "v/h/s") — TMDB won't
+ * match punctuated titles from the plain alphanumeric string alone.
+ */
+function acronymSearchVariants(term) {
+    const alnum = String(term || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (alnum.length < 2 || alnum.length > 5) return [];
+    if (/\s/.test(String(term || '').trim())) return [];
+    const chars = alnum.split('');
+    return [
+        chars.join('/'),
+        chars.join('.'),
+        chars.join('-'),
+        chars.join(' '),
+    ].filter((v) => v !== term);
+}
+
+/**
+ * TMDB title search → ensure each hit is fully saved in movies_library.
+ */
+async function searchAndImportTitlesFromTmdb(term, { mediaType = null, limit = 20 } = {}) {
+    const path = mediaType === 'tv'
+        ? '/search/tv'
+        : mediaType === 'movie'
+            ? '/search/movie'
+            : '/search/multi';
+
+    const queries = [term, ...acronymSearchVariants(term)];
+    const maxCandidates = Math.max(limit, SEARCH_IMPORT_MAX);
+    const candidates = [];
+    const seen = new Set();
+
+    const pushResults = (results) => {
+        for (const r of results || []) {
+            if (!r?.id || !r.poster_path) continue;
+            if (r.media_type === 'person') continue;
+
+            let type;
+            if (mediaType === 'tv' || mediaType === 'movie') {
+                type = mediaType;
+            } else if (r.media_type === 'tv' || r.media_type === 'movie') {
+                type = r.media_type;
+            } else if (path === '/search/tv') {
+                type = 'tv';
+            } else if (path === '/search/movie') {
+                type = 'movie';
+            } else {
+                continue;
+            }
+
+            const key = libraryKey(r.id, type);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            candidates.push({ id: r.id, media_type: type });
+            if (candidates.length >= maxCandidates) return false;
+        }
+        return true;
+    };
+
+    // Run primary + acronym variants in parallel (vhs → v/h/s finds V/H/S)
+    const settled = await Promise.all(queries.map(async (q) => {
+        try {
+            return await fetchTmdbApi(path, {
+                query: q,
+                include_adult: 'false',
+                page: '1',
+            });
+        } catch (err) {
+            console.warn('[search] TMDB search failed:', q, err.message);
+            return null;
+        }
+    }));
+
+    // Prefer punctuated-variant hits first so "vhs" surfaces V/H/S above unrelated "True"
+    const ordered = queries.length > 1
+        ? [...settled.slice(1), settled[0]]
+        : settled;
+
+    for (const data of ordered) {
+        if (!data) continue;
+        if (!pushResults(data.results)) break;
+    }
+
+    return ensureLibraryCardsForCandidates(candidates, {
+        maxImport: SEARCH_IMPORT_MAX,
+    });
+}
 
 export function getSupabase() {
     const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -442,43 +658,48 @@ async function searchLibraryByPerson(term, { mediaType = null, limit = 40 } = {}
     }
     if (!people.length) return [];
 
-    const ids = new Set();
+    const candidates = [];
+    const seenCand = new Set();
+    const pushCand = (id, type) => {
+        if (!id) return;
+        const t = type === 'tv' ? 'tv' : 'movie';
+        if (mediaType && t !== mediaType) return;
+        const key = libraryKey(id, t);
+        if (seenCand.has(key)) return;
+        seenCand.add(key);
+        candidates.push({ id: String(id), media_type: t });
+    };
+
     const CREW_JOBS = new Set(['Director', 'Writer', 'Screenplay', 'Producer', 'Creator', 'Executive Producer']);
 
     await Promise.all(people.map(async (person) => {
         for (const k of person.known_for || []) {
-            if (k?.id && (k.media_type === 'movie' || k.media_type === 'tv')) ids.add(String(k.id));
+            if (k?.id && (k.media_type === 'movie' || k.media_type === 'tv')) {
+                pushCand(k.id, k.media_type);
+            }
         }
         try {
             const credits = await fetchTmdbApi(`/person/${person.id}/combined_credits`, {});
             for (const c of credits?.cast || []) {
-                if (c?.id) ids.add(String(c.id));
+                if (c?.id) pushCand(c.id, c.media_type);
             }
             for (const c of credits?.crew || []) {
-                if (c?.id && CREW_JOBS.has(c.job)) ids.add(String(c.id));
+                if (c?.id && CREW_JOBS.has(c.job)) pushCand(c.id, c.media_type);
             }
         } catch {
             /* known_for only */
         }
     }));
 
-    const idList = [...ids].slice(0, 80);
-    if (!idList.length) return [];
+    if (!candidates.length) return [];
 
-    const supabase = getSupabase();
-    let dbQuery = supabase
-        .from('movies_library')
-        .select(LIBRARY_CARD_SELECT)
-        .eq('is_active', true)
-        .in('tmdb_id', idList)
-        .order('popularity', { ascending: false, nullsFirst: false })
-        .limit(limit);
-
-    if (mediaType) dbQuery = dbQuery.eq('media_type', mediaType);
-
-    const { data, error } = await dbQuery;
-    if (error) return [];
-    return (data || []).map(normalizeLibraryItem);
+    // Load library rows; full-import top missing titles so person search also fills DB
+    const cards = await ensureLibraryCardsForCandidates(candidates.slice(0, 80), {
+        maxImport: Math.min(8, SEARCH_IMPORT_MAX),
+    });
+    return cards
+        .sort((a, b) => (b.popularity || 0) - (a.popularity || 0))
+        .slice(0, limit);
 }
 
 export async function searchPeople(query, limit = 20) {
@@ -536,14 +757,26 @@ export async function searchContent(query, options = {}) {
         ? searchLibraryByPerson(term, { mediaType, limit: Math.max(limit, 30) })
         : Promise.resolve([]);
 
-    const [titleHits, personHits] = await Promise.all([titlePromise, personPromise]);
+    // First page: also search TMDB and full-import any titles missing from the library
+    const tmdbPromise = offset === 0
+        ? searchAndImportTitlesFromTmdb(term, { mediaType, limit })
+        : Promise.resolve([]);
 
+    const [titleHits, personHits, tmdbHits] = await Promise.all([
+        titlePromise,
+        personPromise,
+        tmdbPromise,
+    ]);
+
+    // Prefer TMDB relevance order, then local title/person hits not already included
     const seen = new Set();
     const merged = [];
-    for (const row of [...titleHits, ...personHits]) {
+    for (const row of [...tmdbHits, ...titleHits, ...personHits]) {
         const id = String(row.tmdb_id || row.id);
-        if (!id || seen.has(id)) continue;
-        seen.add(id);
+        const type = row.media_type === 'tv' ? 'tv' : 'movie';
+        const key = `${id}:${type}`;
+        if (!id || seen.has(key)) continue;
+        seen.add(key);
         merged.push(row);
     }
 

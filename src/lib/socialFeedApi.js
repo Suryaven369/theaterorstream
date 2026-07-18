@@ -392,6 +392,59 @@ function mapFeedPostRow(post, { author, isLiked = false, isSaved = false, userPo
         };
     }
 
+    const isList = post.post_type === 'list'
+        || (rawMedia && typeof rawMedia === 'object' && !Array.isArray(rawMedia) && rawMedia.kind === 'list');
+
+    if (isList) {
+        const collectionId = rawMedia?.collectionId || null;
+        const title = rawMedia?.name || post.movie_title || 'List';
+        const cover = toPublicStorageUrl(rawMedia?.coverImage || post.image_url) || null;
+        const body = post.content || '';
+        // content is often "Name\nDescription" — show description under the title card
+        const lines = body.split('\n').map((l) => l.trim()).filter(Boolean);
+        const excerpt = lines.length > 1 && lines[0] === title
+            ? lines.slice(1).join(' ')
+            : (lines[0] === title ? '' : body);
+
+        return {
+            id: post.id,
+            type: 'post',
+            postType: 'list',
+            collectionId,
+            movieTitle: title,
+            content: excerpt || title,
+            listTitle: title,
+            image: cover,
+            imageUrl: cover,
+            hasImage: !!cover,
+            likes: post.likes_count || 0,
+            comments: post.comments_count || 0,
+            shares: post.shares_count || 0,
+            time: formatTimeAgo(post.created_at),
+            createdAt: post.created_at,
+            publishedAt: post.created_at,
+            isLiked,
+            isSaved,
+            mediaItems: [],
+            carouselCaption: null,
+            isCarousel: false,
+            pollData: null,
+            userPollVote: null,
+            movie: null,
+            rating: null,
+            editCount: Number(post.edit_count) || 0,
+            canEdit: false,
+            user: {
+                id: post.user_id,
+                name: author?.display_name || author?.username || 'User',
+                username: author?.username || 'user',
+                avatar: '🎬',
+                avatarUrl: toPublicStorageUrl(author?.avatar_url) || null,
+                isVerified: !!author?.is_verified,
+            },
+        };
+    }
+
     const { items: mediaItems, caption: carouselCaption } = parseMediaCarousel(post.media_items);
     const primaryImage = toPublicStorageUrl(post.image_url) || mediaItems[0]?.url || null;
     const pollData = post.post_type === 'poll' ? mapPollData(post.poll_data) : null;
@@ -437,6 +490,119 @@ function mapFeedPostRow(post, { author, isLiked = false, isSaved = false, userPo
         editCount: Number(post.edit_count) || 0,
         canEdit: (Number(post.edit_count) || 0) < 1,
     };
+}
+
+function posterPathToUrl(path) {
+    if (!path) return null;
+    if (/^https?:\/\//i.test(path)) return path;
+    const p = String(path).startsWith('/') ? path : `/${path}`;
+    return `https://image.tmdb.org/t/p/w780${p}`;
+}
+
+function coverFromCollectionRow(collection, posters = []) {
+    const cover = collection?.cover_image || collection?.banner_image || null;
+    if (cover) {
+        if (/^https?:\/\//i.test(cover)) return cover;
+        if (String(cover).startsWith('/')) return `https://image.tmdb.org/t/p/w780${cover}`;
+        return cover;
+    }
+    const first = posters.find(Boolean) || (collection?.collection_movies || [])
+        .map((m) => m.poster_path)
+        .find(Boolean);
+    return posterPathToUrl(first);
+}
+
+/**
+ * Fill missing list covers from user_collections + collection_movies,
+ * and persist image_url onto feed_posts so the next load (and cache) has it.
+ */
+async function enrichListPostCovers(items) {
+    const need = (items || []).filter((i) => i.postType === 'list' && !i.image && !i.imageUrl);
+    if (!need.length) return items;
+
+    try {
+        const userIds = [...new Set(need.map((i) => i.user?.id).filter(Boolean))];
+        if (!userIds.length) return items;
+
+        const { data: cols, error: colErr } = await supabase
+            .from('user_collections')
+            .select('id, name, user_id, cover_image, banner_image')
+            .in('user_id', userIds)
+            .eq('is_public', true);
+
+        if (colErr) {
+            console.warn('[enrichListPostCovers] collections:', colErr.message);
+            return items;
+        }
+
+        const colIds = (cols || []).map((c) => c.id);
+        const postersByCol = new Map();
+        if (colIds.length) {
+            const { data: movies } = await supabase
+                .from('collection_movies')
+                .select('collection_id, poster_path')
+                .in('collection_id', colIds)
+                .not('poster_path', 'is', null);
+
+            for (const m of movies || []) {
+                if (!m.poster_path) continue;
+                const list = postersByCol.get(m.collection_id) || [];
+                if (list.length < 4) list.push(m.poster_path);
+                postersByCol.set(m.collection_id, list);
+            }
+        }
+
+        const byId = new Map();
+        const byUserName = new Map();
+        for (const c of cols || []) {
+            const cover = coverFromCollectionRow(c, postersByCol.get(c.id) || []);
+            if (!cover) continue;
+            const meta = { cover, id: c.id, name: c.name };
+            byId.set(c.id, meta);
+            byUserName.set(`${c.user_id}:${String(c.name || '').trim().toLowerCase()}`, meta);
+        }
+
+        const patched = [];
+        const next = items.map((item) => {
+            if (item.postType !== 'list' || item.image || item.imageUrl) return item;
+            const key = `${item.user?.id}:${String(item.movieTitle || item.listTitle || '').trim().toLowerCase()}`;
+            const hit = (item.collectionId && byId.get(item.collectionId)) || byUserName.get(key);
+            if (!hit) return item;
+            patched.push({ postId: item.id, cover: hit.cover, collectionId: hit.id, name: hit.name });
+            return {
+                ...item,
+                image: hit.cover,
+                imageUrl: hit.cover,
+                hasImage: true,
+                collectionId: item.collectionId || hit.id,
+            };
+        });
+
+        // Persist so feed cache / next visit don't stay blank
+        if (patched.length) {
+            Promise.all(patched.map((p) => supabase
+                .from('feed_posts')
+                .update({
+                    has_image: true,
+                    image_url: p.cover,
+                    media_items: {
+                        kind: 'list',
+                        collectionId: p.collectionId,
+                        name: p.name,
+                        coverImage: p.cover,
+                    },
+                    updated_at: new Date().toISOString(),
+                })
+                .eq('id', p.postId))).catch((err) => {
+                console.warn('[enrichListPostCovers] persist failed:', err?.message || err);
+            });
+        }
+
+        return next;
+    } catch (err) {
+        console.warn('[enrichListPostCovers]', err.message);
+        return items;
+    }
 }
 
 export async function uploadPostImage(file, userId) {
@@ -715,15 +881,14 @@ export async function getFeedPostById(postId, userId = null) {
         if (voteRow) userPollVote = voteRow.option_index;
     }
 
-    return {
-        ok: true,
-        item: mapFeedPostRow(post, {
-            author,
-            isLiked: !!likeRes.data,
-            isSaved: !!saveRes.data,
-            userPollVote,
-        }),
-    };
+    const mapped = mapFeedPostRow(post, {
+        author,
+        isLiked: !!likeRes.data,
+        isSaved: !!saveRes.data,
+        userPollVote,
+    });
+    const [enriched] = await enrichListPostCovers([mapped]);
+    return { ok: true, item: enriched };
 }
 
 // ---------------------------------------------------------------------------
@@ -848,7 +1013,8 @@ export async function getFeedPosts({ limit = 20, offset = 0, userId = null, mode
         });
     });
 
-    return { ok: true, items };
+    const enriched = await enrichListPostCovers(items);
+    return { ok: true, items: enriched };
 }
 
 // ---------------------------------------------------------------------------
