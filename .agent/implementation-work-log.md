@@ -2,7 +2,7 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 2026 · HEAD `pending` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 2026 · HEAD `ca11cc0` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
 
 ---
 
@@ -1144,7 +1144,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
-| `pending` | Jul 2026 | Category browse filters + detail write-through |
+| `ca11cc0` | Jul 2026 | Category browse filters + detail write-through |
 | `d8bf602` | Jul 2026 | Like/dislike also mark watched |
 | `b53aad7` | Jul 2026 | Watch session cache, poster actions, taste ≥3 likes |
 | `0b895ea` | Jul 2026 | Sitemap index, GEO llms.txt, Search Console SEO |
