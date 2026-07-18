@@ -27,6 +27,8 @@ import {
 import { convertImageToBase64 } from "../utils/imageHelper";
 import MovieDetailsModal from "../components/MovieDetailsModal";
 import AdminMovieEditorPage from "./admin/AdminMovieEditorPage";
+import { MOVIE_GENRES, TV_GENRES } from "../lib/contentApi";
+import { SEARCH_THEMES, THEME_POPULAR_VOTE_COUNT } from "../constants/searchCategories";
 
 // Drop duplicate TMDB results by id, keeping the first occurrence
 const dedupeById = (movies) => {
@@ -385,6 +387,8 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
     const [tmdbLanguage, setTmdbLanguage] = useState(''); // Original language filter (e.g. hi, ta, te)
     const [tmdbRegion, setTmdbRegion] = useState('US'); // Region for Now Playing + watch provider availability
     const [tmdbPlatform, setTmdbPlatform] = useState(''); // OTT platform filter (TMDB watch provider id)
+    const [tmdbGenreId, setTmdbGenreId] = useState(''); // TMDB genre id filter
+    const [tmdbThemeId, setTmdbThemeId] = useState(''); // Theme / category keyword filter
     const [tmdbProviders, setTmdbProviders] = useState([]); // Watch providers available for current region/media type
     const [loadingProviders, setLoadingProviders] = useState(false);
     const [tmdbPage, setTmdbPage] = useState(1); // Current page
@@ -436,7 +440,7 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                 fetchTmdb('popular');
             }
         }
-    }, [activeTab, tmdbYear, tmdbCountry, tmdbLanguage, tmdbPlatform, tmdbMediaType]);
+    }, [activeTab, tmdbYear, tmdbCountry, tmdbLanguage, tmdbPlatform, tmdbGenreId, tmdbThemeId, tmdbMediaType]);
 
     // Load the list of OTT/streaming platforms (Netflix, Hotstar, Prime, etc.) available for the
     // current region + media type, so the Platform dropdown always reflects real TMDB provider ids
@@ -612,8 +616,15 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
             const pagesToFetch = Math.ceil(effectiveLimit / 20);
             const requests = [];
 
-            // If year, country, language, or platform filter is active, OR if it's upcoming category, use discover endpoint
-            if ((tmdbYear || tmdbCountry || tmdbLanguage || tmdbPlatform || useDiscover) && source !== 'trending') {
+            const selectedTheme = SEARCH_THEMES.find((t) => t.id === tmdbThemeId) || null;
+            const hasCategoryFilter = Boolean(tmdbGenreId || selectedTheme);
+            // Genre/theme need Discover. Also use Discover when other filters or upcoming.
+            const useDiscoverPath =
+                (tmdbYear || tmdbCountry || tmdbLanguage || tmdbPlatform || useDiscover || hasCategoryFilter)
+                && (source !== 'trending' || hasCategoryFilter);
+
+            // If year, country, language, platform, genre, or theme filter is active, OR upcoming — use discover
+            if (useDiscoverPath) {
                 for (let i = 0; i < pagesToFetch; i++) {
                     const params = { page: startPage + i };
 
@@ -629,6 +640,21 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                         if (tmdbPlatform) {
                             params.with_watch_providers = tmdbPlatform;
                             params.watch_region = tmdbRegion || 'US';
+                        }
+                        if (tmdbGenreId) params.with_genres = String(tmdbGenreId);
+                        if (selectedTheme?.keywordIds?.length) {
+                            // Primary keyword only — OR-mixing wrong IDs breaks category accuracy
+                            params.with_keywords = String(selectedTheme.keywordIds[0]);
+                        }
+                        if (selectedTheme?.originalLanguage && !tmdbLanguage) {
+                            params.with_original_language = selectedTheme.originalLanguage;
+                        }
+                        // Anime (and similar): genre + language when no keyword ids
+                        if (selectedTheme?.genreIds?.length && !tmdbGenreId && !selectedTheme?.keywordIds?.length) {
+                            params.with_genres = selectedTheme.genreIds.join('|');
+                        }
+                        if (hasCategoryFilter) {
+                            params['vote_count.gte'] = THEME_POPULAR_VOTE_COUNT;
                         }
 
                         // Map source to appropriate sorting
@@ -669,6 +695,19 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                         if (tmdbPlatform) {
                             params.with_watch_providers = tmdbPlatform;
                             params.watch_region = tmdbRegion || 'US';
+                        }
+                        if (tmdbGenreId) params.with_genres = String(tmdbGenreId);
+                        if (selectedTheme?.keywordIds?.length) {
+                            params.with_keywords = String(selectedTheme.keywordIds[0]);
+                        }
+                        if (selectedTheme?.originalLanguage && !tmdbLanguage) {
+                            params.with_original_language = selectedTheme.originalLanguage;
+                        }
+                        if (selectedTheme?.genreIds?.length && !tmdbGenreId && !selectedTheme?.keywordIds?.length) {
+                            params.with_genres = selectedTheme.genreIds.join('|');
+                        }
+                        if (hasCategoryFilter) {
+                            params['vote_count.gte'] = THEME_POPULAR_VOTE_COUNT;
                         }
 
                         switch (source) {
@@ -716,7 +755,7 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
             }
 
             console.log(`🎬 TMDB Fetch - Category: ${source}, Type: ${tmdbMediaType}, Endpoint: ${endpoint}`);
-            console.log(`📊 Fetching ${pagesToFetch} pages (${startPage} to ${startPage + pagesToFetch - 1}) - Year: ${tmdbYear || 'All'}, Country: ${tmdbCountry || 'All'}, Language: ${tmdbLanguage || 'All'}, Platform: ${tmdbPlatform || 'All'}`);
+            console.log(`📊 Fetching ${pagesToFetch} pages — Year: ${tmdbYear || 'All'}, Genre: ${tmdbGenreId || 'All'}, Theme: ${tmdbThemeId || 'All'}, Language: ${tmdbLanguage || 'All'}`);
 
             const responses = await Promise.all(requests);
             // TMDB pages can overlap (items shift between pages as popularity/sort data changes
@@ -1556,7 +1595,7 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
 
                         {/* Filters Row - Compact */}
                         <div className="bg-white/5 rounded p-3 mb-3">
-                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-3">
                                 {/* Media Type Dropdown */}
                                 <div>
                                     <label className="text-xs text-white/60 mb-1 block">Content Type</label>
@@ -1564,6 +1603,7 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                                         value={tmdbMediaType}
                                         onChange={(e) => {
                                             setTmdbMediaType(e.target.value);
+                                            setTmdbGenreId('');
                                             if (tmdbSource && tmdbSource !== 'search') {
                                                 fetchTmdb(tmdbSource);
                                             }
@@ -1572,6 +1612,46 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                                     >
                                         <option value="movie">🎬 Movies</option>
                                         <option value="tv">📺 TV Series</option>
+                                    </select>
+                                </div>
+
+                                {/* Genre filter */}
+                                <div>
+                                    <label className="text-xs text-white/60 mb-1 block">Genre</label>
+                                    <select
+                                        value={tmdbGenreId}
+                                        onChange={(e) => {
+                                            setTmdbGenreId(e.target.value);
+                                            if (tmdbSource && tmdbSource !== 'search') {
+                                                fetchTmdb(tmdbSource);
+                                            }
+                                        }}
+                                        className="w-full bg-black/30 rounded px-3 py-1.5 text-xs text-white border border-white/10"
+                                    >
+                                        <option value="">All Genres</option>
+                                        {(tmdbMediaType === 'tv' ? TV_GENRES : MOVIE_GENRES).map((g) => (
+                                            <option key={g.id} value={String(g.id)}>{g.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Theme / category filter (keywords) */}
+                                <div>
+                                    <label className="text-xs text-white/60 mb-1 block">Category</label>
+                                    <select
+                                        value={tmdbThemeId}
+                                        onChange={(e) => {
+                                            setTmdbThemeId(e.target.value);
+                                            if (tmdbSource && tmdbSource !== 'search') {
+                                                fetchTmdb(tmdbSource);
+                                            }
+                                        }}
+                                        className="w-full bg-black/30 rounded px-3 py-1.5 text-xs text-white border border-white/10"
+                                    >
+                                        <option value="">All Categories</option>
+                                        {SEARCH_THEMES.map((t) => (
+                                            <option key={t.id} value={t.id}>{t.label}</option>
+                                        ))}
                                     </select>
                                 </div>
 
@@ -1993,17 +2073,48 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
 
                             {/* Filters Row - Compact */}
                             <div className="bg-white/5 rounded p-3 mb-3">
-                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-3">
                                     {/* Media Type Dropdown */}
                                     <div>
                                         <label className="text-xs text-white/60 mb-1 block">Content Type</label>
                                         <select
                                             value={tmdbMediaType}
-                                            onChange={(e) => setTmdbMediaType(e.target.value)}
+                                            onChange={(e) => {
+                                                setTmdbMediaType(e.target.value);
+                                                setTmdbGenreId('');
+                                            }}
                                             className="w-full bg-black/30 rounded px-3 py-1.5 text-xs text-white border border-white/10"
                                         >
                                             <option value="movie">🎬 Movies</option>
                                             <option value="tv">📺 TV Series</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-xs text-white/60 mb-1 block">Genre</label>
+                                        <select
+                                            value={tmdbGenreId}
+                                            onChange={(e) => setTmdbGenreId(e.target.value)}
+                                            className="w-full bg-black/30 rounded px-3 py-1.5 text-xs text-white border border-white/10"
+                                        >
+                                            <option value="">All Genres</option>
+                                            {(tmdbMediaType === 'tv' ? TV_GENRES : MOVIE_GENRES).map((g) => (
+                                                <option key={g.id} value={String(g.id)}>{g.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-xs text-white/60 mb-1 block">Category</label>
+                                        <select
+                                            value={tmdbThemeId}
+                                            onChange={(e) => setTmdbThemeId(e.target.value)}
+                                            className="w-full bg-black/30 rounded px-3 py-1.5 text-xs text-white border border-white/10"
+                                        >
+                                            <option value="">All Categories</option>
+                                            {SEARCH_THEMES.map((t) => (
+                                                <option key={t.id} value={t.id}>{t.label}</option>
+                                            ))}
                                         </select>
                                     </div>
 

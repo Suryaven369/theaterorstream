@@ -583,6 +583,230 @@ export const quickSearchFromDb = async (query, limit = 8) => {
 // =============================================
 
 /**
+ * Theme browse via TMDB Discover (client fallback when edge API is unavailable).
+ * Mirrors api/_lib/theme-browse-server.js so Categories fill like Genres.
+ */
+const FAMILY_MOVIE_CERT_MAX = 'PG';
+const FAMILY_TV_RATINGS = new Set(['TV-Y', 'TV-Y7', 'TV-Y7-FV', 'TV-G', 'TV-PG']);
+const FAMILY_BLOCKED_MOVIE_GENRES = '27|53|80|10752';
+const FAMILY_BLOCKED_TV_GENRES = '80|10768';
+const FAMILY_MOVIE_BLOCKED_GENRE_SET = new Set([27, 53, 80, 10752]);
+
+function mergeWithoutGenres(existing, blocked) {
+    const parts = new Set(
+        String(existing || '')
+            .split('|')
+            .map((s) => s.trim())
+            .filter(Boolean),
+    );
+    String(blocked).split('|').forEach((id) => parts.add(id));
+    return Array.from(parts).join('|');
+}
+
+function applyFamilyFriendlyDiscoverParams(params, type, { region = 'US', genreId = null } = {}) {
+    params.include_adult = false;
+    if (Number(params['vote_count.gte']) > 50) {
+        params['vote_count.gte'] = 50;
+    }
+
+    if (type === 'movie') {
+        params.certification_country = region || 'US';
+        params['certification.lte'] = FAMILY_MOVIE_CERT_MAX;
+        params.without_genres = mergeWithoutGenres(params.without_genres, FAMILY_BLOCKED_MOVIE_GENRES);
+        return;
+    }
+
+    delete params.certification_country;
+    delete params['certification.lte'];
+    params.without_genres = mergeWithoutGenres(params.without_genres, FAMILY_BLOCKED_TV_GENRES);
+
+    // Open browse only — genre/theme keep scope; US content ratings enforce safety.
+    if (!genreId && !params.with_genres && !params.with_keywords) {
+        params.with_genres = '10751|10762';
+    }
+}
+
+function isFamilySafeMovieRow(row) {
+    const ids = (row.genres || []).map((g) => Number(g?.id ?? g)).filter((n) => n > 0);
+    return !ids.some((id) => FAMILY_MOVIE_BLOCKED_GENRE_SET.has(id));
+}
+
+async function filterTvRowsByUsContentRating(rows, tmdbFetch, region = 'US') {
+    if (!rows.length) return [];
+    const country = (region || 'US').toUpperCase();
+    const checks = await Promise.all(
+        rows.map(async (row) => {
+            try {
+                const data = await tmdbFetch(`/tv/${row.tmdb_id}/content_ratings`);
+                const match = (data?.results || []).find(
+                    (r) => String(r.iso_3166_1 || '').toUpperCase() === country,
+                ) || (data?.results || []).find(
+                    (r) => String(r.iso_3166_1 || '').toUpperCase() === 'US',
+                );
+                const rating = String(match?.rating || '').trim().toUpperCase();
+                if (!rating || rating === 'NR') return false;
+                return FAMILY_TV_RATINGS.has(rating);
+            } catch {
+                return false;
+            }
+        }),
+    );
+    return rows.filter((_, i) => checks[i]);
+}
+
+/**
+ * Theme browse via TMDB Discover (client fallback when edge API is unavailable).
+ * Mirrors api/_lib/theme-browse-server.js so Categories fill like Genres.
+ */
+async function getExploreContentByTheme(themeId, {
+    limit = 30,
+    offset = 0,
+    mediaType = 'movie',
+    sort = 'popular',
+    providerId = null,
+    region = 'US',
+    familyFriendly = false,
+    genreId = null,
+} = {}) {
+    const { fetchPublicBrowseThemes } = await import('./browseThemes.js');
+    const { getThemeConfig, THEME_POPULAR_VOTE_COUNT } = await import('../constants/searchCategories.js');
+    const publicThemes = await fetchPublicBrowseThemes();
+    const theme = themeId
+        ? (publicThemes.find((t) => t.id === themeId) || getThemeConfig(themeId))
+        : null;
+    if (themeId && !theme && !genreId) return { data: [], total: 0 };
+
+    const { tmdbFetch } = await import('./tmdbApi.js');
+    const TMDB_PAGE_SIZE = 20;
+    const keywordIds = (theme?.keywordIds || []).map(Number).filter((n) => n > 0);
+    const type = mediaType === 'tv' ? 'tv' : 'movie';
+    const endpoint = type === 'tv' ? '/discover/tv' : '/discover/movie';
+    const sortBy = sort === 'newest'
+        ? (type === 'tv' ? 'first_air_date.desc' : 'primary_release_date.desc')
+        : sort === 'rating'
+            ? 'vote_average.desc'
+            : 'popularity.desc';
+
+    const buildParams = (page) => {
+        const params = {
+            sort_by: sortBy,
+            'vote_count.gte': sort === 'rating' ? 150 : THEME_POPULAR_VOTE_COUNT,
+            include_adult: false,
+            page,
+        };
+
+        if (genreId) {
+            params.with_genres = Number(genreId);
+        } else if (theme?.originalLanguage === 'ja' && theme.genreIds?.includes(16)) {
+            params.with_genres = 16;
+            params.with_original_language = 'ja';
+        } else if (keywordIds.length) {
+            params.with_keywords = String(keywordIds[0]);
+        } else if (theme?.genreIds?.length) {
+            params.with_genres = theme.genreIds.join('|');
+        }
+
+        if (theme?.originalLanguage && !params.with_original_language) {
+            params.with_original_language = theme.originalLanguage;
+        }
+        if (providerId) {
+            params.with_watch_providers = providerId;
+            params.watch_region = region || 'US';
+            params.with_watch_monetization_types = 'flatrate|free|ads|rent|buy';
+        }
+        if (familyFriendly) {
+            applyFamilyFriendlyDiscoverParams(params, type, { region, genreId });
+        }
+        return params;
+    };
+
+    const mapRow = (m) => ({
+        tmdb_id: String(m.id),
+        id: String(m.id),
+        title: m.title || m.name,
+        poster_path: m.poster_path,
+        backdrop_path: m.backdrop_path || null,
+        media_type: type,
+        release_date: m.release_date || m.first_air_date || null,
+        vote_average: m.vote_average ?? null,
+        popularity: m.popularity ?? 0,
+        overview: m.overview || null,
+        genres: (m.genre_ids || []).map((gid) => ({ id: gid })),
+    });
+
+    // TV Family Friendly: verify US content ratings (discover ignores certs for TV)
+    if (familyFriendly && type === 'tv') {
+        const need = offset + limit;
+        const filtered = [];
+        let page = 1;
+        let totalPages = 1;
+        let rawSeen = 0;
+        let rawTotal = 0;
+        const maxPages = 12;
+
+        while (filtered.length < need && page <= totalPages && page <= maxPages) {
+            let data;
+            try {
+                // eslint-disable-next-line no-await-in-loop
+                data = await tmdbFetch(endpoint, buildParams(page));
+            } catch (err) {
+                console.error('Theme TMDB discover failed:', err);
+                break;
+            }
+            totalPages = data?.total_pages || 1;
+            rawTotal = data?.total_results || rawTotal;
+            const batch = (data?.results || [])
+                .filter((m) => m?.id && m.poster_path && !m.adult)
+                .map(mapRow);
+            rawSeen += batch.length;
+            // eslint-disable-next-line no-await-in-loop
+            const safe = await filterTvRowsByUsContentRating(batch, tmdbFetch, region);
+            filtered.push(...safe);
+            page += 1;
+            if (page > totalPages) break;
+        }
+
+        const exhausted = page > totalPages || page > maxPages;
+        const keepRatio = rawSeen > 0 ? filtered.length / rawSeen : 0.25;
+        const total = exhausted
+            ? filtered.length
+            : Math.max(filtered.length, Math.round(rawTotal * Math.min(Math.max(keepRatio, 0.1), 0.85)));
+        return { data: filtered.slice(offset, offset + limit), total };
+    }
+
+    const startPage = Math.floor(offset / TMDB_PAGE_SIZE) + 1;
+    const endPage = Math.ceil((offset + limit) / TMDB_PAGE_SIZE) || 1;
+    const rows = [];
+    let totalResults = 0;
+
+    for (let page = startPage; page <= endPage; page += 1) {
+        let data;
+        try {
+            // eslint-disable-next-line no-await-in-loop
+            data = await tmdbFetch(endpoint, buildParams(page));
+        } catch (err) {
+            console.error('Theme TMDB discover failed:', err);
+            break;
+        }
+
+        totalResults = data?.total_results || totalResults;
+        (data?.results || []).forEach((m) => {
+            if (!m?.id || !m.poster_path || m.adult) return;
+            rows.push(mapRow(m));
+        });
+
+        if (page >= (data?.total_pages || 1)) break;
+    }
+
+    const safeRows = familyFriendly && type === 'movie'
+        ? rows.filter(isFamilySafeMovieRow)
+        : rows;
+    const pageStart = offset % TMDB_PAGE_SIZE;
+    const data = safeRows.slice(pageStart, pageStart + limit);
+    return { data, total: totalResults || data.length };
+}
+
+/**
  * Get content for explore page with category filtering
  */
 export const getExploreContent = async (options = {}) => {
@@ -590,9 +814,28 @@ export const getExploreContent = async (options = {}) => {
         mediaType = 'movie',
         category = 'popular',  // 'popular', 'top_rated', 'new_releases'
         genreId = null,
+        theme = null,
         limit = 20,
         offset = 0,
     } = options;
+
+    if (theme || (genreId && options.browse)) {
+        const cacheKey = `explore:browse:${theme || ''}:${genreId || ''}:${mediaType}:${options.sort}:${options.providerId}:${options.familyFriendly}:${limit}:${offset}`;
+        const cached = getCached(cacheKey, CACHE_TTL.library);
+        if (cached) return cached;
+        const result = await getExploreContentByTheme(theme, {
+            limit,
+            offset,
+            mediaType,
+            sort: options.sort || 'popular',
+            providerId: options.providerId || null,
+            region: options.region || 'US',
+            familyFriendly: Boolean(options.familyFriendly),
+            genreId: genreId || null,
+        });
+        setCache(cacheKey, result);
+        return result;
+    }
 
     const cacheKey = `explore:${mediaType}:${category}:${genreId}:${limit}:${offset}`;
     const cached = getCached(cacheKey, CACHE_TTL.library);
@@ -604,9 +847,10 @@ export const getExploreContent = async (options = {}) => {
         .eq('is_active', true)
         .eq('media_type', mediaType);
 
-    // Genre filter
+    // Genre filter — genre_ids int[] is canonical; genres JSONB is fallback
     if (genreId) {
-        query = query.contains('genres', [{ id: genreId }]);
+        const gid = Number(genreId);
+        query = query.or(`genre_ids.cs.{${gid}},genres.cs.[{"id": ${gid}}]`);
     }
 
     // Category-based sorting

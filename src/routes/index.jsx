@@ -12,6 +12,7 @@ import Home from "../views/Home";
 import Explore from "../views/Explore";
 import Details from "../views/Details";
 import Search from "../views/Search";
+import CategoryBrowsePage from "../views/CategoryBrowsePage";
 import UpcomingPage from "../views/upcoming";
 import AdminPanel from "../views/AdminPanel";
 import AuthPage from "../views/AuthPage";
@@ -113,6 +114,10 @@ const router = createBrowserRouter([
       {
         path: "search",
         element: <Search />,
+      },
+      {
+        path: "browse/:kind/:id",
+        element: <CategoryBrowsePage />,
       },
       {
         path: "movies/:slug",

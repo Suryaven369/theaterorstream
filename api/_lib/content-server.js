@@ -570,7 +570,10 @@ export async function fetchExploreContent(options = {}) {
         .eq('media_type', mediaType);
 
     if (genreId) {
-        query = query.contains('genres', [{ id: Number(genreId) }]);
+        const gid = Number(genreId);
+        // genre_ids is the canonical int[] column; also match genres JSONB
+        // for older rows that never got genre_ids backfilled.
+        query = query.or(`genre_ids.cs.{${gid}},genres.cs.[{"id": ${gid}}]`);
     }
 
     switch (category) {

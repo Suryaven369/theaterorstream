@@ -159,7 +159,7 @@ export default function HomeBrowseTab({
     },
     collections: {
       title: 'Collections',
-      subtitle: 'Franchise (admin-approved) and community lists — filter above the grid',
+      subtitle: null,
     },
     boards: {
       title: 'Boards',
@@ -181,9 +181,11 @@ export default function HomeBrowseTab({
               <h1 className="text-xl sm:text-3xl md:text-4xl font-bold text-white mb-0.5 sm:mb-2 leading-tight">
                 {header.title}
               </h1>
-              <p className="text-xs sm:text-base text-[var(--text-secondary)] line-clamp-2">
-                {header.subtitle}
-              </p>
+              {header.subtitle ? (
+                <p className="text-xs sm:text-base text-[var(--text-secondary)] line-clamp-2">
+                  {header.subtitle}
+                </p>
+              ) : null}
             </div>
             {activePanel === 'feed' && (
               <div className="shrink-0 self-start sm:self-auto">

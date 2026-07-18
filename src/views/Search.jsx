@@ -4,7 +4,10 @@ import { IoSearchOutline, IoClose } from "react-icons/io5";
 import { FaFolderOpen, FaFilm } from "react-icons/fa";
 import Card from "../components/Card";
 import { searchProfiles, searchPublicCollections, searchPublicBoards } from "../lib/supabase";
-import { searchContentFromEdge, searchPeopleFromEdge } from "../lib/contentEdgeApi";
+import {
+  searchContentFromEdge,
+  searchPeopleFromEdge,
+} from "../lib/contentEdgeApi";
 import {
   getRecentSearches,
   addRecentSearch,
@@ -12,6 +15,10 @@ import {
   clearRecentSearches,
 } from "../lib/searchHistory";
 import { searchHashtags } from "../lib/hashtagApi";
+import { SEARCH_GENRES, SEARCH_THEMES } from "../constants/searchCategories";
+import { fetchPublicBrowseThemes } from "../lib/browseThemes";
+
+const SEARCH_PAGE_SIZE = 30;
 
 const TABS = [
   { id: "content", label: "Content" },
@@ -163,6 +170,8 @@ const Search = () => {
   const [tabLoading, setTabLoading] = useState(false);
   const [moviePage, setMoviePage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const [resultTotal, setResultTotal] = useState(0);
+  const [browseThemes, setBrowseThemes] = useState(SEARCH_THEMES);
 
   const canSearch = query.trim().length >= 2 || query.trim().startsWith("#");
   const showRecent = !canSearch;
@@ -174,6 +183,16 @@ const Search = () => {
 
   useEffect(() => {
     inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchPublicBrowseThemes().then((themes) => {
+      if (!cancelled && themes?.length) setBrowseThemes(themes);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const pushQuery = useCallback(
@@ -230,8 +249,10 @@ const Search = () => {
       try {
         const contentRes = await searchContentFromEdge(q, { limit: 30 });
         if (id !== reqId.current) return;
-        setMovieData(contentRes.data || []);
-        setHasMore((contentRes.data?.length || 0) >= 30);
+        const rows = contentRes.data || [];
+        setMovieData(rows);
+        setResultTotal(Number(contentRes.total) || rows.length);
+        setHasMore(rows.length >= 30);
         const tagRows = await searchHashtags(q, { limit: 6 });
         if (id === reqId.current) setHashtags(tagRows);
       } catch (err) {
@@ -308,19 +329,33 @@ const Search = () => {
   };
 
   const loadMoreMovies = async () => {
-    if (!canSearch || loading || !hasMore) return;
+    if (loading || !hasMore || !canSearch) return;
     setLoading(true);
     const nextPage = moviePage + 1;
-    const offset = (nextPage - 1) * 30;
-    const result = await searchContentFromEdge(query.trim(), { limit: 30, offset });
-    setMovieData((prev) => [...prev, ...(result.data || [])]);
-    setHasMore((result.data?.length || 0) >= 30);
-    setMoviePage(nextPage);
-    setLoading(false);
+    const offset = (nextPage - 1) * SEARCH_PAGE_SIZE;
+    try {
+      const result = await searchContentFromEdge(query.trim(), {
+        limit: SEARCH_PAGE_SIZE,
+        offset,
+      });
+      const rows = result.data || [];
+      setMovieData((prev) => {
+        const merged = [...prev, ...rows];
+        const total = Number(result.total) || resultTotal || merged.length;
+        setResultTotal(total);
+        setHasMore(merged.length < total || rows.length >= SEARCH_PAGE_SIZE);
+        return merged;
+      });
+      setMoviePage(nextPage);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const showSpinner =
-    ((activeTab === "content" || activeTab === "tags" || isHashtagQuery) && loading && !(isHashtagQuery || activeTab === "tags" ? hashtags.length : movieData.length)) ||
+    ((activeTab === "content" || activeTab === "tags" || isHashtagQuery) &&
+      loading &&
+      !(isHashtagQuery || activeTab === "tags" ? hashtags.length : movieData.length)) ||
     (activeTab !== "content" && activeTab !== "tags" && tabLoading &&
       ((activeTab === "collections" && !collections.length) ||
         (activeTab === "boards" && !boards.length) ||
@@ -388,50 +423,90 @@ const Search = () => {
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 pb-28">
           {showRecent && (
-            <section>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-[11px] font-semibold tracking-[0.12em] text-white/40 uppercase">
-                  Recent Searches
-                </h2>
-                {recent.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={handleClearHistory}
-                    className="text-xs text-white/35 hover:text-white/60 transition-colors"
-                  >
-                    Clear history
-                  </button>
-                )}
-              </div>
-              {recent.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {recent.map((term) => (
+            <>
+              <section>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-[11px] font-semibold tracking-[0.12em] text-white/40 uppercase">
+                    Recent Searches
+                  </h2>
+                  {recent.length > 0 && (
                     <button
-                      key={term}
                       type="button"
-                      onClick={() => handleRecentClick(term)}
-                      className="search-recent-pill group inline-flex items-center gap-2 pl-4 pr-2 py-2 rounded-full bg-[#1a1a1a] border border-white/[0.08] text-sm text-white/80 hover:border-white/15 hover:text-white transition-colors"
+                      onClick={handleClearHistory}
+                      className="text-xs text-white/35 hover:text-white/60 transition-colors"
                     >
-                      <span>{term}</span>
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        onClick={(e) => handleRemoveRecent(e, term)}
-                        onKeyDown={(e) => e.key === "Enter" && handleRemoveRecent(e, term)}
-                        className="p-1 rounded-full text-white/30 hover:text-white hover:bg-white/10"
-                        aria-label={`Remove ${term}`}
-                      >
-                        <IoClose className="text-sm" />
-                      </span>
+                      Clear history
                     </button>
-                  ))}
+                  )}
                 </div>
-              ) : (
-                <p className="text-sm text-white/30 py-8">
-                  Try a movie title, actor, or director — results appear as you type.
-                </p>
+                {recent.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {recent.map((term) => (
+                      <button
+                        key={term}
+                        type="button"
+                        onClick={() => handleRecentClick(term)}
+                        className="search-recent-pill group inline-flex items-center gap-2 pl-4 pr-2 py-2 rounded-full bg-[#1a1a1a] border border-white/[0.08] text-sm text-white/80 hover:border-white/15 hover:text-white transition-colors"
+                      >
+                        <span>{term}</span>
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => handleRemoveRecent(e, term)}
+                          onKeyDown={(e) => e.key === "Enter" && handleRemoveRecent(e, term)}
+                          className="p-1 rounded-full text-white/30 hover:text-white hover:bg-white/10"
+                          aria-label={`Remove ${term}`}
+                        >
+                          <IoClose className="text-sm" />
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-white/30 py-2">
+                    Try a movie title, actor, or director — results appear as you type.
+                  </p>
+                )}
+              </section>
+
+              {activeTab === "content" && (
+                <section className="mt-10">
+                  <h2 className="text-[11px] font-semibold tracking-[0.12em] text-white/40 uppercase mb-4">
+                    Categories
+                  </h2>
+
+                  <div className="mb-8">
+                    <p className="text-xs text-white/35 mb-3">Genres</p>
+                    <div className="flex flex-wrap gap-2">
+                      {SEARCH_GENRES.map((genre) => (
+                        <Link
+                          key={genre.id}
+                          to={`/browse/genre/${genre.id}`}
+                          className="inline-flex items-center px-3.5 py-2 rounded-full bg-[#1a1a1a] border border-white/[0.08] text-sm text-white/80 hover:border-white/20 hover:text-white transition-colors"
+                        >
+                          {genre.label}
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-xs text-white/35 mb-3">Themes & styles</p>
+                    <div className="flex flex-wrap gap-2">
+                      {browseThemes.map((theme) => (
+                        <Link
+                          key={theme.id}
+                          to={`/browse/theme/${theme.id}`}
+                          className="inline-flex items-center px-3.5 py-2 rounded-full bg-[#1a1a1a] border border-white/[0.08] text-sm text-white/80 hover:border-white/20 hover:text-white transition-colors"
+                        >
+                          {theme.label}
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                </section>
               )}
-            </section>
+            </>
           )}
 
           {canSearch && (
@@ -493,7 +568,9 @@ const Search = () => {
                   {movieData.length > 0 ? (
                     <>
                       <p className="text-xs text-white/35 mb-4 uppercase tracking-wider">
-                        {movieData.length}+ titles
+                        {resultTotal > movieData.length
+                          ? `${movieData.length} of ${resultTotal} titles`
+                          : `${movieData.length}${hasMore ? "+" : ""} titles`}
                         {loading ? " · updating…" : ""}
                       </p>
                       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">

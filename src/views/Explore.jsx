@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import Card from "../components/Card";
 import { FaDatabase } from "react-icons/fa";
 import {
@@ -9,18 +9,34 @@ import {
 } from "../lib/contentEdgeApi";
 import { MOVIE_GENRES, TV_GENRES } from "../lib/contentApi";
 
+function genreIdFromSearch(searchParams) {
+  const raw = searchParams.get("genre");
+  if (!raw) return null;
+  const id = Number(raw);
+  return Number.isFinite(id) ? id : null;
+}
+
 const ExplorePage = () => {
   const params = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedGenre = genreIdFromSearch(searchParams);
   const [pageNo, setPageNo] = useState(1);
   const [data, setData] = useState([]);
   const [totalItems, setTotalItems] = useState(0);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-  const [selectedGenre, setSelectedGenre] = useState(null);
 
   const PAGE_SIZE = 24;
 
-  const fetchFromDatabase = async (page = 1, reset = false) => {
+  const setSelectedGenre = (genreId) => {
+    if (genreId) {
+      setSearchParams({ genre: String(genreId) }, { replace: true });
+    } else {
+      setSearchParams({}, { replace: true });
+    }
+  };
+
+  const fetchFromDatabase = async (page = 1, reset = false, genreId = selectedGenre) => {
     try {
       setLoading(true);
       const exploreType = params.explore;
@@ -35,7 +51,7 @@ const ExplorePage = () => {
         result = await getExploreContentFromEdge({
           mediaType: 'movie',
           category: 'popular',
-          genreId: selectedGenre,
+          genreId,
           limit: PAGE_SIZE,
           offset,
         });
@@ -43,7 +59,7 @@ const ExplorePage = () => {
         result = await getExploreContentFromEdge({
           mediaType: 'tv',
           category: 'popular',
-          genreId: selectedGenre,
+          genreId,
           limit: PAGE_SIZE,
           offset,
         });
@@ -51,7 +67,7 @@ const ExplorePage = () => {
         result = await getExploreContentFromEdge({
           mediaType: 'movie',
           category: 'popular',
-          genreId: selectedGenre,
+          genreId,
           limit: PAGE_SIZE,
           offset,
         });
@@ -59,7 +75,7 @@ const ExplorePage = () => {
         result = await getExploreContentFromEdge({
           mediaType: 'movie',
           category: 'top_rated',
-          genreId: selectedGenre,
+          genreId,
           limit: PAGE_SIZE,
           offset,
         });
@@ -67,7 +83,7 @@ const ExplorePage = () => {
         result = await getExploreContentFromEdge({
           mediaType: 'movie',
           category: 'new_releases',
-          genreId: selectedGenre,
+          genreId,
           limit: PAGE_SIZE,
           offset,
         });
@@ -112,22 +128,15 @@ const ExplorePage = () => {
 
   useEffect(() => {
     if (pageNo > 1) {
-      fetchFromDatabase(pageNo, false);
+      fetchFromDatabase(pageNo, false, selectedGenre);
     }
   }, [pageNo]);
 
   useEffect(() => {
     setPageNo(1);
     setData([]);
-    setSelectedGenre(null);
-    fetchFromDatabase(1, true);
-  }, [params.explore]);
-
-  useEffect(() => {
-    setPageNo(1);
-    setData([]);
-    fetchFromDatabase(1, true);
-  }, [selectedGenre]);
+    fetchFromDatabase(1, true, selectedGenre);
+  }, [selectedGenre, params.explore]);
 
   useEffect(() => {
     window.addEventListener("scroll", handleScroll);

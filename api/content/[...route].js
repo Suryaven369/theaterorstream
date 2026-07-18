@@ -55,14 +55,44 @@ export default async function handler(request) {
             );
         }
 
+        if (segment === 'browse-themes') {
+            const { loadBrowseThemes } = await import('../_lib/theme-browse-server.js');
+            const themes = await loadBrowseThemes({ activeOnly: true });
+            return jsonResponse(
+                { themes },
+                'public, s-maxage=60, stale-while-revalidate=120',
+            );
+        }
+
         if (segment === 'explore') {
-            const result = await fetchExploreContent({
+            const theme = url.searchParams.get('theme');
+            const genreId = url.searchParams.get('genreId')
+                ? Number(url.searchParams.get('genreId'))
+                : null;
+            const exploreOpts = {
                 mediaType: url.searchParams.get('mediaType') || 'movie',
                 category: url.searchParams.get('category') || 'popular',
-                genreId: url.searchParams.get('genreId') ? Number(url.searchParams.get('genreId')) : null,
+                genreId,
+                sort: url.searchParams.get('sort') || 'popular',
+                providerId: url.searchParams.get('providerId') || null,
+                region: url.searchParams.get('region') || 'US',
+                familyFriendly: url.searchParams.get('familyFriendly') === '1'
+                    || url.searchParams.get('familyFriendly') === 'true',
                 limit: parseInt(url.searchParams.get('limit') || '24', 10),
                 offset: parseInt(url.searchParams.get('offset') || '0', 10),
-            });
+            };
+            if (theme) {
+                const { fetchExploreByTheme } = await import('../_lib/theme-browse-server.js');
+                const result = await fetchExploreByTheme(theme, exploreOpts);
+                return jsonResponse(result, 'public, s-maxage=120, stale-while-revalidate=300');
+            }
+            // Category browse page uses TMDB discover (sort / OTT / family filters)
+            if (genreId && url.searchParams.get('browse') === '1') {
+                const { fetchExploreByGenre } = await import('../_lib/theme-browse-server.js');
+                const result = await fetchExploreByGenre(genreId, exploreOpts);
+                return jsonResponse(result, 'public, s-maxage=120, stale-while-revalidate=300');
+            }
+            const result = await fetchExploreContent(exploreOpts);
             return jsonResponse(result, 'public, s-maxage=120, stale-while-revalidate=300');
         }
 

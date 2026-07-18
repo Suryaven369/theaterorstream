@@ -2,7 +2,38 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 2026 · HEAD `d8bf602` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 2026 · HEAD `pending` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Jul 19, 2026 — Category browse filters + detail write-through
+
+### Search categories → dedicated browse page with filters ✅
+
+**Problem:** Genre/theme chips lived on Search with pill switchers; needed OTT / sort / family-friendly filters and a proper browse page.
+
+**Files changed:**
+- `src/views/CategoryBrowsePage.jsx` — `/browse/:kind/:id` with All/Movies/Series, Family Friendly, sort, OTT
+- `src/constants/searchCategories.js` — genres, themes, OTT providers, sort options
+- `src/lib/browseThemes.js` — public themes from edge / defaults
+- `api/_lib/theme-browse-server.js` — TMDB discover (theme/genre) + accurate family-friendly filters
+- `api/content/[...route].js`, `src/lib/contentEdgeApi.js`, `src/lib/contentApi.js` — explore browse params
+- `src/views/Search.jsx` — chips link to browse routes
+- `src/routes/index.jsx` — browse route
+- Admin browse Genre/Category filters; HomeBrowseTab subtitle cleanup
+
+**Behavior:** Opening a genre/theme shows titles from TMDB discover with filters. Family Friendly uses US cert ≤ PG (movies) and verified TV-Y–TV-PG ratings (series).
+
+### Detail page write-through to `movies_library` ✅
+
+**Problem:** Category titles often weren’t in the DB; every detail open hit TMDB again.
+
+**Files changed:**
+- `api/_lib/movie-detail-server.js` — on library miss, fetch TMDB → upsert via service role → next visit from DB
+
+**Behavior:** First open of a missing title persists a full library row; second open is DB-first.
+
+**Next recommended:** Deploy; smoke-test browse filters + open a new category title twice (second should be library/`_source: library`).
 
 ---
 
@@ -1113,6 +1144,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `pending` | Jul 2026 | Category browse filters + detail write-through |
 | `d8bf602` | Jul 2026 | Like/dislike also mark watched |
 | `b53aad7` | Jul 2026 | Watch session cache, poster actions, taste ≥3 likes |
 | `0b895ea` | Jul 2026 | Sitemap index, GEO llms.txt, Search Console SEO |

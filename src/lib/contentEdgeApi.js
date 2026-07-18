@@ -122,6 +122,12 @@ export async function getExploreContentFromEdge(options = {}) {
     if (options.mediaType) params.set('mediaType', options.mediaType);
     if (options.category) params.set('category', options.category);
     if (options.genreId != null) params.set('genreId', String(options.genreId));
+    if (options.theme) params.set('theme', String(options.theme));
+    if (options.sort) params.set('sort', String(options.sort));
+    if (options.providerId) params.set('providerId', String(options.providerId));
+    if (options.region) params.set('region', String(options.region));
+    if (options.familyFriendly) params.set('familyFriendly', '1');
+    if (options.browse) params.set('browse', '1');
     if (options.limit != null) params.set('limit', String(options.limit));
     if (options.offset != null) params.set('offset', String(options.offset));
 
