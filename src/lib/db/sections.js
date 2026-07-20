@@ -71,7 +71,7 @@ function mergeHomepageAndTvSections(homeSections = [], tvSections = []) {
 export const getHomepageSections = async (activeOnly = false, { mergeTv = false } = {}) => {
     let query = supabase
         .from('homepage_sections')
-        .select('*')
+        .select('id, name, slug, icon, display_order, is_active, movies_by_region, section_type, api_source, max_movies, created_at, updated_at')
         .order('display_order', { ascending: true });
 
     if (activeOnly) {
@@ -90,7 +90,7 @@ export const getHomepageSections = async (activeOnly = false, { mergeTv = false 
         try {
             let tvQuery = supabase
                 .from('tv_sections')
-                .select('*')
+                .select('id, name, slug, icon, display_order, is_active, movies_by_region, section_type, api_source, max_movies, created_at, updated_at')
                 .order('display_order', { ascending: true });
             if (activeOnly) tvQuery = tvQuery.eq('is_active', true);
             const { data: tvData, error: tvError } = await tvQuery;
@@ -235,7 +235,7 @@ export const deleteHomepageSection = async (id) => {
 export const getTVSections = async (activeOnly = false) => {
     let query = supabase
         .from('tv_sections')
-        .select('*')
+        .select('id, name, slug, icon, display_order, is_active, movies_by_region, section_type, api_source, max_movies, created_at, updated_at')
         .order('display_order', { ascending: true });
 
     if (activeOnly) {

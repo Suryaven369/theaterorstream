@@ -2,16 +2,52 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { BiUpvote } from 'react-icons/bi';
-import { FaCode, FaLink, FaRegComment, FaRetweet, FaShare, FaUserCircle } from 'react-icons/fa';
+import {
+  FaBookmark,
+  FaCode,
+  FaEllipsisH,
+  FaLink,
+  FaPencilAlt,
+  FaRegBookmark,
+  FaRegComment,
+  FaShare,
+  FaTrash,
+} from 'react-icons/fa';
 import MovieMentionText from '../MovieMentionText';
 import VerifiedBadge from '../VerifiedBadge';
+import ConfirmationModal from '../ConfirmationModal';
 import { useToast } from '../Toast';
-import { addThreadComment, getThreadComments, nestComments } from '../../lib/feedThread';
+import {
+  addThreadComment,
+  deleteThreadComment,
+  getThreadComments,
+  nestComments,
+  updateThreadComment,
+} from '../../lib/feedThread';
 import { attachCommentLikes, toggleCommentUpvote } from '../../lib/feedLikes';
 import { getCachedComments, setCachedComments } from '../../lib/feedSessionCache';
 import { toPublicStorageUrl, getAvatarUrl } from '../../lib/storagePublicUrl';
 
 const MAX_REPLY_DEPTH = 8;
+const SAVED_COMMENTS_KEY = 'tos_saved_comments';
+
+function loadSavedCommentIds() {
+  try {
+    const raw = localStorage.getItem(SAVED_COMMENTS_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(arr) ? arr.map(String) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function persistSavedCommentIds(set) {
+  try {
+    localStorage.setItem(SAVED_COMMENTS_KEY, JSON.stringify([...set]));
+  } catch {
+    /* ignore */
+  }
+}
 
 function buildLocalComment({ saved, content, parentId, user, profile }) {
   const authorName = profile?.display_name || profile?.username || user?.user_metadata?.full_name || 'You';
@@ -88,6 +124,8 @@ function CommentNode({
   onRequireSignIn,
   onReplyPosted,
   onCommentLiked,
+  onCommentDeleted,
+  onCommentEdited,
   collapsedIds,
   toggleCollapsed,
 }) {
@@ -96,25 +134,46 @@ function CommentNode({
   const [busy, setBusy] = useState(false);
   const [voteBusy, setVoteBusy] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(comment.content || '');
+  const [editBusy, setEditBusy] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [saved, setSaved] = useState(() => loadSavedCommentIds().has(String(comment.id)));
   const [copied, setCopied] = useState(false);
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
+  const [morePos, setMorePos] = useState({ top: 0, left: 0 });
   const shareButtonRef = useRef(null);
+  const moreButtonRef = useRef(null);
   const score = comment.likesCount || 0;
   const voted = comment.isLiked ? 'up' : null;
   const collapsed = collapsedIds.has(comment.id);
   const replies = comment.replies || [];
   const hasReplies = replies.length > 0;
   const isOp = opUserId && comment.user?.id === opUserId;
+  const isOwner = !!(user?.id && comment.user?.id && user.id === comment.user.id);
   const canNestDeeper = depth < MAX_REPLY_DEPTH;
 
   useEffect(() => {
-    if (!shareOpen) return undefined;
+    setEditText(comment.content || '');
+  }, [comment.content]);
+
+  useEffect(() => {
+    if (!shareOpen && !moreOpen) return undefined;
     const handleClickOutside = (e) => {
-      if (shareButtonRef.current && shareButtonRef.current.contains(e.target)) return;
+      if (shareButtonRef.current?.contains(e.target)) return;
+      if (moreButtonRef.current?.contains(e.target)) return;
+      const menuEl = e.target?.closest?.('[data-comment-menu]');
+      if (menuEl) return;
       setShareOpen(false);
+      setMoreOpen(false);
     };
     const handleEsc = (e) => {
-      if (e.key === 'Escape') setShareOpen(false);
+      if (e.key === 'Escape') {
+        setShareOpen(false);
+        setMoreOpen(false);
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     document.addEventListener('keydown', handleEsc);
@@ -122,11 +181,12 @@ function CommentNode({
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleEsc);
     };
-  }, [shareOpen]);
+  }, [shareOpen, moreOpen]);
 
   const openShareMenu = (e) => {
     e.preventDefault();
     e.stopPropagation();
+    setMoreOpen(false);
     if (shareButtonRef.current) {
       const rect = shareButtonRef.current.getBoundingClientRect();
       setMenuPos({
@@ -135,6 +195,24 @@ function CommentNode({
       });
     }
     setShareOpen((o) => !o);
+  };
+
+  const openMoreMenu = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isAuthenticated) {
+      onRequireSignIn?.();
+      return;
+    }
+    setShareOpen(false);
+    if (moreButtonRef.current) {
+      const rect = moreButtonRef.current.getBoundingClientRect();
+      setMorePos({
+        top: rect.bottom + 6,
+        left: Math.max(8, Math.min(rect.right - 200, window.innerWidth - 208)),
+      });
+    }
+    setMoreOpen((o) => !o);
   };
 
   const handleCopyLink = async (e) => {
@@ -164,6 +242,78 @@ function CommentNode({
     }, 1200);
   };
 
+  const toggleSave = () => {
+    const ids = loadSavedCommentIds();
+    const id = String(comment.id);
+    if (ids.has(id)) {
+      ids.delete(id);
+      setSaved(false);
+      toast.success('Comment unsaved');
+    } else {
+      ids.add(id);
+      setSaved(true);
+      toast.success('Comment saved');
+    }
+    persistSavedCommentIds(ids);
+    setMoreOpen(false);
+  };
+
+  const startEdit = () => {
+    setEditText(comment.content || '');
+    setEditing(true);
+    setMoreOpen(false);
+    setReplyOpen(false);
+  };
+
+  const saveEdit = async () => {
+    if (!isOwner || editBusy) return;
+    const next = editText.trim();
+    if (!next) {
+      toast.error('Comment cannot be empty.');
+      return;
+    }
+    if (next === (comment.content || '').trim()) {
+      setEditing(false);
+      return;
+    }
+    setEditBusy(true);
+    try {
+      const res = await updateThreadComment(item, comment.id, user.id, next);
+      if (!res.ok) throw new Error(res.error || 'Could not update comment.');
+      onCommentEdited?.(comment.id, next);
+      setEditing(false);
+      toast.success('Comment updated');
+    } catch (err) {
+      console.error('Edit comment failed', err);
+      toast.error(err?.message || 'Could not update comment.');
+    } finally {
+      setEditBusy(false);
+    }
+  };
+
+  const confirmDelete = () => {
+    if (!isOwner || deleteBusy) return;
+    setMoreOpen(false);
+    setDeleteConfirmOpen(true);
+  };
+
+  const performDelete = async () => {
+    if (!isOwner || deleteBusy) return;
+    setDeleteBusy(true);
+    try {
+      const res = await deleteThreadComment(item, comment.id, user.id);
+      if (!res.ok) throw new Error(res.error || 'Could not delete comment.');
+      onCommentDeleted?.(comment.id);
+      toast.success('Comment deleted');
+    } catch (err) {
+      console.error('Delete comment failed', err);
+      toast.error(err?.message || 'Could not delete comment.');
+    } finally {
+      setDeleteBusy(false);
+      setDeleteConfirmOpen(false);
+    }
+  };
+
   const submitReply = async (replyText) => {
     if (!isAuthenticated) {
       onRequireSignIn?.();
@@ -171,9 +321,9 @@ function CommentNode({
     }
     setBusy(true);
     try {
-      const saved = await addThreadComment(item, user.id, replyText, comment.id);
+      const savedRow = await addThreadComment(item, user.id, replyText, comment.id);
       onReplyPosted?.(buildLocalComment({
-        saved,
+        saved: savedRow,
         content: replyText,
         parentId: comment.id,
         user,
@@ -223,6 +373,18 @@ function CommentNode({
 
   return (
     <div className={`relative ${depth > 0 ? 'ml-1.5 sm:ml-3 pl-2.5 sm:pl-3 border-l border-[var(--color-border)]' : ''}`}>
+      <ConfirmationModal
+        isOpen={deleteConfirmOpen}
+        onClose={() => {
+          if (!deleteBusy) setDeleteConfirmOpen(false);
+        }}
+        onConfirm={performDelete}
+        title="Delete comment?"
+        message="This will permanently remove your comment and any replies under it. This cannot be undone."
+        confirmText={deleteBusy ? 'Deleting…' : 'Delete'}
+        cancelText="Cancel"
+        isDangerous
+      />
       {hasReplies && (
         <button
           type="button"
@@ -265,7 +427,39 @@ function CommentNode({
 
           {!collapsed && (
             <>
-              <MovieMentionText content={comment.content} className="text-[13px] sm:text-[14px] text-[var(--color-text-secondary)] leading-relaxed mt-0.5 sm:mt-1" />
+              {editing ? (
+                <div className="mt-1.5 mb-1">
+                  <textarea
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value.slice(0, 2000))}
+                    rows={3}
+                    autoFocus
+                    className="w-full bg-[var(--color-background)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-[13px] text-[var(--color-text)] outline-none focus:border-[var(--color-theater)]/60 resize-none"
+                  />
+                  <div className="flex justify-end gap-1.5 mt-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditing(false);
+                        setEditText(comment.content || '');
+                      }}
+                      className="text-[11px] text-[var(--color-text-muted)] px-2 py-1.5 hover:text-[var(--color-text)] min-h-[40px] sm:min-h-0"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={editBusy || !editText.trim()}
+                      onClick={saveEdit}
+                      className="text-[11px] font-medium px-3 py-1.5 rounded-lg bg-[var(--color-theater)] text-[var(--color-background)] disabled:opacity-40 min-h-[40px] sm:min-h-0"
+                    >
+                      {editBusy ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <MovieMentionText content={comment.content} className="text-[13px] sm:text-[14px] text-[var(--color-text-secondary)] leading-relaxed mt-0.5 sm:mt-1" />
+              )}
 
               <div className="flex items-center gap-0.5 sm:gap-1 mt-1 sm:mt-1.5 -ml-1.5 flex-wrap">
                 <button
@@ -321,6 +515,7 @@ function CommentNode({
                 {shareOpen && createPortal(
                   <div
                     role="menu"
+                    data-comment-menu
                     className="fixed w-48 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-2xl py-1.5 z-[9999]"
                     style={{ top: menuPos.top, left: menuPos.left }}
                     onClick={(e) => e.stopPropagation()}
@@ -343,6 +538,67 @@ function CommentNode({
                       <FaCode className="text-[var(--color-text-muted)] text-[12px]" aria-hidden />
                       Embed
                     </button>
+                  </div>,
+                  document.body,
+                )}
+
+                <button
+                  ref={moreButtonRef}
+                  type="button"
+                  aria-label="More options"
+                  aria-expanded={moreOpen}
+                  aria-haspopup="menu"
+                  className={`inline-flex items-center justify-center px-2 py-1.5 sm:py-1 rounded-lg text-[10px] sm:text-[11px] transition-colors min-h-[40px] sm:min-h-0 min-w-[36px] touch-manipulation ${
+                    moreOpen ? 'bg-[var(--color-surface-subtle)] text-[var(--color-text)]' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-subtle)]'
+                  }`}
+                  onClick={openMoreMenu}
+                >
+                  <FaEllipsisH className="text-[12px]" />
+                </button>
+                {moreOpen && createPortal(
+                  <div
+                    role="menu"
+                    data-comment-menu
+                    className="fixed w-[200px] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-2xl py-1.5 z-[9999]"
+                    style={{ top: morePos.top, left: morePos.left }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {isOwner && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={startEdit}
+                        className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left text-[13px] text-[var(--color-text)] hover:bg-[var(--color-surface-subtle)] transition-colors"
+                      >
+                        <FaPencilAlt className="text-[var(--color-text-muted)] text-[12px]" aria-hidden />
+                        Edit comment
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={toggleSave}
+                      className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left text-[13px] text-[var(--color-text)] hover:bg-[var(--color-surface-subtle)] transition-colors"
+                    >
+                      {saved ? (
+                        <FaBookmark className="text-[var(--color-theater)] text-[12px]" aria-hidden />
+                      ) : (
+                        <FaRegBookmark className="text-[var(--color-text-muted)] text-[12px]" aria-hidden />
+                      )}
+                      {saved ? 'Unsave' : 'Save'}
+                    </button>
+                    {isOwner && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        disabled={deleteBusy}
+                        onClick={confirmDelete}
+                        className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left text-[13px] text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10 transition-colors disabled:opacity-50"
+                      >
+                        <FaTrash className="text-[12px]" aria-hidden />
+                        {deleteBusy ? 'Deleting…' : 'Delete comment'}
+                      </button>
+                    )}
                   </div>,
                   document.body,
                 )}
@@ -370,6 +626,8 @@ function CommentNode({
                   onRequireSignIn={onRequireSignIn}
                   onReplyPosted={onReplyPosted}
                   onCommentLiked={onCommentLiked}
+                  onCommentDeleted={onCommentDeleted}
+                  onCommentEdited={onCommentEdited}
                   collapsedIds={collapsedIds}
                   toggleCollapsed={toggleCollapsed}
                 />
@@ -519,6 +777,45 @@ export default function FeedCommentThread({
     );
   };
 
+  const collectDescendantIds = (list, rootId) => {
+    const byParent = new Map();
+    for (const c of list) {
+      const pid = c.parentId || null;
+      if (!byParent.has(pid)) byParent.set(pid, []);
+      byParent.get(pid).push(c.id);
+    }
+    const out = new Set([rootId]);
+    const stack = [rootId];
+    while (stack.length) {
+      const id = stack.pop();
+      for (const child of byParent.get(id) || []) {
+        if (!out.has(child)) {
+          out.add(child);
+          stack.push(child);
+        }
+      }
+    }
+    return out;
+  };
+
+  const onCommentDeleted = (commentId) => {
+    setComments((prev) => {
+      const removeIds = collectDescendantIds(prev, commentId);
+      const next = prev.filter((c) => !removeIds.has(c.id));
+      onCommentAdded?.(item.id, next.length);
+      if (commentsCacheKey) setCachedComments(commentsCacheKey, next);
+      return next;
+    });
+  };
+
+  const onCommentEdited = (commentId, content) => {
+    setComments((prev) => {
+      const next = prev.map((c) => (c.id === commentId ? { ...c, content } : c));
+      if (commentsCacheKey) setCachedComments(commentsCacheKey, next);
+      return next;
+    });
+  };
+
   const opUserId = item?.user?.id || null;
 
   return (
@@ -585,6 +882,8 @@ export default function FeedCommentThread({
               onRequireSignIn={onRequireSignIn}
               onReplyPosted={onReplyPosted}
               onCommentLiked={onCommentLiked}
+              onCommentDeleted={onCommentDeleted}
+              onCommentEdited={onCommentEdited}
               collapsedIds={collapsedIds}
               toggleCollapsed={toggleCollapsed}
             />

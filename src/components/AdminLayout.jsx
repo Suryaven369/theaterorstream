@@ -64,7 +64,7 @@ const AdminLayout = () => {
     }, [navOpen]);
 
     return (
-        <div className="min-h-screen bg-[#0a0a0a] text-white">
+        <div className="min-h-screen bg-[#0a0a0a] text-white overflow-x-hidden max-w-[100vw]">
             {/* Mobile top bar */}
             <header className="lg:hidden sticky top-0 z-40 border-b border-white/10 bg-[#111]/95 backdrop-blur-md pt-[env(safe-area-inset-top,0px)]">
                 <div className="flex items-center gap-3 h-14 px-3">
@@ -157,9 +157,9 @@ const AdminLayout = () => {
                 </div>
             </aside>
 
-            {/* Main content */}
-            <main className="min-w-0 w-full max-w-full overflow-x-hidden lg:ml-56">
-                <div className="min-h-[calc(100dvh-3.5rem)] lg:min-h-screen min-w-0 max-w-full pb-[env(safe-area-inset-bottom,0px)]">
+            {/* Main content — padding (not margin) so width stays 100% and never forces horizontal scroll */}
+            <main className="min-w-0 w-full max-w-full overflow-x-hidden lg:pl-56">
+                <div className="min-h-[calc(100dvh-3.5rem)] lg:min-h-screen min-w-0 max-w-full overflow-x-hidden pb-[env(safe-area-inset-bottom,0px)]">
                     <Outlet />
                 </div>
             </main>

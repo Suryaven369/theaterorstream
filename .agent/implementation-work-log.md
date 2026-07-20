@@ -6,6 +6,155 @@ Session log for production architecture Phase 1 work (DB-first performance + Ver
 
 ---
 
+## Session: Jul 21, 2026 — Taste Map + Settings mobile polish
+
+### Mobile-first Taste Map / Settings ✅
+
+**Problem:** Taste Map and Settings felt desktop-compressed on phones (dense copy, tiny chips, content under bottom nav).
+
+**Files changed:** TasteMapPage + taste-map components, SettingsPage, TasteSettingsPage — tighter type/spacing, 44px taps, safe-area padding, emotion columns as horizontal snap on mobile, sticky save above mobile nav, stacked account fields.
+
+**Behavior:** Pages scroll cleanly on phone without fighting the bottom tab bar.
+
+---
+
+## Session: Jul 21, 2026 — Taste Map page
+
+### Dedicated Taste Map from profile ✅
+
+**Problem:** Users needed a full taste identity page (not only the Watch dashboard strip), reachable from the profile three-dots / avatar menu.
+
+**Files changed:**
+- `src/views/TasteMapPage.jsx` — `/taste-map` page: identity, strongest tastes, history (liked/rated/watched/disliked), genres/vibes, spectra, vibe map, emotions, cinema world, discovery, modes, boundaries, insights, rebuild
+- `src/components/taste-map/*` — modular section components
+- `src/constants/tasteMap.js`, `src/lib/tasteMapHelpers.js`, `src/lib/tasteProfileApi.js` — helpers + persist discovery/boundaries into `onboarding_step_data`
+- `api/_lib/events-server.js` — dashboard adds DNA, axis, dislikes, discovery/boundaries
+- `src/routes/index.jsx` — auth route `taste-map`
+- `ProfileMenu.jsx`, `ProfilePage.jsx` — Taste Map menu entries
+- `TasteDashboardPanel.jsx` — Open → `/taste-map`
+
+**Behavior:** Signed-in users open **Taste Map** from profile menu or Watch panel. Page uses real dashboard + lists; empty/low-confidence states when data is thin. Controls persist to `user_taste_profiles.onboarding_step_data` (emotions, discovery, boundaries, modes, feedback log, insight keep/dismiss). History comes from existing liked/rated/watched/events tables. No new Supabase tables (full feature-table schema deferred).
+
+**Next recommended:** Wire recommendation engine to honour `discovery_level` + `content_boundaries` from `onboarding_step_data` if not already.
+
+---
+
+## Session: Jul 21, 2026 — Reco chat accuracy (Mistral picks)
+
+### Chat bubble uses Mistral to choose titles ✅
+
+**Problem:** Bubble only used LLM for reply text; movie cards were generic engine slices (often off-question).
+
+**Files changed:**
+- `api/_lib/llm-server.js` — `answerRecoChat`: Mistral-first selects best catalog ids + reply for the exact question
+- `api/_lib/reco-chat-server.js` — larger mood/tonight/for-you pools, richer intents, LLM pick + reason attach; `meta.llmUsed`
+- `src/components/RecoChatBubble.jsx` — shows “Ranked with AI…” when LLM pick succeeded
+
+**Behavior:** Question → candidate pool from DB engines → **Mistral ranks/picks** (Gemini fallback) → only library titles. Requires `MIST_API_KEY` (or `MISTRAL_API_KEY`) in env.
+
+---
+
+## Session: Jul 21, 2026 — Watch mobile app layout
+
+### Watch tab feels native on phone ✅
+
+**Problem:** Watch read like a desktop web page on mobile (inset hero, large posters, loose spacing, centered mood header).
+
+**Files changed:**
+- `SpotlightHero.jsx` — full-bleed immersive hero on mobile
+- `RecommendationRow.jsx` / `RecommendationCard.jsx` — denser 108px posters, tighter headings, poster-first (reasons on sm+)
+- `OnePerfectTonight.jsx` — compact list-row card on mobile
+- `WatchPage.jsx` — tighter vertical rhythm, left-aligned mood, shorter section titles
+- `FollowingFeed.jsx` / `TasteDashboardPanel.jsx` — compact mobile spacing
+- `Home.jsx` — slightly tighter Watch top inset under header
+
+**Behavior:** Watch scrolls like a Netflix/Letterboxd-style mobile app: edge hero, dense rails, less chrome.
+
+---
+
+## Session: Jul 21, 2026 — Reco chat bubble
+
+### Floating “What should I watch?” assistant ✅
+
+**Problem:** Users needed a quick, personalized way to ask for tonight / mood / binge picks without digging through Watch rails.
+
+**Files changed:**
+- `api/_lib/reco-chat-server.js` — presets, intent heuristics + LLM classify, engine fetch (tonight / feel_good / comedy / binge TV / for-you), DB-only items
+- `api/_lib/llm-server.js` — `classifyChatIntent`, `generateChatReply`
+- `api/recommendations/[...route].js` — `POST /api/recommendations/chat` (+ GET presets)
+- `src/lib/recommendationApi.js` — `askRecoChat`, `RECO_CHAT_PRESETS`
+- `src/components/RecoChatBubble.jsx` — FAB + panel (presets, free text, pick cards)
+- `src/App.jsx` — mount bubble (hidden on admin / auth / search)
+
+**Behavior:** Bottom-right magic button → preset chips or typed question → personalized reply + up to 3 library titles (taste engines; AI only writes copy / classifies intent). Sign-in prompt when logged out. FAB sits above mobile nav.
+
+**Next recommended:** Try each preset signed-in; confirm picks open details; optional: hide FAB on Details if it overlaps actions.
+
+---
+
+## Session: Jul 21, 2026 — Mood filter accuracy
+
+### Mood picks ranked by mood, not taste ✅
+
+**Problem:** Watch “Browse by mood” pulled genre-ish TMDB titles then re-ranked with For You taste + LLM + diversity — so Horror Night could surface off-mood titles. Date Night allowed pure comedies (Romance OR Comedy).
+
+**Files changed:**
+- `api/_lib/recommendation-server.js` — stricter `MOOD_CONFIG` (require/without genres), mood fitness scoring, library+TMDB pool, no LLM/diversity scramble; cache key `mood_v2_*`
+- `api/recommendations/[...route].js` — mood route forces `ottMode: false`
+- `src/views/WatchPage.jsx` — fetch 12 picks with `refresh: true`
+- `src/lib/recommendationApi.js` — pass ottMode explicitly
+
+**Behavior:** Each mood returns titles that match its genre rules (e.g. Date Night requires Romance; Feel Good excludes horror/thriller). Ranked 75% mood fit / 15% taste / 10% popularity.
+
+**Next recommended:** Deploy; tap each mood pill on Watch and confirm posters match the mood. Scroll arrows appear when moods overflow. Try OTT filter under Browse by mood (Any / My services / Netflix…).
+
+### Mood + OTT filter ✅
+
+**Problem:** Mood picks ignored streaming availability.
+
+**Files changed:**
+- `api/_lib/recommendation-server.js` — TMDB `with_watch_providers` + library platform match; cache `mood_v3_*`
+- `api/_lib/recommendation-handler.js` — `providerId` / `watchRegion` query params
+- `src/lib/recommendationApi.js` — pass providerId
+- `src/views/WatchPage.jsx` — OTT select under mood header
+
+**Behavior:** Pick a mood + OTT (or My streaming services) → results must match both.
+
+---
+
+**Problem:** Only 9 moods; overflowing row needed clearer desktop navigation.
+
+**Files changed:**
+- `src/constants/discoveryTaste.js` — +7 moods (Comedy, Sci-Fi, Fantasy, Adventure, Animation, Documentary, War & History)
+- `api/_lib/recommendation-server.js` — matching `MOOD_CONFIG` entries
+- `src/components/discover/MoodPills.jsx` — left/right arrows when the rail overflows
+
+**Behavior:** 16 moods; swipe on mobile, chevron arrows on desktop when content doesn’t fit.
+
+---
+
+### Cut Free-plan egress / fat selects ✅
+
+**Problem:** Supabase Free egress was over limit (8.29 GB / 5 GB); DB size approaching 500 MB. Hot paths were pulling full JSONB (`videos`, `images`, `credits`, `body_html`) and Home was cache-busting + scanning library trailers.
+
+**Files changed:**
+- `src/lib/moviesLibrarySelect.js` — `LIBRARY_CARD_SELECT` drops `images`; add `MOVIES_LIBRARY_LIST_SELECT`
+- `src/lib/db/library.js`, `src/lib/contentApi.js` — list/browse use LIST/CARD, not fat SELECT
+- `src/lib/socialFeedApi.js` — explicit `FEED_POST_SELECT` (no `*`)
+- `src/lib/db/rss.js` — admin article lists exclude `body_html`
+- `src/lib/blogs.js` — public blog rail omits full `content`
+- `src/views/Home.jsx` — drop `fresh: true` + drop library `/trailers` scan (RSS `trailer_posts` only)
+- `api/_lib/content-server.js` — `fetchTrailers` maxScan 2000; slim showcase/rss trailer selects
+- `api/content/[...route].js` — articles/rss-trailers `s-maxage=120`
+- `src/App.jsx` — library realtime no longer invalidates all homepage sections
+- `src/lib/db/sections.js`, `src/lib/feedThread.js` — narrower selects
+
+**Behavior:** Home hits CDN for articles/trailers; admin trailer browser still works with capped scan; list queries no longer download credits/videos/images/body HTML.
+
+**Next recommended:** Deploy; watch Supabase Usage for a few days. Optional DB cleanup SQL: null unused `images`/`reviews` on old library rows; purge old rejected `feed_articles.body_html`. Then `ai-agents-stack` if product work resumes.
+
+---
+
 ## Session: Jul 19, 2026 — Search write-through, acronym match, list feed cards
 
 ### Search imports missing titles into library ✅

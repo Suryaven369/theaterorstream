@@ -1,4 +1,8 @@
-import { MOVIES_LIBRARY_SELECT, MOVIE_DETAIL_SELECT, LIBRARY_UPSERT_SELECT } from '../moviesLibrarySelect.js';
+import {
+    MOVIES_LIBRARY_LIST_SELECT,
+    MOVIE_DETAIL_SELECT,
+    LIBRARY_UPSERT_SELECT,
+} from '../moviesLibrarySelect.js';
 import { upsertMoviesViaAdminApi } from '../adminLibraryApi.js';
 import { dedupeLibraryRecords, upsertMoviesLibrary } from '../libraryDedupe.js';
 import { supabase } from '../supabaseClient.js';
@@ -30,7 +34,7 @@ export const getMoviesLibrary = async (options = {}) => {
 
     let query = supabase
         .from('movies_library')
-        .select(MOVIES_LIBRARY_SELECT)
+        .select(MOVIES_LIBRARY_LIST_SELECT)
         .order('priority', { ascending: false })
         .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1);
@@ -53,7 +57,7 @@ export const getMoviesLibrary = async (options = {}) => {
 export const getMoviesByCollection = async (collectionTag, limit = 20) => {
     const { data, error } = await supabase
         .from('movies_library')
-        .select(MOVIES_LIBRARY_SELECT)
+        .select(MOVIES_LIBRARY_LIST_SELECT)
         .eq('is_active', true)
         .contains('collection_tags', [collectionTag])
         .order('priority', { ascending: false })
@@ -67,7 +71,7 @@ export const getMoviesByCollection = async (collectionTag, limit = 20) => {
 export const getMoviesByDisplaySection = async (section, limit = 20) => {
     const { data, error } = await supabase
         .from('movies_library')
-        .select(MOVIES_LIBRARY_SELECT)
+        .select(MOVIES_LIBRARY_LIST_SELECT)
         .eq('is_active', true)
         .contains('display_sections', [section])
         .order('priority', { ascending: false })
@@ -77,11 +81,11 @@ export const getMoviesByDisplaySection = async (section, limit = 20) => {
     return data || [];
 };
 
-// Get movie from library by TMDB ID
+// Get movie from library by TMDB ID (detail payload — credits/videos for editor/UI)
 export const getMovieFromLibrary = async (tmdbId) => {
     const { data, error } = await supabase
         .from('movies_library')
-        .select(MOVIES_LIBRARY_SELECT)
+        .select(MOVIE_DETAIL_SELECT)
         .eq('tmdb_id', tmdbId.toString())
         .single();
 
@@ -317,7 +321,7 @@ export const getMoviesByParentGuide = async (categoryKey, options = {}) => {
 
     let query = supabase
         .from('movies_library')
-        .select(MOVIES_LIBRARY_SELECT, { count: 'exact' })
+        .select(MOVIES_LIBRARY_LIST_SELECT, { count: 'exact' })
         .eq('is_active', true)
         .in(path, levels)
         .order('popularity', { ascending: false })
@@ -353,7 +357,7 @@ export const searchMoviesLibrary = async (searchTerm, activeOnly = false) => {
 
     let query = supabase
         .from('movies_library')
-        .select(MOVIES_LIBRARY_SELECT)
+        .select(MOVIES_LIBRARY_LIST_SELECT)
         .or(orClause)
         .order('popularity', { ascending: false })
         .limit(100);
@@ -402,7 +406,7 @@ export const getMoviesFromLibraryByIds = async (tmdbIds) => {
 
     const { data, error } = await supabase
         .from('movies_library')
-        .select(MOVIES_LIBRARY_SELECT)
+        .select(MOVIES_LIBRARY_LIST_SELECT)
         .in('tmdb_id', stringIds);
 
     if (error) {
@@ -531,7 +535,7 @@ export const getAdvancedLibraryStats = async () => {
 };
 
 export const getAdvancedMoviesLibrary = async (options = {}) => {
-    let query = supabase.from('movies_library').select(MOVIES_LIBRARY_SELECT);
+    let query = supabase.from('movies_library').select(MOVIES_LIBRARY_LIST_SELECT);
 
     if (options.limit) query = query.limit(options.limit);
     if (options.page && options.limit) {
@@ -561,7 +565,7 @@ export const searchAdvancedMoviesLibrary = async (searchTerm, limit = 20) => {
 
     const { data, error } = await supabase
         .from('movies_library')
-        .select(MOVIES_LIBRARY_SELECT)
+        .select(MOVIES_LIBRARY_LIST_SELECT)
         .or(orClause)
         .order('popularity', { ascending: false })
         .limit(Math.min(100, Math.max(40, limit * 4)));

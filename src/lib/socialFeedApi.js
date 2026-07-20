@@ -2,6 +2,31 @@ import { supabase } from './supabase';
 import { publicUrlForStorageObject, toPublicStorageUrl } from './storagePublicUrl.js';
 import { getPlainTextLength } from './movieMentions.js';
 
+/** Explicit columns — avoid select('*') so we don't pull unused / future fat fields. */
+const FEED_POST_SELECT = [
+    'id',
+    'user_id',
+    'content',
+    'post_type',
+    'visibility',
+    'created_at',
+    'updated_at',
+    'likes_count',
+    'comments_count',
+    'shares_count',
+    'edit_count',
+    'image_url',
+    'has_image',
+    'movie_title',
+    'movie_poster',
+    'movie_backdrop',
+    'movie_year',
+    'movie_rating',
+    'tmdb_id',
+    'media_items',
+    'poll_data',
+].join(',');
+
 function hasPostContent(content) {
     if (!content?.trim()) return false;
     if (getPlainTextLength(content) > 0) return true;
@@ -845,7 +870,7 @@ export async function getFeedPostById(postId, userId = null) {
 
     const { data: post, error } = await supabase
         .from('feed_posts')
-        .select('*')
+        .select(FEED_POST_SELECT)
         .eq('id', postId)
         .eq('visibility', 'public')
         .maybeSingle();
@@ -899,7 +924,7 @@ export async function getFeedPosts({ limit = 20, offset = 0, userId = null, mode
     // the profile — fetch posts, then batch-fetch the authors' profiles separately.
     let query = supabase
         .from('feed_posts')
-        .select('*')
+        .select(FEED_POST_SELECT)
         .eq('visibility', 'public')
         .order('created_at', { ascending: false })
         .order('id', { ascending: false });
@@ -1039,7 +1064,7 @@ export async function getFeedPostsByAuthor(authorId, { limit = 20, viewerId = nu
 
     const { data, error } = await supabase
         .from('feed_posts')
-        .select('*')
+        .select(FEED_POST_SELECT)
         .eq('user_id', authorId)
         .eq('visibility', 'public')
         .order('created_at', { ascending: false })

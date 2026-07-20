@@ -7,22 +7,22 @@ import { resolveTmdbImageUrl } from '../../utils/imageHelper';
 import { trackEvent, EVENT_TYPES } from '../../lib/eventTracking';
 import PosterQuickActions from '../PosterQuickActions';
 
-const ROTATE_MS = 6000; // hold each pick for 6 seconds
+const ROTATE_MS = 6000;
 const MAX_SLIDES = 6;
 const SWIPE_THRESHOLD = 48;
 
 function HeroSkeleton() {
     return (
-        <div className="mx-auto w-full max-w-7xl px-3 pt-3 sm:px-6 sm:pt-4 lg:px-8">
-            <div className="h-[42vh] min-h-[240px] max-h-[320px] w-full animate-pulse rounded-2xl skeleton sm:h-[66vh] sm:min-h-[400px] sm:max-h-none sm:rounded-3xl" />
+        <div className="w-full">
+            {/* Mobile: full-bleed. Desktop: inset card. */}
+            <div className="h-[min(58vh,420px)] min-h-[280px] w-full animate-pulse skeleton sm:mx-auto sm:mt-4 sm:h-[66vh] sm:min-h-[400px] sm:max-w-7xl sm:rounded-3xl sm:px-0" />
         </div>
     );
 }
 
 /**
- * Top-of-page spotlight carousel: rotates through the user's highest-scoring
- * picks, Netflix-hero style, each with its match score + explanation reason.
- * Accepts a `movies` array (falls back to a single `movie` for compatibility).
+ * Top-of-page spotlight carousel — full-bleed on mobile (app-like),
+ * inset card on desktop.
  */
 export default function SpotlightHero({ movies, movie, loading, onDismiss = null }) {
     const reduxImageURL = useSelector((state) => state.movieData.imageURL);
@@ -37,7 +37,6 @@ export default function SpotlightHero({ movies, movie, loading, onDismiss = null
         return list;
     }, [movies, movie]);
 
-    // Keep index in range when a slide is dismissed from the parent list.
     useEffect(() => {
         if (!slides.length) return;
         setIndex((i) => (i >= slides.length ? 0 : i));
@@ -47,7 +46,6 @@ export default function SpotlightHero({ movies, movie, loading, onDismiss = null
         setIndex((i) => (i + dir + slides.length) % slides.length);
     }, [slides.length]);
 
-    // Auto-advance every 6s; pause while hovered / interacting with actions.
     useEffect(() => {
         if (slides.length < 2 || paused) return undefined;
         const t = setTimeout(() => setIndex((i) => (i + 1) % slides.length), ROTATE_MS);
@@ -98,10 +96,9 @@ export default function SpotlightHero({ movies, movie, loading, onDismiss = null
     };
 
     return (
-        // Centered hero — equal side gutters; shorter on mobile for thumb reach.
-        <div className="mx-auto w-full max-w-7xl px-3 pt-3 sm:px-6 sm:pt-4 lg:px-8">
+        <div className="w-full sm:mx-auto sm:max-w-7xl sm:px-6 sm:pt-4 lg:px-8">
             <div
-                className="group relative h-[42vh] min-h-[240px] max-h-[320px] w-full overflow-hidden rounded-2xl ring-1 ring-white/10 sm:h-[66vh] sm:min-h-[400px] sm:max-h-none sm:rounded-3xl touch-pan-y"
+                className="group relative h-[min(58vh,420px)] min-h-[280px] w-full overflow-hidden touch-pan-y sm:h-[66vh] sm:min-h-[400px] sm:max-h-none sm:rounded-3xl sm:ring-1 sm:ring-white/10"
                 onTouchStart={onTouchStart}
                 onTouchEnd={onTouchEnd}
                 onMouseEnter={() => setPaused(true)}
@@ -115,8 +112,8 @@ export default function SpotlightHero({ movies, movie, loading, onDismiss = null
                         className="absolute inset-0 h-full w-full object-cover object-center animate-fadeIn"
                     />
                 )}
-                <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-primary)] via-[var(--bg-primary)]/50 to-transparent" />
-                <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-primary)]/85 via-[var(--bg-primary)]/20 to-transparent sm:from-[var(--bg-primary)]/90 sm:via-[var(--bg-primary)]/25" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-primary)] via-[var(--bg-primary)]/45 to-black/20" />
+                <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-primary)]/80 via-transparent to-transparent sm:from-[var(--bg-primary)]/90 sm:via-[var(--bg-primary)]/25" />
 
                 {slides.length > 1 && (
                     <>
@@ -139,19 +136,19 @@ export default function SpotlightHero({ movies, movie, loading, onDismiss = null
                     </>
                 )}
 
-                <div className="relative z-10 flex h-full flex-col justify-end px-4 pb-7 sm:px-8 sm:pb-14 lg:px-12">
+                <div className="relative z-10 flex h-full flex-col justify-end px-4 pb-5 sm:px-8 sm:pb-14 lg:px-12">
                     <div className="max-w-2xl">
-                        <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)]/15 px-2.5 py-0.5 text-[10px] font-semibold text-[var(--primary)] ring-1 ring-[var(--primary)]/30 sm:mb-3 sm:px-3 sm:py-1 sm:text-xs">
-                            <FaMagic className="text-[10px]" /> Top picks for you
+                        <div className="mb-1.5 inline-flex items-center gap-1.5 rounded-full bg-black/35 px-2.5 py-0.5 text-[10px] font-semibold text-[var(--primary)] ring-1 ring-[var(--primary)]/35 backdrop-blur-sm sm:mb-3 sm:bg-[var(--primary)]/15 sm:px-3 sm:py-1 sm:text-xs">
+                            <FaMagic className="text-[10px]" /> For you
                         </div>
 
                         <Link to={to} onClick={handleClick}>
-                            <h1 className="text-[1.65rem] font-extrabold leading-[1.15] text-white drop-shadow-lg transition-opacity hover:opacity-90 sm:text-5xl sm:leading-tight">
+                            <h1 className="text-[1.75rem] font-extrabold leading-[1.12] tracking-tight text-white drop-shadow-lg transition-opacity active:opacity-90 sm:text-5xl sm:leading-tight">
                                 {title}
                             </h1>
                         </Link>
 
-                        <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-white/70 sm:mt-3 sm:gap-3 sm:text-sm">
+                        <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-white/75 sm:mt-3 sm:gap-3 sm:text-sm">
                             {matchPct != null && (
                                 <span className="font-bold text-[var(--accent-green)]">{matchPct}% match</span>
                             )}
@@ -165,12 +162,12 @@ export default function SpotlightHero({ movies, movie, loading, onDismiss = null
                         </div>
 
                         {active.reason && (
-                            <p className="mt-2 line-clamp-2 max-w-xl text-xs leading-relaxed text-white/80 sm:mt-3 sm:text-base">
+                            <p className="mt-1.5 line-clamp-2 max-w-xl text-[12px] leading-snug text-white/75 sm:mt-3 sm:text-base sm:leading-relaxed">
                                 {active.reason}
                             </p>
                         )}
 
-                        <div className="mt-3.5 sm:mt-5">
+                        <div className="mt-3 sm:mt-5">
                             <PosterQuickActions
                                 key={tmdbId}
                                 movieId={tmdbId}
@@ -184,15 +181,15 @@ export default function SpotlightHero({ movies, movie, loading, onDismiss = null
                     </div>
 
                     {slides.length > 1 && (
-                        <div className="mt-3.5 flex items-center gap-1.5 sm:mt-5">
+                        <div className="mt-3 flex items-center gap-1.5 sm:mt-5">
                             {slides.map((s, i) => (
                                 <button
                                     key={s.tmdb_id ?? s.id ?? i}
                                     type="button"
                                     aria-label={`Go to pick ${i + 1}`}
                                     onClick={() => setIndex(i)}
-                                    className={`h-2 min-w-[8px] rounded-full transition-all sm:h-1.5 ${
-                                        i === index ? 'w-7 bg-[var(--primary)]' : 'w-2.5 bg-white/30 active:bg-white/50'
+                                    className={`h-1.5 min-w-[6px] rounded-full transition-all ${
+                                        i === index ? 'w-6 bg-[var(--primary)]' : 'w-1.5 bg-white/35 active:bg-white/55'
                                     }`}
                                 />
                             ))}

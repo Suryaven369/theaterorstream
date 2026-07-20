@@ -215,7 +215,10 @@ async function loadTrailerThread(tmdbId) {
     const id = String(tmdbId).replace(/^(movie|tv):/, '');
     const { data: rows, error } = await supabase
         .from('trailer_posts')
-        .select('*')
+        .select(`
+            tmdb_id, media_type, title, poster_path, backdrop_path, release_date,
+            youtube_key, trailer_url, trailer_name, published_at, source_name, source_logo
+        `)
         .eq('tmdb_id', String(id))
         .eq('is_active', true)
         .order('published_at', { ascending: false })
@@ -487,6 +490,74 @@ export async function addThreadComment(item, userId, content, parentId = null) {
         throw error;
     }
     return data;
+}
+
+/**
+ * Delete own comment (and cascaded replies) from post_comments or feed_thread_comments.
+ */
+export async function deleteThreadComment(item, commentId, userId) {
+    if (!commentId || !userId) return { ok: false, error: 'invalid' };
+
+    const subject = threadSubjectFromItem(item);
+    const table = subject?.kind === 'post' || !subject
+        ? 'post_comments'
+        : 'feed_thread_comments';
+
+    // Prefer the subject table; if that misses (legacy / wrong kind), try the other.
+    const tryDelete = async (fromTable) => {
+        const { data, error } = await supabase
+            .from(fromTable)
+            .delete()
+            .eq('id', commentId)
+            .eq('user_id', userId)
+            .select('id');
+        if (error) return { ok: false, error: error.message };
+        if (data?.length) return { ok: true };
+        return { ok: false, error: 'not_found' };
+    };
+
+    let result = await tryDelete(table);
+    if (!result.ok && result.error === 'not_found') {
+        const other = table === 'post_comments' ? 'feed_thread_comments' : 'post_comments';
+        result = await tryDelete(other);
+    }
+    if (!result.ok && result.error === 'not_found') {
+        return { ok: false, error: 'Comment not found or already deleted.' };
+    }
+    return result;
+}
+
+/**
+ * Edit own comment content.
+ */
+export async function updateThreadComment(item, commentId, userId, content) {
+    const text = String(content || '').trim().slice(0, 2000);
+    if (!commentId || !userId || !text) return { ok: false, error: 'invalid' };
+
+    const subject = threadSubjectFromItem(item);
+    const table = subject?.kind === 'post' || !subject
+        ? 'post_comments'
+        : 'feed_thread_comments';
+
+    const tryUpdate = async (fromTable) => {
+        const { data, error } = await supabase
+            .from(fromTable)
+            .update({ content: text })
+            .eq('id', commentId)
+            .eq('user_id', userId)
+            .select('id, content')
+            .maybeSingle();
+        if (error) return { ok: false, error: error.message };
+        if (data?.id) return { ok: true, comment: data };
+        return { ok: false, error: 'not_found' };
+    };
+
+    let result = await tryUpdate(table);
+    if (!result.ok && result.error === 'not_found') {
+        const other = table === 'post_comments' ? 'feed_thread_comments' : 'post_comments';
+        result = await tryUpdate(other);
+    }
+    return result;
 }
 
 /** Nest flat comments by parentId for Reddit-style threads. */

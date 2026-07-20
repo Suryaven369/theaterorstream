@@ -169,8 +169,8 @@ export default async function handler(request) {
                 limit: parseInt(url.searchParams.get('limit') || '15', 10),
                 daysBack: parseInt(url.searchParams.get('daysBack') || '21', 10),
             });
-            // Short cache: admins expect freshly approved trailers near the top quickly.
-            return jsonResponse(result, 'public, s-maxage=30, stale-while-revalidate=60');
+            // CDN-friendly: Home no longer cache-busts; admin publish can wait ~2 min.
+            return jsonResponse(result, 'public, s-maxage=120, stale-while-revalidate=300');
         }
 
         // Showcase trailers - admin-curated, DB-backed trailers for the public Home feed
@@ -189,8 +189,8 @@ export default async function handler(request) {
                 limit: parseInt(url.searchParams.get('limit') || '20', 10),
                 offset: parseInt(url.searchParams.get('offset') || '0', 10),
             });
-            // Short cache: freshly approved articles should surface at the top soon after approve.
-            return jsonResponse(result, 'public, s-maxage=30, stale-while-revalidate=60');
+            // CDN-friendly: Home no longer cache-busts; admin publish can wait ~2 min.
+            return jsonResponse(result, 'public, s-maxage=120, stale-while-revalidate=300');
         }
 
         // Coming soon - not yet released

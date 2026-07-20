@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { FaFire, FaHeart, FaMoon, FaUsers, FaCompass, FaMagic, FaGem } from 'react-icons/fa';
 import {
     getForYouRecommendations,
@@ -12,6 +12,7 @@ import {
     getDiscoverySection,
 } from '../lib/recommendationApi';
 import { DISCOVERY_MOODS } from '../constants/discoveryTaste';
+import { OTT_PROVIDERS } from '../constants/searchCategories';
 import SpotlightHero from '../components/discover/SpotlightHero';
 import MoodPills from '../components/discover/MoodPills';
 import RecommendationRow from '../components/discover/RecommendationRow';
@@ -29,6 +30,22 @@ import {
 const initialRow = { items: [], loading: true };
 const readyRow = (items = [], meta = {}) => ({ items, loading: false, meta });
 
+const WATCH_RAIL =
+    'w-full max-w-[842px] sm:max-w-[1080px] lg:max-w-[1170px]';
+
+const MOOD_IDS = new Set(DISCOVERY_MOODS.map((m) => m.id));
+const OTT_IDS = new Set(OTT_PROVIDERS.map((p) => String(p.id)));
+
+function parseMoodParam(raw) {
+    return raw && MOOD_IDS.has(raw) ? raw : null;
+}
+
+function parseOttParam(raw) {
+    if (!raw) return '';
+    if (raw === 'my') return 'my';
+    return OTT_IDS.has(String(raw)) ? String(raw) : '';
+}
+
 /**
  * Watch — the personalized Netflix-style discovery tab.
  * Session-cached so switching tabs does not re-run the full analysis.
@@ -40,6 +57,7 @@ const readyRow = (items = [], meta = {}) => ({ items, loading: false, meta });
 export default function WatchPage({ embedded = false }) {
     const { user, isAuthenticated, loading: authLoading } = useAuth();
     const userId = user?.id;
+    const [searchParams, setSearchParams] = useSearchParams();
 
     const cached = userId ? getWatchSessionCache(userId) : null;
 
@@ -55,8 +73,40 @@ export default function WatchPage({ embedded = false }) {
     const [hiddenGems, setHiddenGems] = useState(() => cached?.hiddenGems || initialRow);
     const [outsideComfort, setOutsideComfort] = useState(() => cached?.outsideComfort || initialRow);
 
-    const [activeMood, setActiveMood] = useState(null);
-    const [moodRow, setMoodRow] = useState(null);
+    // Mood + OTT live in the URL so browser Back restores them after opening a poster.
+    const activeMood = useMemo(
+        () => parseMoodParam(searchParams.get('mood')),
+        [searchParams],
+    );
+    const moodOtt = useMemo(
+        () => parseOttParam(searchParams.get('ott')),
+        [searchParams],
+    );
+
+    const [moodRow, setMoodRow] = useState(() => {
+        const mood = parseMoodParam(
+            typeof window !== 'undefined'
+                ? new URLSearchParams(window.location.search).get('mood')
+                : null,
+        ) ?? cached?.activeMood ?? null;
+        const ott = mood
+            ? (parseOttParam(
+                typeof window !== 'undefined'
+                    ? new URLSearchParams(window.location.search).get('ott')
+                    : null,
+            ) || cached?.moodOtt || '')
+            : '';
+        const hit = cached?.moodRow;
+        if (
+            mood
+            && hit?.mood === mood
+            && (hit.ott ?? '') === ott
+            && hit.loading === false
+        ) {
+            return hit;
+        }
+        return mood ? { items: [], loading: true, mood, ott } : null;
+    });
 
     useEffect(() => {
         if (!isAuthenticated || !userId) return undefined;
@@ -177,6 +227,7 @@ export default function WatchPage({ embedded = false }) {
         setBecauseLoved(drop);
         setHiddenGems(drop);
         setOutsideComfort(drop);
+        setMoodRow((prev) => (prev ? drop(prev) : prev));
         setPerfect((prev) => (
             prev?.movie && String(prev.movie.tmdb_id ?? prev.movie.id) === String(id)
                 ? { movie: null, loading: false }
@@ -184,7 +235,89 @@ export default function WatchPage({ embedded = false }) {
         ));
     }, [userId]);
 
-    if (!authLoading && !isAuthenticated) {
+    const writeMoodParams = useCallback((moodId, ott) => {
+        setSearchParams((prev) => {
+            const next = new URLSearchParams(prev);
+            if (embedded) next.set('tab', 'watch');
+            if (moodId) next.set('mood', moodId);
+            else next.delete('mood');
+            if (ott) next.set('ott', ott);
+            else next.delete('ott');
+            return next;
+        }, { replace: true });
+    }, [embedded, setSearchParams]);
+
+    // Keep mood results in sync with URL filters (including browser Back).
+    useEffect(() => {
+        if (!isAuthenticated || !userId) return undefined;
+
+        if (!activeMood) {
+            setMoodRow(null);
+            setWatchSessionCache(userId, { activeMood: null, moodOtt: moodOtt || '', moodRow: null });
+            return undefined;
+        }
+
+        const hit = getWatchSessionCache(userId)?.moodRow;
+        if (
+            hit?.mood === activeMood
+            && (hit.ott ?? '') === moodOtt
+            && hit.loading === false
+            && Array.isArray(hit.items)
+        ) {
+            setMoodRow(hit);
+            return undefined;
+        }
+
+        let alive = true;
+        setMoodRow({ items: [], loading: true, mood: activeMood, ott: moodOtt });
+
+        const opts = { limit: 12, refresh: true };
+        if (moodOtt === 'my') {
+            opts.ottMode = true;
+        } else if (moodOtt) {
+            opts.ottMode = false;
+            opts.providerId = moodOtt;
+            opts.watchRegion = 'IN';
+        } else {
+            opts.ottMode = false;
+        }
+
+        getMoodRecommendations(activeMood, opts).then((r) => {
+            if (!alive) return;
+            const row = {
+                items: r.data || [],
+                loading: false,
+                mood: activeMood,
+                ott: moodOtt,
+            };
+            setMoodRow(row);
+            setWatchSessionCache(userId, {
+                activeMood,
+                moodOtt,
+                moodRow: row,
+            });
+        });
+
+        return () => { alive = false; };
+    }, [activeMood, moodOtt, isAuthenticated, userId]);
+
+    const handleMood = useCallback((moodId) => {
+        writeMoodParams(moodId || null, moodOtt);
+    }, [writeMoodParams, moodOtt]);
+
+    const handleMoodOtt = useCallback((value) => {
+        writeMoodParams(activeMood, value || '');
+    }, [writeMoodParams, activeMood]);
+
+    if (authLoading) {
+        return (
+            <div className="flex min-h-[50vh] items-center justify-center px-6 py-16">
+                <div className="h-8 w-8 animate-pulse rounded-full bg-white/15" aria-label="Loading" />
+            </div>
+        );
+    }
+
+    if (!isAuthenticated) {
         return (
             <SignInGate
                 title="AI recommendations need an account"
@@ -193,19 +326,13 @@ export default function WatchPage({ embedded = false }) {
         );
     }
 
-    const handleMood = useCallback((moodId) => {
-        setActiveMood(moodId);
-        if (!moodId) { setMoodRow(null); return; }
-        setMoodRow({ items: [], loading: true, mood: moodId });
-        getMoodRecommendations(moodId, { limit: 6 }).then((r) => {
-            setMoodRow({ items: r.data || [], loading: false, mood: moodId });
-        });
-    }, []);
-
     // Hero carousel = top 6; the "For You" row shows the next 6 (no overlap).
     const heroPicks = (forYou.items.length ? forYou.items : trending.items).slice(0, 6);
     const forYouRest = forYou.items.length > 6 ? forYou.items.slice(6) : forYou.items;
     const activeMoodMeta = DISCOVERY_MOODS.find((m) => m.id === activeMood);
+    const moodOttLabel = moodOtt === 'my'
+        ? 'on your streaming'
+        : (OTT_PROVIDERS.find((p) => String(p.id) === String(moodOtt))?.name || null);
 
     const heroLoading = forYou.loading && trending.loading;
     const showHero = heroLoading || heroPicks.length > 0;
@@ -219,63 +346,76 @@ export default function WatchPage({ embedded = false }) {
     const personalMessage = forYou.meta?.message;
 
     return (
-        <div className="min-h-screen bg-[var(--bg-primary)] pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] lg:pb-12 overflow-x-hidden">
+        <div className="min-h-screen bg-[var(--bg-primary)] pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))] lg:pb-12 overflow-x-hidden">
             {showHero ? (
                 <SpotlightHero movies={heroPicks} loading={heroLoading} onDismiss={handleDismiss} />
             ) : (
-                // No hero yet (cold start): clear the fixed header on the route view.
-                !embedded && <div className="h-16 sm:h-20" />
+                !embedded && <div className="h-14 sm:h-20" />
             )}
 
-            {/* Mobile: even gutters. Desktop: slight left nudge under the rail. */}
+            {/* Content stack — tight mobile rhythm, desktop rail offset */}
             <div className="lg:pl-16 xl:pl-24 2xl:pl-28">
-            {/* Personalized AI greeting about tonight's picks */}
             {personalMessage && (
-                <div className={`px-3 sm:px-6 ${showHero ? 'mt-4 sm:mt-6' : embedded ? 'mt-3 sm:mt-4' : 'mt-2'}`}>
-                    <div className="flex items-start gap-2 rounded-xl border border-[var(--primary)]/20 bg-gradient-to-r from-[var(--primary)]/10 to-transparent px-3 py-2.5 sm:gap-2.5 sm:rounded-2xl sm:px-4 sm:py-3">
-                        <FaMagic className="mt-0.5 shrink-0 text-sm text-[var(--primary)]" />
-                        <p className="text-[13px] leading-relaxed text-white/85 sm:text-[15px]">
+                <div className={`px-4 sm:px-6 ${showHero ? 'mt-3 sm:mt-6' : embedded ? 'mt-2 sm:mt-4' : 'mt-2'}`}>
+                    <div className={`${WATCH_RAIL} flex items-start gap-2 rounded-xl border border-[var(--primary)]/15 bg-[var(--primary)]/[0.07] px-3 py-2 sm:gap-2.5 sm:rounded-2xl sm:px-4 sm:py-3`}>
+                        <FaMagic className="mt-0.5 shrink-0 text-[11px] text-[var(--primary)] sm:text-sm" />
+                        <p className="text-[12px] leading-snug text-white/80 sm:text-[15px] sm:leading-relaxed">
                             {personalMessage}
                         </p>
                     </div>
                 </div>
             )}
 
-            {/* One Perfect Movie Tonight — the single daily pick */}
             {(perfect.loading || perfect.movie) && (
-                <div className={`${personalMessage ? 'mt-3 sm:mt-4' : showHero ? 'mt-4 sm:mt-6' : embedded ? 'mt-3 sm:mt-4' : 'mt-2'}`}>
+                <div className={`${personalMessage ? 'mt-3 sm:mt-4' : showHero ? 'mt-3 sm:mt-6' : embedded ? 'mt-2 sm:mt-4' : 'mt-2'}`}>
                     <OnePerfectTonight movie={perfect.movie} loading={perfect.loading} />
                 </div>
             )}
 
-            {/* New from your follows — directors / genres / franchises */}
-            <div className="mt-5 px-3 sm:mt-7 sm:px-6">
+            <div className="mt-4 px-4 sm:mt-7 sm:px-6">
                 <FollowingFeed />
             </div>
 
-            {/* Mood discovery */}
-            <div className="mb-5 mt-5 sm:mb-6 sm:mt-7">
-                <div className="mb-2 px-3 sm:px-6">
-                    <h2 className="flex items-center gap-2 text-base font-bold text-white sm:text-xl">
-                        <FaCompass className="text-[var(--primary)]" /> Browse by mood
-                    </h2>
-                    <p className="text-[11px] text-white/45 sm:text-xs">What are you in the mood for tonight?</p>
+            {/* Mood — left-aligned like native section headers */}
+            <div className="mb-4 mt-4 px-4 sm:mb-6 sm:mt-7 sm:px-6">
+                <div className={WATCH_RAIL}>
+                    <div className="mb-2 flex flex-col gap-2 sm:mb-2.5 sm:items-center sm:gap-2">
+                        <div className="sm:text-center">
+                            <h2 className="inline-flex items-center gap-1.5 text-[15px] font-bold tracking-tight text-white sm:justify-center sm:gap-2 sm:text-xl">
+                                <FaCompass className="text-[13px] text-[var(--primary)] sm:text-base" /> Browse by mood
+                            </h2>
+                            <p className="mt-0.5 text-[11px] text-white/40 sm:text-xs">What are you in the mood for?</p>
+                        </div>
+                        <div className="relative inline-flex self-start sm:self-center">
+                            <select
+                                aria-label="Filter mood picks by OTT"
+                                value={moodOtt}
+                                onChange={(e) => handleMoodOtt(e.target.value)}
+                                className="appearance-none cursor-pointer rounded-lg border border-white/[0.1] bg-[#1a1a1a] py-1.5 pl-3 pr-8 text-xs text-white/85 hover:border-white/20 focus:border-white/30 focus:outline-none sm:text-sm"
+                            >
+                                <option value="">Any OTT</option>
+                                <option value="my">My streaming services</option>
+                                {OTT_PROVIDERS.map((p) => (
+                                    <option key={p.id} value={String(p.id)}>{p.name}</option>
+                                ))}
+                            </select>
+                            <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-white/40">▾</span>
+                        </div>
+                    </div>
+                    <MoodPills activeMood={activeMood} onSelect={handleMood} />
                 </div>
-                <MoodPills activeMood={activeMood} onSelect={handleMood} />
             </div>
 
-            {/* Cold-start welcome: no hero + no personalized picks yet */}
             {!showHero && !forYou.loading && !forYouRest.length && (
-                <div className="mx-3 mb-6 overflow-hidden rounded-2xl border border-white/8 bg-gradient-to-br from-[var(--bg-elevated)] to-[var(--bg-card)] p-4 sm:mx-6 sm:mb-8 sm:p-6">
-                    <h2 className="text-lg font-bold text-white sm:text-2xl">
-                        Let's find your <span className="text-gradient">next favorite</span>
+                <div className="mx-4 mb-5 overflow-hidden rounded-xl border border-white/8 bg-gradient-to-br from-[var(--bg-elevated)] to-[var(--bg-card)] p-3.5 sm:mx-6 sm:mb-8 sm:rounded-2xl sm:p-6">
+                    <h2 className="text-base font-bold text-white sm:text-2xl">
+                        Let&apos;s find your <span className="text-gradient">next favorite</span>
                     </h2>
-                    <p className="mt-2 max-w-xl text-sm text-white/60">
-                        Pick a mood above, or just start browsing, rating, and watchlisting.
-                        Your taste map builds itself — recommendations get sharper with every tap.
+                    <p className="mt-1.5 max-w-xl text-[13px] text-white/55 sm:mt-2 sm:text-sm">
+                        Pick a mood above, or rate a few films — recommendations get sharper with every tap.
                     </p>
-                    <div className="mt-4 flex flex-wrap gap-2.5">
-                        <Link to="/" className="btn-primary min-h-[44px] text-sm">Browse what's on</Link>
+                    <div className="mt-3 flex flex-wrap gap-2 sm:mt-4 sm:gap-2.5">
+                        <Link to="/" className="btn-primary min-h-[44px] text-sm">Browse what&apos;s on</Link>
                         <Link
                             to="/settings/taste"
                             className="inline-flex min-h-[44px] items-center rounded-full border border-white/15 px-5 py-2.5 text-sm font-medium text-white/80 transition-colors hover:border-white/35 hover:text-white"
@@ -286,15 +426,17 @@ export default function WatchPage({ embedded = false }) {
                 </div>
             )}
 
-            <div className="space-y-6 sm:space-y-9">
-                {/* Mood result row (when a mood is selected) */}
+            <div className="space-y-5 sm:space-y-9">
                 {moodRow && (
                     <RecommendationRow
                         heading={`${activeMoodMeta?.emoji || ''} ${activeMoodMeta?.label || 'Mood'} picks`}
+                        subtitle={moodOttLabel ? `On ${moodOttLabel}` : null}
                         accent={activeMoodMeta?.accent}
                         items={moodRow.items}
                         loading={moodRow.loading}
-                        emptyHint="No strong matches for this mood yet — try rating a few more films."
+                        emptyHint={moodOtt
+                            ? `No ${activeMoodMeta?.label || 'mood'} titles on that OTT — try another or Any OTT.`
+                            : 'No strong matches yet — try rating a few more films.'}
                         onDismiss={handleDismiss}
                     />
                 )}
@@ -316,11 +458,10 @@ export default function WatchPage({ embedded = false }) {
                     accent="#8b5cf6"
                     items={tonight.items}
                     loading={tonight.loading}
-                    emptyHint="No matches on your linked streaming services yet — rate more titles or check back later."
+                    emptyHint="No matches on your linked services yet — rate more titles or check back later."
                     onDismiss={handleDismiss}
                 />
 
-                {/* Because you loved X */}
                 {(becauseLoved.loading || becauseLoved.items.length > 0) && (
                     <RecommendationRow
                         heading={becauseLoved.meta?.heading || 'Because you loved'}
@@ -343,7 +484,7 @@ export default function WatchPage({ embedded = false }) {
                 />
 
                 <RecommendationRow
-                    heading="Hidden Gems You Missed"
+                    heading="Hidden Gems"
                     icon={<FaGem />}
                     accent="#06b6d4"
                     items={hiddenGems.items}
@@ -363,7 +504,7 @@ export default function WatchPage({ embedded = false }) {
                 />
 
                 <RecommendationRow
-                    heading="Family-friendly picks"
+                    heading="Family-friendly"
                     icon={<FaUsers />}
                     accent="#22c55e"
                     items={family.items}
@@ -373,7 +514,6 @@ export default function WatchPage({ embedded = false }) {
                     onDismiss={handleDismiss}
                 />
 
-                {/* Taste dashboard */}
                 <TasteDashboardPanel dashboard={dashboard} loading={dashLoading} />
             </div>
             </div>

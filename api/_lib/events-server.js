@@ -354,9 +354,67 @@ export async function getTasteDashboard(userId) {
     let evolution = null;
     try { evolution = await getTasteEvolution(userId); } catch { /* no history yet */ }
 
+    const dnaRaw = profile?.dna_preferences || {};
+    const favoriteDna = Object.entries(dnaRaw)
+        .sort((a, b) => Number(b[1]) - Number(a[1]))
+        .slice(0, 12)
+        .map(([id, weight]) => ({
+            id,
+            score: Math.round(Number(weight)),
+        }));
+
+    const axisPreferences = profile?.axis_preferences || {};
+    const runtimeRange = profile?.preferred_runtime_range || null;
+
+    // Recent explicit dislikes for Taste Map history (dedupe by tmdb_id).
+    let dislikedMovies = [];
+    try {
+        const { data: dislikeEvents } = await supabase
+            .from('user_events')
+            .select('tmdb_id, created_at, metadata')
+            .eq('user_id', userId)
+            .eq('event_type', 'movie_disliked')
+            .order('created_at', { ascending: false })
+            .limit(40);
+
+        const seen = new Set();
+        const ids = [];
+        const metaById = new Map();
+        for (const ev of dislikeEvents || []) {
+            const id = String(ev.tmdb_id || '');
+            if (!id || seen.has(id)) continue;
+            seen.add(id);
+            ids.push(id);
+            metaById.set(id, ev.metadata || {});
+            if (ids.length >= 24) break;
+        }
+        if (ids.length) {
+            const { data: movies } = await supabase
+                .from('movies')
+                .select('tmdb_id, title, poster_path, media_type')
+                .in('tmdb_id', ids);
+            const byId = new Map((movies || []).map((m) => [String(m.tmdb_id), m]));
+            dislikedMovies = ids.map((id) => {
+                const m = byId.get(id);
+                const meta = metaById.get(id) || {};
+                return {
+                    movie_id: id,
+                    movie_title: m?.title || meta.title || `Title ${id}`,
+                    poster_path: m?.poster_path || meta.poster_path || null,
+                    media_type: m?.media_type || 'movie',
+                };
+            });
+        }
+    } catch {
+        dislikedMovies = [];
+    }
+
     return {
         favoriteGenres,
         favoriteMoods,
+        favoriteDna,
+        axisPreferences,
+        preferredRuntimeRange: runtimeRange,
         favoriteDecades: profile?.preferred_decades || [],
         favoriteLanguages: profile?.preferred_languages || [],
         favoriteActors: profile?.favorite_actors || [],
@@ -372,6 +430,15 @@ export async function getTasteDashboard(userId) {
         eventCount: signals.eventCount,
         profileVersion: profile?.profile_version || 0,
         lastComputedAt: profile?.last_computed_at || null,
+        dislikedMovies,
+        discoveryLevel: profile?.onboarding_step_data?.discovery_level ?? 3,
+        contentBoundaries: profile?.onboarding_step_data?.content_boundaries || {},
+        viewingModes: profile?.onboarding_step_data?.viewing_modes || {},
+        emotions: profile?.onboarding_step_data?.emotions || null,
+        tasteFeedback: profile?.onboarding_step_data?.taste_feedback || [],
+        tasteFeatureOverrides: profile?.onboarding_step_data?.taste_feature_overrides || {},
+        dismissedInsights: profile?.onboarding_step_data?.dismissed_insights || [],
+        confirmedInsights: profile?.onboarding_step_data?.confirmed_insights || [],
     };
 }
 

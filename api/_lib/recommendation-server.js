@@ -68,7 +68,8 @@ const CACHE_TTL_HOURS = 6;
 export const RECO_MOVIE_SELECT =
     'tmdb_id, title, poster_path, backdrop_path, media_type, release_date, first_air_date, '
     + 'runtime, vote_average, vote_count, popularity, genres, genre_ids, streaming_platforms, '
-    + 'certification, custom_parent_guide, mood_tags, family_score, movie_dna';
+    + 'certification, custom_parent_guide, mood_tags, family_score, movie_dna, '
+    + 'number_of_seasons, number_of_episodes';
 
 const SERVICE_PLATFORM_ALIASES = {
     netflix: ['netflix'],
@@ -86,6 +87,20 @@ const SERVICE_PLATFORM_ALIASES = {
     paramount: ['paramount'],
     now: ['now'],
     bbc_iplayer: ['bbc', 'iplayer'],
+};
+
+/** TMDB watch-provider id → name fragments for matching movies_library.streaming_platforms */
+const TMDB_PROVIDER_ALIASES = {
+    8: ['netflix'],
+    9: ['prime', 'amazon prime', 'prime video'],
+    337: ['disney+', 'disney plus', 'disney'],
+    122: ['hotstar', 'disney+ hotstar'],
+    350: ['apple tv', 'apple tv+'],
+    15: ['hulu'],
+    1899: ['max', 'hbo max', 'hbo'],
+    531: ['paramount', 'paramount+'],
+    386: ['peacock'],
+    283: ['crunchyroll'],
 };
 
 const CERT_RANK = {
@@ -170,6 +185,26 @@ function movieOnUserPlatforms(movie, serviceIds) {
     return serviceIds.some((serviceId) => {
         const aliases = SERVICE_PLATFORM_ALIASES[serviceId] || [serviceId.replace(/_/g, ' ')];
         return aliases.some((alias) => names.some((n) => n.includes(alias)));
+    });
+}
+
+/** Match library/TMDB rows against one or more TMDB watch-provider ids. */
+function movieOnTmdbProviders(movie, providerIds) {
+    const ids = (providerIds || []).map(Number).filter((n) => Number.isFinite(n) && n > 0);
+    if (!ids.length) return true;
+
+    const platforms = movie.streaming_platforms;
+    if (!Array.isArray(platforms) || !platforms.length) return false;
+
+    return platforms.some((p) => {
+        const pid = Number(p?.provider_id ?? p?.id);
+        if (ids.includes(pid)) return true;
+        const name = String(p?.name || p?.provider_name || '').toLowerCase();
+        if (!name) return false;
+        return ids.some((id) => {
+            const aliases = TMDB_PROVIDER_ALIASES[id] || [];
+            return aliases.some((alias) => name.includes(alias));
+        });
     });
 }
 
@@ -659,10 +694,17 @@ async function fetchCandidateMovies(supabase, context, options) {
 
     if (!tmdbIdSet.size) return [];
 
-    const { data: movies, error: moviesError } = await supabase
+    let hydrateQuery = supabase
         .from('movies_library')
         .select(RECO_MOVIE_SELECT)
         .in('tmdb_id', Array.from(tmdbIdSet));
+
+    // Keep media-type requests honest — embedding IDs can otherwise hydrate as movies.
+    if (mediaType === 'tv' || mediaType === 'movie') {
+        hydrateQuery = hydrateQuery.eq('media_type', mediaType);
+    }
+
+    const { data: movies, error: moviesError } = await hydrateQuery;
 
     if (moviesError) throw new Error(moviesError.message);
 
@@ -1289,47 +1331,215 @@ export async function getSimilarRecommendations(userId, tmdbId, options) {
     });
 }
 
-// Mood-based discovery. Each mood maps to mood_tags + a genre bias so we can
-// build a candidate pool even before mood_tags are fully populated.
-// Each mood maps to its CORE TMDB genres only (so "Action Packed" is action,
-// not adventure/thriller). `require` = the genre(s) a movie MUST have to qualify.
+// Mood-based discovery — genre-first, mood-scored (not "For You" taste ranking).
+// - genres: TMDB discover + hard require (at least one)
+// - withoutGenres: block off-mood genres (e.g. horror in Feel Good)
+// - requireGenres: must have ALL of these (Date Night → Romance)
+// - tags / vibeKeys: boost when library mood_tags / custom_vibes match
 export const MOOD_CONFIG = {
-    mind_bending: { label: 'Mind Bending', genres: [878, 9648], tags: ['mind_bending', 'thoughtful'] },
-    dark_thriller: { label: 'Dark Thriller', genres: [53, 80], tags: ['dark', 'intense', 'suspenseful'] },
-    feel_good: { label: 'Feel Good', genres: [35, 10751], tags: ['feel_good', 'cozy', 'funny'] },
-    emotional: { label: 'Emotional', genres: [18], tags: ['emotional'] },
-    date_night: { label: 'Date Night', genres: [10749, 35], tags: ['romantic', 'feel_good'] },
-    action_packed: { label: 'Action Packed', genres: [28], tags: ['action_packed', 'intense'] },
-    family_night: { label: 'Family Night', genres: [10751, 16], tags: ['family_friendly', 'feel_good'] },
-    crime_mystery: { label: 'Crime Mystery', genres: [80, 9648], tags: ['suspenseful', 'dark'] },
-    horror_night: { label: 'Horror Night', genres: [27], tags: ['dark', 'intense'] },
+    mind_bending: {
+        label: 'Mind Bending',
+        genres: [878, 9648],
+        withoutGenres: [10751, 16],
+        tags: ['mind_bending', 'thoughtful'],
+        vibeKeys: ['thoughtful'],
+    },
+    dark_thriller: {
+        label: 'Dark Thriller',
+        genres: [53],
+        withoutGenres: [10751, 16, 35, 10749],
+        tags: ['dark', 'intense', 'suspenseful'],
+        vibeKeys: ['intense', 'thrilling'],
+    },
+    feel_good: {
+        label: 'Feel Good',
+        genres: [35, 10751],
+        withoutGenres: [27, 53, 80, 10752],
+        tags: ['feel_good', 'cozy', 'funny'],
+        vibeKeys: ['funny'],
+    },
+    emotional: {
+        label: 'Emotional',
+        genres: [18],
+        withoutGenres: [27, 28, 53],
+        tags: ['emotional'],
+        vibeKeys: ['emotional'],
+    },
+    date_night: {
+        label: 'Date Night',
+        genres: [10749],
+        requireGenres: [10749],
+        withoutGenres: [27, 53, 80],
+        tags: ['romantic', 'feel_good'],
+        vibeKeys: ['romantic'],
+    },
+    action_packed: {
+        label: 'Action Packed',
+        genres: [28],
+        withoutGenres: [10751, 16, 10749],
+        tags: ['action_packed', 'intense'],
+        vibeKeys: ['intense', 'thrilling'],
+    },
+    family_night: {
+        label: 'Family Night',
+        genres: [10751, 16],
+        withoutGenres: [27, 53, 80, 10752],
+        tags: ['family_friendly', 'feel_good'],
+        vibeKeys: ['funny'],
+    },
+    crime_mystery: {
+        label: 'Crime Mystery',
+        genres: [80, 9648],
+        withoutGenres: [10751, 16, 10749],
+        tags: ['suspenseful', 'dark'],
+        vibeKeys: ['thrilling', 'thoughtful'],
+    },
+    horror_night: {
+        label: 'Horror Night',
+        genres: [27],
+        withoutGenres: [10751, 16, 10749],
+        tags: ['dark', 'intense'],
+        vibeKeys: ['intense', 'thrilling'],
+    },
+    comedy_night: {
+        label: 'Comedy Night',
+        genres: [35],
+        withoutGenres: [27, 53, 80, 10752],
+        tags: ['funny', 'feel_good'],
+        vibeKeys: ['funny'],
+    },
+    sci_fi: {
+        label: 'Sci-Fi',
+        genres: [878],
+        withoutGenres: [10751, 16],
+        tags: ['mind_bending', 'thoughtful'],
+        vibeKeys: ['thoughtful', 'thrilling'],
+    },
+    epic_fantasy: {
+        label: 'Epic Fantasy',
+        genres: [14],
+        withoutGenres: [27, 99],
+        tags: ['mind_bending', 'feel_good'],
+        vibeKeys: ['thoughtful', 'thrilling'],
+    },
+    adventure: {
+        label: 'Adventure',
+        genres: [12],
+        withoutGenres: [27, 99],
+        tags: ['action_packed', 'feel_good'],
+        vibeKeys: ['thrilling'],
+    },
+    animation: {
+        label: 'Animation',
+        genres: [16],
+        withoutGenres: [27, 53, 80],
+        tags: ['family_friendly', 'feel_good'],
+        vibeKeys: ['funny'],
+    },
+    documentary: {
+        label: 'Documentary',
+        genres: [99],
+        withoutGenres: [27, 16],
+        tags: ['thoughtful'],
+        vibeKeys: ['thoughtful', 'emotional'],
+    },
+    war_history: {
+        label: 'War & History',
+        genres: [10752, 36],
+        withoutGenres: [16, 10751, 10749],
+        tags: ['intense', 'emotional'],
+        vibeKeys: ['intense', 'emotional'],
+    },
 };
 
-/** Pull accurate, popular titles of a mood's genre straight from TMDB Discover. */
-async function fetchMoodPoolFromTmdb(config, { pages = 3, mediaType = 'movie' } = {}) {
+/** True if title fits the mood genre rules (require + any + excludes). */
+function movieMatchesMoodGenres(movie, config) {
+    const ids = extractGenreIds(movie).map(Number);
+    if (!ids.length) return false;
+
+    const required = config.requireGenres || [];
+    if (required.length && !required.every((g) => ids.includes(g))) return false;
+
+    const allowed = config.genres || [];
+    if (allowed.length && !ids.some((id) => allowed.includes(id))) return false;
+
+    const banned = config.withoutGenres || [];
+    if (banned.length && ids.some((id) => banned.includes(id))) return false;
+
+    return true;
+}
+
+/**
+ * 0–1 mood fitness: genre hits + mood_tags + custom_vibes.
+ * Primary sort for mood rows (taste is only a light tiebreaker).
+ */
+function moodFitnessScore(config, movie) {
+    const ids = extractGenreIds(movie).map(Number);
+    const allowed = config.genres || [];
+    const genreHits = allowed.filter((g) => ids.includes(g)).length;
+    const genreScore = allowed.length
+        ? Math.min(1, genreHits / Math.max(1, Math.min(allowed.length, 2)))
+        : 0.5;
+
+    const tags = Array.isArray(movie.mood_tags) ? movie.mood_tags : [];
+    const wantTags = config.tags || [];
+    const tagHits = wantTags.filter((t) => tags.includes(t)).length;
+    const tagScore = wantTags.length ? Math.min(1, tagHits / wantTags.length) : 0;
+
+    const vibes = movie.custom_vibes && typeof movie.custom_vibes === 'object'
+        ? movie.custom_vibes
+        : {};
+    const vibeKeys = config.vibeKeys || [];
+    let vibeScore = 0;
+    if (vibeKeys.length) {
+        const vals = vibeKeys.map((k) => Number(vibes[k]) || 0);
+        const avg = vals.reduce((a, b) => a + b, 0) / vibeKeys.length;
+        vibeScore = Math.min(1, avg / 70);
+    }
+
+    return Math.min(1, genreScore * 0.55 + tagScore * 0.25 + vibeScore * 0.20);
+}
+
+/** Pull popular titles that match the mood genre rules from TMDB Discover. */
+async function fetchMoodPoolFromTmdb(config, {
+    pages = 3,
+    mediaType = 'movie',
+    providerId = null,
+    watchRegion = 'IN',
+} = {}) {
     const type = mediaType === 'tv' ? 'tv' : 'movie';
-    const dateField = type === 'tv' ? 'first_air_date' : 'release_date';
     const out = [];
+    const withGenres = (config.requireGenres?.length
+        ? config.requireGenres
+        : config.genres).join('|');
+
     for (let page = 1; page <= pages; page += 1) {
         let data;
         try {
-            // eslint-disable-next-line no-await-in-loop
-            data = await fetchTmdbApi(`/discover/${type}`, {
-                with_genres: config.genres.join('|'), // ANY of the mood genres
+            const params = {
+                with_genres: withGenres,
                 sort_by: 'popularity.desc',
-                'vote_count.gte': '120',               // skip obscure noise
+                'vote_count.gte': '80',
                 include_adult: 'false',
                 page: String(page),
-            });
+            };
+            if (config.withoutGenres?.length) {
+                params.without_genres = config.withoutGenres.join(',');
+            }
+            if (providerId) {
+                params.with_watch_providers = String(providerId);
+                params.watch_region = watchRegion || 'IN';
+                params.with_watch_monetization_types = 'flatrate|free|ads';
+            }
+            // eslint-disable-next-line no-await-in-loop
+            data = await fetchTmdbApi(`/discover/${type}`, params);
         } catch (err) {
             console.warn('mood tmdb discover failed:', err.message);
             break;
         }
         (data?.results || []).forEach((m) => {
             const ids = (m.genre_ids || []).map(Number);
-            // STRICT: must actually carry one of the mood's core genres.
-            if (!ids.some((id) => config.genres.includes(id))) return;
-            out.push({
+            const card = {
                 tmdb_id: String(m.id),
                 id: String(m.id),
                 title: m.title || m.name,
@@ -1348,12 +1558,55 @@ async function fetchMoodPoolFromTmdb(config, { pages = 3, mediaType = 'movie' } 
                 certification: null,
                 custom_parent_guide: null,
                 mood_tags: [],
+                custom_vibes: null,
                 family_score: null,
                 movie_dna: {},
                 overview: m.overview || null,
-            });
+            };
+            if (!movieMatchesMoodGenres(card, config)) return;
+            out.push(card);
         });
         if (page >= (data?.total_pages || 1)) break;
+    }
+    return out;
+}
+
+/** Library titles that match mood genres and/or mood_tags. */
+async function fetchMoodPoolFromLibrary(supabase, config, { limit = 200 } = {}) {
+    const { data: rows } = await supabase
+        .from('movies_library')
+        .select(`${RECO_MOVIE_SELECT}, custom_vibes`)
+        .eq('is_active', true)
+        .order('popularity', { ascending: false, nullsFirst: false })
+        .limit(Math.min(800, Math.max(limit * 3, 300)));
+
+    const matched = [];
+    for (const row of rows || []) {
+        const m = normalizeLibraryItem(row);
+        if (row.custom_vibes) m.custom_vibes = row.custom_vibes;
+
+        const tagHit = (config.tags || []).some((t) => (m.mood_tags || []).includes(t));
+        const genreOk = movieMatchesMoodGenres(m, config);
+        if (!tagHit && !genreOk) continue;
+
+        const ids = extractGenreIds(m).map(Number);
+        const banned = config.withoutGenres || [];
+        if (banned.length && ids.some((id) => banned.includes(id))) continue;
+
+        matched.push(m);
+        if (matched.length >= limit) break;
+    }
+    return matched;
+}
+
+function mergeMoodPools(primary, secondary) {
+    const seen = new Set();
+    const out = [];
+    for (const m of [...primary, ...secondary]) {
+        const id = String(m.tmdb_id ?? m.id);
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        out.push(m);
     }
     return out;
 }
@@ -1367,7 +1620,16 @@ export async function getMoodRecommendations(userId, moodId, options = {}) {
     }
 
     const supabase = getSupabaseAdmin();
-    const cacheKey = `mood_${moodId}`;
+    const providerId = options.providerId != null && options.providerId !== ''
+        ? Number(options.providerId)
+        : null;
+    const hasProvider = Number.isFinite(providerId) && providerId > 0;
+    const useMyOtt = !hasProvider && options.ottMode === true;
+    const watchRegion = options.watchRegion || options.region || 'IN';
+    const ottKey = hasProvider ? `p${providerId}` : (useMyOtt ? 'my' : 'any');
+    // v3: mood + optional OTT provider filter
+    const cacheKey = `mood_v3_${moodId}_${ottKey}`;
+    const limit = Math.min(24, Math.max(1, Number(options.limit) || 12));
 
     if (!options.refresh) {
         const cached = await readCache(supabase, userId, cacheKey);
@@ -1375,42 +1637,98 @@ export async function getMoodRecommendations(userId, moodId, options = {}) {
     }
 
     const context = await loadUserContext(supabase, userId);
+    const mediaType = options.mediaType === 'tv' ? 'tv' : 'movie';
 
-    // Accurate candidate pool: TMDB Discover for the mood's genre.
-    let pool = await fetchMoodPoolFromTmdb(config, { mediaType: options.mediaType || 'movie' });
+    const [tmdbPool, libPool] = await Promise.all([
+        fetchMoodPoolFromTmdb(config, {
+            pages: hasProvider || useMyOtt ? 4 : 3,
+            mediaType,
+            providerId: hasProvider ? providerId : null,
+            watchRegion,
+        }),
+        fetchMoodPoolFromLibrary(supabase, config, { limit: 240 }),
+    ]);
 
-    // Enrich with any library data we have (dna, streaming, family) by id.
+    let pool = mergeMoodPools(tmdbPool, libPool);
+
     if (pool.length) {
-        const ids = pool.map((m) => m.tmdb_id);
+        const ids = pool.map((m) => m.tmdb_id).slice(0, 280);
         const { data: libRows } = await supabase
             .from('movies_library')
-            .select('tmdb_id, movie_dna, streaming_platforms, mood_tags, family_score, certification, custom_parent_guide, runtime')
-            .in('tmdb_id', ids.slice(0, 200));
+            .select('tmdb_id, movie_dna, streaming_platforms, mood_tags, custom_vibes, family_score, certification, custom_parent_guide, runtime, genre_ids, genres')
+            .in('tmdb_id', ids);
         const byId = new Map((libRows || []).map((r) => [String(r.tmdb_id), r]));
         pool = pool.map((m) => {
-            const lib = byId.get(m.tmdb_id);
-            return lib ? { ...m, ...Object.fromEntries(Object.entries(lib).filter(([, v]) => v != null)) } : m;
+            const lib = byId.get(String(m.tmdb_id));
+            if (!lib) return m;
+            return {
+                ...m,
+                ...Object.fromEntries(Object.entries(lib).filter(([, v]) => v != null)),
+                genre_ids: m.genre_ids?.length ? m.genre_ids : lib.genre_ids,
+                genres: m.genres?.length ? m.genres : lib.genres,
+            };
         });
     }
 
-    // Fallback to library-by-genre if TMDB returned nothing.
-    if (!pool.length) {
-        const { data: libPool } = await supabase
-            .from('movies_library').select(RECO_MOVIE_SELECT).eq('is_active', true)
-            .order('popularity', { ascending: false, nullsFirst: false }).limit(400);
-        pool = (libPool || []).map(normalizeLibraryItem)
-            .filter((m) => extractGenreIds(m).map(Number).some((id) => config.genres.includes(id)));
+    pool = pool.filter((m) => {
+        const tagHit = (config.tags || []).some((t) => (m.mood_tags || []).includes(t));
+        if (movieMatchesMoodGenres(m, config)) return true;
+        if (!tagHit) return false;
+        const ids = extractGenreIds(m).map(Number);
+        const banned = config.withoutGenres || [];
+        return !(banned.length && ids.some((id) => banned.includes(id)));
+    });
+
+    // Hard OTT gate: specific provider, or user's linked services ("My OTTs").
+    // TMDB discover already scoped by provider when hasProvider; still filter library rows.
+    if (hasProvider) {
+        const before = pool.length;
+        const tmdbIds = new Set(tmdbPool.map((m) => String(m.tmdb_id)));
+        pool = pool.filter((m) => {
+            if (movieOnTmdbProviders(m, [providerId])) return true;
+            // No local platforms data but came from provider-scoped TMDB discover
+            const plats = m.streaming_platforms;
+            const empty = !Array.isArray(plats) || !plats.length;
+            return empty && tmdbIds.has(String(m.tmdb_id));
+        });
+        if (!pool.length && before) {
+            pool = tmdbPool.filter((m) => movieMatchesMoodGenres(m, config));
+        }
     }
 
     const { items: candidates } = applyFiltersWithFallback(pool, context, {
-        requireOtt: options.ottMode === true,
+        requireOtt: useMyOtt,
         excludeRated: options.excludeRated !== false,
-    }, Math.min(options.limit || 6, 6));
+        familyOnly: moodId === 'family_night',
+    }, Math.min(limit, 8));
 
-    let items = await scoreAndRankMovies(supabase, candidates, context, {
-        limit: options.limit || 24,
+    const maxPop = candidates.length
+        ? Math.max(...candidates.map((m) => Number(m.popularity) || 0), 1)
+        : 1;
+    const scored = candidates.map((movie) => {
+        const fitness = moodFitnessScore(config, movie);
+        const taste = genreMatchScore(context.profile?.genre_weights, movie);
+        const pop = popularityScore(movie.popularity, maxPop);
+        const finalScore = fitness * 0.75 + taste * 0.15 + pop * 0.10;
+        const tagHit = (config.tags || []).find((t) => (movie.mood_tags || []).includes(t));
+        return {
+            ...movie,
+            score: Math.round(finalScore * 1000) / 1000,
+            scores: { mood: fitness, genre: taste, popularity: pop },
+            reason: tagHit && MOOD_LABELS[tagHit]
+                ? `A ${MOOD_LABELS[tagHit]} ${config.label.toLowerCase()} pick`
+                : `Matches ${config.label}`,
+        };
     });
-    items = await applyLlmRerank(context.profile, items);
+
+    scored.sort((a, b) => (b.score - a.score)
+        || ((Number(b.popularity) || 0) - (Number(a.popularity) || 0))
+        || (Number(a.tmdb_id) - Number(b.tmdb_id)));
+
+    const items = scored.slice(0, limit).map(({ scores, ...rest }) => ({
+        ...rest,
+        scores,
+    }));
 
     const payload = {
         cacheKey,
@@ -1418,7 +1736,13 @@ export async function getMoodRecommendations(userId, moodId, options = {}) {
         moodLabel: config.label,
         generatedAt: new Date().toISOString(),
         items,
-        meta: { count: items.length, candidatePool: candidates.length },
+        meta: {
+            count: items.length,
+            candidatePool: candidates.length,
+            moodFirst: true,
+            ott: ottKey,
+            providerId: hasProvider ? providerId : null,
+        },
     };
 
     await writeCache(supabase, userId, cacheKey, payload);

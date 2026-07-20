@@ -55,6 +55,13 @@ export const DISCOVERY_MOODS = [
     { id: 'family_night', label: 'Family Night', emoji: '👨‍👩‍👧', accent: '#22c55e' },
     { id: 'crime_mystery', label: 'Crime Mystery', emoji: '🕵️', accent: '#3b82f6' },
     { id: 'horror_night', label: 'Horror Night', emoji: '👻', accent: '#6366f1' },
+    { id: 'comedy_night', label: 'Comedy Night', emoji: '😂', accent: '#eab308' },
+    { id: 'sci_fi', label: 'Sci-Fi', emoji: '🚀', accent: '#06b6d4' },
+    { id: 'epic_fantasy', label: 'Epic Fantasy', emoji: '🐉', accent: '#a855f7' },
+    { id: 'adventure', label: 'Adventure', emoji: '🗺️', accent: '#14b8a6' },
+    { id: 'animation', label: 'Animation', emoji: '🎨', accent: '#fb7185' },
+    { id: 'documentary', label: 'Documentary', emoji: '🎥', accent: '#94a3b8' },
+    { id: 'war_history', label: 'War & History', emoji: '⚔️', accent: '#78716c' },
 ];
 
 export const GENRE_NAME_BY_ID = Object.fromEntries(

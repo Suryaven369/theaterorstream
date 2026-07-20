@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import {
   FaBookmark,
   FaRegBookmark,
@@ -22,6 +22,14 @@ const createSlug = (text) =>
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')
     .trim();
+
+function referrerFromLocation(location) {
+  const path = `${location.pathname}${location.search}`;
+  const tab = new URLSearchParams(location.search).get('tab');
+  if (tab === 'explore') return { path, label: 'Explore' };
+  if (tab === 'watch') return { path, label: 'Watch' };
+  return { path: path === '/' ? '/' : path, label: 'Home' };
+}
 
 /**
  * Full social post card (text / image / movie attach / log / list).
@@ -48,9 +56,11 @@ export default function FeedPostCard({
   pollVotingId = null,
   variant = 'feed',
 }) {
+  const location = useLocation();
   const isOwner = item.user?.id && currentUserId === item.user.id;
   const isEditing = editingId === item.id;
   const isThread = variant === 'thread';
+  const listReferrer = referrerFromLocation(location);
 
   const openThread = (e) => {
     if (e) {
@@ -141,6 +151,7 @@ export default function FeedPostCard({
       {item.postType === 'list' ? (
         <Link
           to={`/collection/${createSlug(item.listTitle || item.movieTitle || '')}`}
+          state={{ from: listReferrer }}
           className="block px-3 sm:px-4 pb-2"
           data-no-thread
           onClick={(e) => e.stopPropagation()}

@@ -8,7 +8,7 @@
  */
 
 import { supabase } from './supabase';
-import { MOVIES_LIBRARY_SELECT, MOVIE_DETAIL_SELECT } from './moviesLibrarySelect.js';
+import { MOVIES_LIBRARY_LIST_SELECT, MOVIE_DETAIL_SELECT } from './moviesLibrarySelect.js';
 
 // =============================================
 // CACHING LAYER
@@ -119,7 +119,7 @@ export const getMoviesFromDb = async (options = {}) => {
 
     let query = supabase
         .from('movies_library')
-        .select(MOVIES_LIBRARY_SELECT, { count: 'exact' });
+        .select(MOVIES_LIBRARY_LIST_SELECT, { count: 'exact' });
 
     // Apply filters
     if (activeOnly) query = query.eq('is_active', true);
@@ -240,7 +240,7 @@ export const getTrendingTVFromDb = async (limit = 10) => {
 
     const { data, error } = await supabase
         .from('movies_library')
-        .select(MOVIES_LIBRARY_SELECT)
+        .select(MOVIES_LIBRARY_LIST_SELECT)
         .eq('media_type', 'tv')
         .eq('is_active', true)
         .order('popularity', { ascending: false, nullsFirst: false })
@@ -265,7 +265,7 @@ export const getTVByGenreFromDb = async (genreId, limit = 20) => {
 
     const { data, error } = await supabase
         .from('movies_library')
-        .select(MOVIES_LIBRARY_SELECT)
+        .select(MOVIES_LIBRARY_LIST_SELECT)
         .eq('media_type', 'tv')
         .eq('is_active', true)
         .contains('genres', [{ id: genreId }])
@@ -295,7 +295,7 @@ export const getTVSections = async (activeOnly = true) => {
 
     let query = supabase
         .from('tv_sections')
-        .select(MOVIES_LIBRARY_SELECT)
+        .select(MOVIES_LIBRARY_LIST_SELECT)
         .order('display_order', { ascending: true });
 
     if (activeOnly) {
@@ -320,7 +320,7 @@ export const getTVSections = async (activeOnly = true) => {
 const getTVFromHomepageSections = async (activeOnly = true) => {
     let query = supabase
         .from('homepage_sections')
-        .select(MOVIES_LIBRARY_SELECT)
+        .select(MOVIES_LIBRARY_LIST_SELECT)
         .order('display_order', { ascending: true });
 
     if (activeOnly) {
@@ -367,7 +367,7 @@ export const getHomepageSectionsOptimized = async (activeOnly = true) => {
 
     let query = supabase
         .from('homepage_sections')
-        .select(MOVIES_LIBRARY_SELECT)
+        .select('id, name, slug, icon, display_order, is_active, movies_by_region, section_type, api_source, max_movies, created_at, updated_at')
         .order('display_order', { ascending: true });
 
     if (activeOnly) {
@@ -843,7 +843,7 @@ export const getExploreContent = async (options = {}) => {
 
     let query = supabase
         .from('movies_library')
-        .select(MOVIES_LIBRARY_SELECT, { count: 'exact' })
+        .select(MOVIES_LIBRARY_LIST_SELECT, { count: 'exact' })
         .eq('is_active', true)
         .eq('media_type', mediaType);
 
@@ -1027,7 +1027,7 @@ export const getFeaturedContent = async (mediaType = null, limit = 10) => {
 
     let query = supabase
         .from('movies_library')
-        .select(MOVIES_LIBRARY_SELECT)
+        .select(MOVIES_LIBRARY_LIST_SELECT)
         .eq('is_active', true)
         .eq('featured', true)
         .order('priority', { ascending: false, nullsFirst: false })
@@ -1059,7 +1059,7 @@ export const getTrendingContent = async (mediaType = null, limit = 20) => {
 
     let query = supabase
         .from('movies_library')
-        .select(MOVIES_LIBRARY_SELECT)
+        .select(MOVIES_LIBRARY_LIST_SELECT)
         .eq('is_active', true)
         .order('popularity', { ascending: false, nullsFirst: false })
         .limit(limit);

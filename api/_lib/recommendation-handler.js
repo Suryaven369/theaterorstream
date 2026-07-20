@@ -20,12 +20,17 @@ function getRequestQuery(request) {
 
 export function parseRecommendationQuery(request) {
     const params = getRequestQuery(request);
+    const providerRaw = params.get('providerId') || '';
+    const providerId = providerRaw && /^\d+$/.test(providerRaw) ? providerRaw : null;
 
     return {
         limit: Math.min(48, Math.max(1, Number(params.get('limit')) || 24)),
         mediaType: params.get('mediaType') || null,
         refresh: params.get('refresh') === 'true',
+        // Default true for For You / Tonight; mood client sends ottMode=false unless "My OTTs".
         ottMode: params.get('ottMode') !== 'false',
+        providerId,
+        watchRegion: params.get('watchRegion') || params.get('region') || 'IN',
     };
 }
 

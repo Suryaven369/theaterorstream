@@ -2,7 +2,11 @@ import { supabase } from './supabase';
 
 async function getAccessToken() {
     const { data: { session } } = await supabase.auth.getSession();
-    return session?.access_token || null;
+    if (session?.access_token) return session.access_token;
+
+    // Session can lag AuthContext briefly after refresh / tab focus.
+    const { data: refreshed } = await supabase.auth.refreshSession();
+    return refreshed?.session?.access_token || null;
 }
 
 function resolveApiBase() {
@@ -30,7 +34,9 @@ async function fetchRecommendations(path, options = {}) {
         limit: options.limit,
         mediaType: options.mediaType,
         refresh: options.refresh ? 'true' : undefined,
-        ottMode: options.ottMode === false ? 'false' : undefined,
+        ottMode: options.ottMode === false ? 'false' : (options.ottMode === true ? 'true' : undefined),
+        providerId: options.providerId || undefined,
+        watchRegion: options.watchRegion || undefined,
     });
 
     const url = `${resolveApiBase()}${path}${query}`;
@@ -84,9 +90,13 @@ export function getTrendingPersonalized(options = {}) {
     return fetchRecommendations('/api/recommendations/trending-personalized', options);
 }
 
-async function sendJson(path, method, body) {
+async function sendJson(path, method, body, options = {}) {
     const token = await getAccessToken();
     if (!token) return { ok: false, error: 'not_signed_in' };
+
+    const timeoutMs = options.timeoutMs ?? 55000;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
         const response = await fetch(`${resolveApiBase()}${path}`, {
@@ -97,15 +107,25 @@ async function sendJson(path, method, body) {
                 Authorization: `Bearer ${token}`,
             },
             body: body != null ? JSON.stringify(body) : undefined,
+            signal: controller.signal,
         });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
-            throw new Error(payload.error || `Request failed (${response.status})`);
+            const msg = payload.error || `Request failed (${response.status})`;
+            if (response.status === 401) {
+                return { ok: false, error: 'not_signed_in', detail: msg };
+            }
+            throw new Error(msg);
         }
         return { ok: true, ...payload };
     } catch (error) {
+        if (error?.name === 'AbortError') {
+            return { ok: false, error: 'That took too long — try again, or pick a shorter prompt.' };
+        }
         if (import.meta.env.DEV) console.warn('[recommendationApi]', path, error.message);
         return { ok: false, error: error.message };
+    } finally {
+        clearTimeout(timer);
     }
 }
 
@@ -152,4 +172,17 @@ export async function getFollowingFeed(limit = 30) {
 export function sendEvents(events) {
     const list = Array.isArray(events) ? events : [events];
     return sendJson('/api/recommendations/events', 'POST', { events: list });
+}
+
+/**
+ * Friend-style multi-turn watch chat.
+ * Pass prior turns so the AI can ask about mood, then suggest titles.
+ * @returns {Promise<{ ok: boolean, reply?: string, items?: array, mode?: string, error?: string }>}
+ */
+export async function askRecoChat({ message, history = [], limit = 3 } = {}) {
+    return sendJson('/api/recommendations/chat', 'POST', {
+        message: message || undefined,
+        history: Array.isArray(history) ? history.slice(-12) : [],
+        limit,
+    }, { timeoutMs: 55000 });
 }

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, Link, useParams, useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -36,7 +37,7 @@ import { generateSlugWithId } from '../lib/slugUtils';
 import { searchContentFromDb } from '../lib/contentApi';
 import { searchPeople } from '../lib/peopleApi';
 import { getUserTopHashtags, getUserFollowedHashtags } from '../lib/hashtagApi';
-import { FaUserPlus, FaUserCheck, FaEllipsisH, FaSearch, FaTimes, FaCamera, FaStar, FaFlag, FaBan, FaShareAlt } from 'react-icons/fa';
+import { FaUserPlus, FaUserCheck, FaEllipsisH, FaSearch, FaTimes, FaCamera, FaStar, FaFlag, FaBan, FaShareAlt, FaChartLine } from 'react-icons/fa';
 import SeoHead from '../components/SeoHead';
 import MovieMentionText from '../components/MovieMentionText';
 import VerifiedBadge from '../components/VerifiedBadge';
@@ -177,6 +178,8 @@ const ProfilePage = () => {
     // Privacy / menu / moderation
     const [accessAllowed, setAccessAllowed] = useState(true);
     const [menuOpen, setMenuOpen] = useState(false);
+    const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
+    const menuButtonRef = useRef(null);
     const [reportOpen, setReportOpen] = useState(false);
     const [reportReason, setReportReason] = useState('');
     const [actionMsg, setActionMsg] = useState('');
@@ -197,6 +200,25 @@ const ProfilePage = () => {
 
     // Reset to page 1 whenever the active tab changes.
     useEffect(() => { setTabPage(1); }, [activeTab]);
+
+    // Keep the ⋯ menu above sticky tabs by portaling + anchoring to the button.
+    useLayoutEffect(() => {
+        if (!menuOpen || !menuButtonRef.current) return undefined;
+        const place = () => {
+            const rect = menuButtonRef.current.getBoundingClientRect();
+            setMenuPos({
+                top: rect.bottom + 4,
+                right: Math.max(8, window.innerWidth - rect.right),
+            });
+        };
+        place();
+        window.addEventListener('resize', place);
+        window.addEventListener('scroll', place, true);
+        return () => {
+            window.removeEventListener('resize', place);
+            window.removeEventListener('scroll', place, true);
+        };
+    }, [menuOpen]);
 
     // Load profile data
     useEffect(() => {
@@ -797,7 +819,7 @@ const ProfilePage = () => {
 
             <div className="bg-[#1a1d1f] border-b border-white/5">
                 <div className="max-w-6xl mx-auto px-4 pb-8">
-                    <div className="relative z-10 flex flex-col sm:flex-row sm:items-end gap-4 sm:gap-6 -mt-12 sm:-mt-14">
+                    <div className={`relative flex flex-col sm:flex-row sm:items-end gap-4 sm:gap-6 -mt-12 sm:-mt-14 ${menuOpen ? 'z-50' : 'z-10'}`}>
                         {/* Avatar (uploaded/OAuth image, else emoji) — z-20 so it sits
                             above the banner's gradient overlay where it overlaps up. */}
                         {avatarImageUrl ? (
@@ -854,35 +876,56 @@ const ProfilePage = () => {
 
                                 <div className="relative">
                                     <button
+                                        ref={menuButtonRef}
+                                        type="button"
                                         onClick={() => setMenuOpen((o) => !o)}
                                         className="p-2 rounded-full hover:bg-white/10 text-white/50 hover:text-white transition-colors"
+                                        aria-expanded={menuOpen}
+                                        aria-haspopup="menu"
                                     >
                                         <FaEllipsisH />
                                     </button>
-                                    {menuOpen && (
+                                    {menuOpen && createPortal(
                                         <>
-                                            <div className="fixed inset-0 z-30" onClick={() => setMenuOpen(false)} />
-                                            <div className="absolute right-0 mt-1 w-44 rounded-xl bg-[#1c1f22] border border-white/10 shadow-2xl overflow-hidden z-40">
-                                                <button onClick={handleShare} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-white/80 hover:bg-white/10">
+                                            <div
+                                                className="fixed inset-0 z-[60]"
+                                                onClick={() => setMenuOpen(false)}
+                                                aria-hidden
+                                            />
+                                            <div
+                                                role="menu"
+                                                className="fixed z-[70] w-52 rounded-xl bg-[#1c1f22] border border-white/10 shadow-2xl overflow-hidden"
+                                                style={{ top: menuPos.top, right: menuPos.right }}
+                                            >
+                                                <button type="button" onClick={handleShare} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-white/80 hover:bg-white/10">
                                                     <FaShareAlt className="text-xs" /> Share profile
                                                 </button>
                                                 {isOwnProfile && (
-                                                    <Link to="/settings" onClick={() => setMenuOpen(false)} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-white/80 hover:bg-white/10">
-                                                        <FaUserCheck className="text-xs" /> Settings
-                                                    </Link>
+                                                    <>
+                                                        <Link to="/taste-map" onClick={() => setMenuOpen(false)} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-white/80 hover:bg-white/10">
+                                                            <FaChartLine className="text-xs" /> Taste Map
+                                                        </Link>
+                                                        <Link to="/settings/taste" onClick={() => setMenuOpen(false)} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-white/80 hover:bg-white/10">
+                                                            <FaStar className="text-xs" /> Taste Preferences
+                                                        </Link>
+                                                        <Link to="/settings" onClick={() => setMenuOpen(false)} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-white/80 hover:bg-white/10">
+                                                            <FaUserCheck className="text-xs" /> Settings
+                                                        </Link>
+                                                    </>
                                                 )}
                                                 {!isOwnProfile && (
                                                     <>
-                                                        <button onClick={() => { setMenuOpen(false); setReportOpen(true); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-amber-400 hover:bg-white/10">
+                                                        <button type="button" onClick={() => { setMenuOpen(false); setReportOpen(true); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-amber-400 hover:bg-white/10">
                                                             <FaFlag className="text-xs" /> Report
                                                         </button>
-                                                        <button onClick={handleBlock} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-400 hover:bg-white/10">
+                                                        <button type="button" onClick={handleBlock} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-400 hover:bg-white/10">
                                                             <FaBan className="text-xs" /> Block
                                                         </button>
                                                     </>
                                                 )}
                                             </div>
-                                        </>
+                                        </>,
+                                        document.body,
                                     )}
                                 </div>
                             </div>
@@ -939,7 +982,7 @@ const ProfilePage = () => {
             {/* ============================================ */}
             {/* TAB NAVIGATION */}
             {/* ============================================ */}
-            <div className="bg-[#14181c] border-b border-white/5 sticky top-[72px] z-30">
+            <div className="bg-[#14181c] border-b border-white/5 sticky top-[72px] z-20">
                 <div className="max-w-6xl mx-auto px-4">
                     <nav className="flex items-center gap-1 overflow-x-auto scrollbar-hide -mb-px">
                         {PROFILE_TABS.map((tab) => {

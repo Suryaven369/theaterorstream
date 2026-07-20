@@ -92,6 +92,12 @@ export default function ActivityFeedList({ items = [], showUser = false }) {
                                 ) : item.event_type === 'list_created' ? (
                                     <Link
                                         to={`/collection/${createListSlug(item.payload?.name)}`}
+                                        state={{
+                                            from: {
+                                                path: '/',
+                                                label: 'Home',
+                                            },
+                                        }}
                                         className="font-semibold hover:text-orange-400"
                                     >
                                         {item.payload?.name}

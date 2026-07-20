@@ -531,76 +531,80 @@ const ArticleDetailModal = ({
 };
 
 const ArticleRow = ({ article, status, selected, onSelectToggle, onApprove, onReject, onToggle, onDelete, onOpen, acting }) => (
-    <div className={`relative flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-3 p-3 rounded-xl bg-[#1a1a1a] border transition-colors ${selected ? "border-orange-500/50" : "border-white/10"} ${acting ? "opacity-70" : ""}`}>
+    <div className={`relative flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 p-3 rounded-xl bg-[#1a1a1a] border transition-colors min-w-0 max-w-full overflow-hidden ${selected ? "border-orange-500/50" : "border-white/10"} ${acting ? "opacity-70" : ""}`}>
         {acting && (
             <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-black/40 backdrop-blur-[1px]">
                 <FaSync className="text-orange-400 text-sm animate-spin" />
             </div>
         )}
-        <input
-            type="checkbox"
-            checked={selected}
-            onChange={() => onSelectToggle(article.id)}
-            disabled={acting}
-            className="shrink-0 w-4 h-4 accent-orange-500 cursor-pointer disabled:opacity-40"
-        />
-        <button
-            type="button"
-            onClick={() => onOpen?.(article)}
-            className="flex flex-1 min-w-0 items-center gap-3 text-left rounded-lg hover:bg-white/[0.03] transition-colors -my-1 py-1"
-            title="View summary"
-        >
-            {article.image_url ? (
-                <img
-                    src={article.image_url}
-                    alt={article.title}
-                    loading="lazy"
-                    className="w-20 h-12 object-cover rounded-lg bg-black shrink-0"
-                    onError={(e) => {
-                        e.currentTarget.style.display = "none";
-                        e.currentTarget.nextSibling?.classList.remove("hidden");
-                    }}
-                />
-            ) : null}
-            <div className={`w-20 h-12 rounded-lg bg-white/5 shrink-0 flex items-center justify-center text-white/20 text-[10px] ${article.image_url ? "hidden" : ""}`}>
-                No image
-            </div>
-            <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">{article.title}</p>
-                <p className="text-[11px] text-white/40 truncate">
-                    {article.source_name} &middot; {article.published_at ? new Date(article.published_at).toLocaleDateString() : "—"}
-                </p>
-                {status === "approved" && article.summary && (
-                    <p className="text-[11px] text-white/55 line-clamp-2 mt-0.5">{article.summary}</p>
-                )}
-            </div>
-        </button>
-        {status === "pending" && (
-            <>
-                <button
-                    onClick={() => onApprove(article)}
-                    disabled={acting}
-                    className="text-xs px-3 py-1.5 rounded-md bg-green-500/20 text-green-400 hover:bg-green-500/30 shrink-0 flex items-center gap-1.5 disabled:opacity-50"
-                >
-                    <FaCheck /> Approve
-                </button>
-                <button
-                    onClick={() => onReject(article)}
-                    disabled={acting}
-                    className="text-xs px-3 py-1.5 rounded-md bg-white/5 text-white/50 hover:bg-white/10 shrink-0 flex items-center gap-1.5 disabled:opacity-50"
-                >
-                    <FaTimes /> Reject
-                </button>
-            </>
-        )}
-        {status === "approved" && (
-            <button onClick={() => onToggle(article)} disabled={acting} className="text-white/50 hover:text-white shrink-0 disabled:opacity-50">
-                {article.is_active ? <FaToggleOn className="text-xl text-green-400" /> : <FaToggleOff className="text-xl" />}
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+            <input
+                type="checkbox"
+                checked={selected}
+                onChange={() => onSelectToggle(article.id)}
+                disabled={acting}
+                className="shrink-0 w-4 h-4 accent-orange-500 cursor-pointer disabled:opacity-40"
+            />
+            <button
+                type="button"
+                onClick={() => onOpen?.(article)}
+                className="flex flex-1 min-w-0 items-center gap-3 text-left rounded-lg hover:bg-white/[0.03] transition-colors -my-1 py-1"
+                title="View summary"
+            >
+                {article.image_url ? (
+                    <img
+                        src={article.image_url}
+                        alt={article.title}
+                        loading="lazy"
+                        className="w-16 h-10 sm:w-20 sm:h-12 object-cover rounded-lg bg-black shrink-0"
+                        onError={(e) => {
+                            e.currentTarget.style.display = "none";
+                            e.currentTarget.nextSibling?.classList.remove("hidden");
+                        }}
+                    />
+                ) : null}
+                <div className={`w-16 h-10 sm:w-20 sm:h-12 rounded-lg bg-white/5 shrink-0 flex items-center justify-center text-white/20 text-[10px] ${article.image_url ? "hidden" : ""}`}>
+                    No image
+                </div>
+                <div className="flex-1 min-w-0 overflow-hidden">
+                    <p className="text-sm font-medium text-white truncate">{article.title}</p>
+                    <p className="text-[11px] text-white/40 truncate">
+                        {article.source_name} &middot; {article.published_at ? new Date(article.published_at).toLocaleDateString() : "—"}
+                    </p>
+                    {status === "approved" && article.summary && (
+                        <p className="text-[11px] text-white/55 line-clamp-2 mt-0.5 break-words">{article.summary}</p>
+                    )}
+                </div>
             </button>
-        )}
-        <button onClick={() => onDelete(article)} disabled={acting} className="text-white/40 hover:text-red-400 shrink-0 disabled:opacity-50">
-            <FaTrash />
-        </button>
+        </div>
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 pl-6 sm:pl-0 flex-wrap">
+            {status === "pending" && (
+                <>
+                    <button
+                        onClick={() => onApprove(article)}
+                        disabled={acting}
+                        className="text-xs px-2.5 sm:px-3 py-1.5 rounded-md bg-green-500/20 text-green-400 hover:bg-green-500/30 shrink-0 flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                        <FaCheck /> Approve
+                    </button>
+                    <button
+                        onClick={() => onReject(article)}
+                        disabled={acting}
+                        className="text-xs px-2.5 sm:px-3 py-1.5 rounded-md bg-white/5 text-white/50 hover:bg-white/10 shrink-0 flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                        <FaTimes /> Reject
+                    </button>
+                </>
+            )}
+            {status === "approved" && (
+                <button onClick={() => onToggle(article)} disabled={acting} className="text-white/50 hover:text-white shrink-0 disabled:opacity-50 p-1">
+                    {article.is_active ? <FaToggleOn className="text-xl text-green-400" /> : <FaToggleOff className="text-xl" />}
+                </button>
+            )}
+            <button onClick={() => onDelete(article)} disabled={acting} className="text-white/40 hover:text-red-400 shrink-0 disabled:opacity-50 p-1">
+                <FaTrash />
+            </button>
+        </div>
     </div>
 );
 
@@ -997,7 +1001,7 @@ const AdminArticlesPage = () => {
     const isTrailers = activeKind === "trailer";
 
     return (
-        <div className="flex flex-col lg:flex-row h-[calc(100dvh-3.5rem)] lg:h-screen overflow-hidden">
+        <div className="flex flex-col lg:flex-row h-[calc(100dvh-3.5rem)] lg:h-screen max-w-full min-w-0 overflow-hidden">
             {/* Mobile sources drawer overlay */}
             {sourcesOpen && (
                 <button
@@ -1107,8 +1111,8 @@ const AdminArticlesPage = () => {
             </aside>
 
             {/* Center: articles for the selected source (or all) */}
-            <main className="flex-1 overflow-y-auto p-3 sm:p-6 min-w-0">
-                <div className="max-w-3xl mx-auto">
+            <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-6 min-w-0 max-w-full">
+                <div className="max-w-3xl mx-auto min-w-0 w-full">
                     <div className="mb-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                         <div className="min-w-0">
                             <div className="flex items-center gap-2 mb-1 lg:hidden">
@@ -1156,7 +1160,7 @@ const AdminArticlesPage = () => {
                     </div>
 
                     {message && (
-                        <p className={`text-sm mb-4 ${message.type === "error" ? "text-red-400" : "text-green-400"}`}>
+                        <p className={`text-sm mb-4 break-words ${message.type === "error" ? "text-red-400" : "text-green-400"}`}>
                             {message.text}
                         </p>
                     )}
@@ -1206,8 +1210,8 @@ const AdminArticlesPage = () => {
                         <p className="text-sm text-white/40 py-12 text-center">No articles in this category.</p>
                     ) : (
                         <>
-                            <div className="flex items-center justify-between gap-2 mb-2 px-1">
-                                <label className="flex items-center gap-2 text-xs text-white/50 cursor-pointer select-none">
+                            <div className="flex flex-wrap items-center justify-between gap-2 mb-2 px-1 min-w-0">
+                                <label className="flex items-center gap-2 text-xs text-white/50 cursor-pointer select-none shrink-0">
                                     <input
                                         type="checkbox"
                                         checked={allSelected}
@@ -1218,7 +1222,7 @@ const AdminArticlesPage = () => {
                                 </label>
 
                                 {selectedIds.size > 0 && (
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex flex-wrap items-center gap-2 min-w-0">
                                         <span className="text-xs text-white/40">{selectedIds.size} selected</span>
                                         {statusTab === "pending" && (
                                             <button

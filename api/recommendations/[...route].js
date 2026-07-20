@@ -23,6 +23,7 @@ import { getFollowingFeed } from '../_lib/following-feed-server.js';
 import { getTastePreferences, updateTastePreferences } from '../_lib/taste-preferences-server.js';
 import { rebuildUserTasteProfile, invalidateRecommendationCache } from '../_lib/taste-profile-server.js';
 import { isEmbeddingConfigured } from '../_lib/embedding-server.js';
+import { handleRecoChat, RECO_CHAT_PRESETS } from '../_lib/reco-chat-server.js';
 
 export const config = {
     runtime: 'nodejs',
@@ -123,6 +124,7 @@ export default async function handler(req, res) {
     }
 
     // --- Mood-based discovery: /mood/:moodId ---
+    // Supports optional OTT: providerId=<tmdbId> or ottMode=true (user's linked services).
     if (segment === 'mood') {
         const moodId = route[1];
         if (!moodId) return res.status(400).json({ error: 'Missing mood id' });
@@ -219,12 +221,44 @@ export default async function handler(req, res) {
         });
     }
 
+    // Reco chat bubble — preset / free-text → personalized picks
+    if (segment === 'chat') {
+        if (req.method === 'GET') {
+            return res.status(200).json({ ok: true, presets: RECO_CHAT_PRESETS });
+        }
+        if (req.method !== 'POST') {
+            return res.status(405).json({ error: 'Method not allowed' });
+        }
+        return withUser(req, res, async (userId) => {
+            const body = await readJsonBody(req);
+            const started = Date.now();
+            console.info('[reco-chat] start', {
+                userId: userId.slice(0, 8),
+                hasMessage: !!(body.message || body.text),
+                historyLen: Array.isArray(body.history) ? body.history.length : 0,
+            });
+            const data = await handleRecoChat(userId, {
+                message: body.message || body.text || '',
+                history: body.history || [],
+                limit: body.limit,
+            });
+            console.info('[reco-chat] done', {
+                ms: Date.now() - started,
+                mode: data?.mode || data?.meta?.mode,
+                count: data?.items?.length ?? 0,
+                llmUsed: !!data?.meta?.llmUsed,
+            });
+            return res.status(200).json({ ok: true, ...data });
+        });
+    }
+
     return res.status(404).json({
         error: 'Unknown recommendation route',
         allowed: [
             'for-you', 'tonight', 'family', 'trending-personalized',
             'similar/:tmdbId', 'mood/:moodId', 'perfect-tonight',
             'discovery/:section', 'events', 'taste-profile', 'dashboard',
+            'chat',
         ],
     });
 }

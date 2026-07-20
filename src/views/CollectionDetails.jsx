@@ -530,12 +530,12 @@ const CollectionDetails = () => {
     const from = location.state?.from;
     const ownerUsername = collection.user_profiles?.username;
     const ownerCollectionsPath = ownerUsername ? `/${ownerUsername}/collections` : '/';
-    const backPath = from?.path || ownerCollectionsPath;
+    // Prefer explicit referrer, otherwise Home — never force owner's collections list
+    // (that made Home → list → Back land on Collections instead of Home).
+    const fallbackPath = from?.path || '/';
     const backLabel = from?.label
         ? `Back to ${from.label}`
-        : ownerUsername
-            ? 'Back to Collections'
-            : 'Back home';
+        : 'Back';
     const trailCrumbs = from?.crumbs?.length
         ? from.crumbs
         : ownerUsername
@@ -544,6 +544,17 @@ const CollectionDetails = () => {
                 { path: ownerCollectionsPath, label: 'Collections' },
             ]
             : [];
+
+    const handleBack = (e) => {
+        e.preventDefault();
+        // SPA history index — Back returns to the real previous page (Home feed, Explore, etc.)
+        const idx = typeof window !== 'undefined' ? window.history.state?.idx : null;
+        if (typeof idx === 'number' && idx > 0) {
+            navigate(-1);
+            return;
+        }
+        navigate(fallbackPath);
+    };
 
     // Get first poster for OG image
     const ogImage = movies.length > 0 && movies[0].poster_path
@@ -570,7 +581,8 @@ const CollectionDetails = () => {
                     {/* Header */}
                     <div className="mb-6 sm:mb-8">
                         <Link
-                            to={backPath}
+                            to={fallbackPath}
+                            onClick={handleBack}
                             className="inline-flex items-center gap-2 text-white/50 hover:text-white mb-3 sm:mb-4 transition-colors min-h-[44px]"
                         >
                             <FaArrowLeft />

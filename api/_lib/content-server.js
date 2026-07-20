@@ -442,7 +442,7 @@ export async function fetchHomepageSections(activeOnly = true) {
 
     let query = supabase
         .from('homepage_sections')
-        .select('*')
+        .select('id, name, slug, icon, display_order, is_active, movies_by_region, section_type, api_source, max_movies, created_at, updated_at')
         .order('display_order', { ascending: true });
 
     if (activeOnly) {
@@ -462,7 +462,7 @@ export async function fetchTVSections(activeOnly = true) {
 
     let query = supabase
         .from('tv_sections')
-        .select('*')
+        .select('id, name, slug, icon, display_order, is_active, movies_by_region, section_type, api_source, max_movies, created_at, updated_at')
         .order('display_order', { ascending: true });
 
     if (activeOnly) {
@@ -864,7 +864,8 @@ export async function fetchTrendingContent(mediaType = null, limit = 20) {
 // =============================================
 
 /**
- * Fetch movies/TV with trailers (has videos in TMDB data)
+ * Fetch movies/TV with trailers (has videos in TMDB data).
+ * Admin Showcase candidate browser only — Home uses fetchRssTrailers / trailer_posts.
  */
 export async function fetchTrailers(options = {}) {
     const supabase = getSupabase();
@@ -874,20 +875,20 @@ export async function fetchTrailers(options = {}) {
         offset = 0,
         daysBack = 30,
         trailerType = 'Trailer',
-        // 'recent' ranks by the trailer's own publish date (default, used by the public feed).
-        // 'popular'/'trending' are admin-only candidate-browsing sorts: 'popular' ranks by the
-        // underlying movie's vote_average, 'trending' by its TMDB popularity score. Neither
-        // changes which trailers are eligible — only the order candidates are presented in.
+        // 'recent' ranks by the trailer's own publish date (default).
+        // 'popular'/'trending' are admin-only candidate-browsing sorts.
         sortBy = 'recent',
+        // Cap how many library rows we page through. Full scans (~6k × videos JSONB)
+        // dominate Supabase egress; admin browsing does not need global completeness.
+        maxScan = 2000,
     } = options;
 
     // The trailer's own `published_at` (inside the videos jsonb) is what determines
     // "latest launch" — it has no relationship to synced_at/release_date, so there's
-    // no indexed column to sort/filter on at the DB level. Page through every row
-    // with videos (PostgREST caps each request at 1000) and rank in JS instead of
-    // trusting a recently-synced slice, which could miss the globally freshest trailer.
+    // no indexed column to sort/filter on at the DB level. Page a capped slice of
+    // rows with videos (PostgREST caps each request at 1000) and rank in JS.
     const PAGE_SIZE = 1000;
-    const MAX_ROWS = 6000;
+    const MAX_ROWS = Math.min(6000, Math.max(PAGE_SIZE, Number(maxScan) || 2000));
     const data = [];
     for (let from = 0; from < MAX_ROWS; from += PAGE_SIZE) {
         let query = supabase
@@ -899,6 +900,7 @@ export async function fetchTrailers(options = {}) {
             `)
             .eq('is_active', true)
             .not('videos', 'is', null)
+            .order('popularity', { ascending: false, nullsFirst: false })
             .range(from, from + PAGE_SIZE - 1);
 
         if (mediaType) {
@@ -986,7 +988,11 @@ export async function fetchShowcaseTrailers(activeOnly = true) {
 
     let query = supabase
         .from('showcase_trailers')
-        .select('*')
+        .select(`
+            id, tmdb_id, media_type, title, poster_path, backdrop_path, release_date,
+            category, display_order, is_active, trailer_key, trailer_name,
+            trailer_published_at, thumbnail_url, thumbnail_fallback_url, youtube_url
+        `)
         .order('display_order', { ascending: true });
 
     if (activeOnly) {
@@ -1433,7 +1439,11 @@ export async function fetchRssTrailers({ limit = 15, daysBack = 21 } = {}) {
     // Include either recently updated OR recently published so older teasers still appear after approve.
     const { data, error } = await supabase
         .from('trailer_posts')
-        .select('*')
+        .select(`
+            tmdb_id, media_type, title, poster_path, backdrop_path, release_date,
+            vote_average, overview, source_name, source_logo, updated_at, created_at,
+            published_at, youtube_key, trailer_name, trailer_type, trailer_url
+        `)
         .eq('is_active', true)
         .or(`updated_at.gte."${sinceIso}",published_at.gte."${sinceIso}"`)
         .order('updated_at', { ascending: false })

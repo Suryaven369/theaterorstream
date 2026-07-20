@@ -29,7 +29,7 @@ function Bar({ label, score, accent = 'var(--primary)' }) {
 export default function TasteDashboardPanel({ dashboard, loading }) {
     if (loading) {
         return (
-            <div className="mx-3 h-40 animate-pulse rounded-2xl skeleton sm:mx-6 sm:h-44" />
+            <div className="mx-4 h-28 animate-pulse rounded-xl skeleton sm:mx-6 sm:h-44 sm:rounded-2xl" />
         );
     }
     if (!dashboard) return null;
@@ -43,21 +43,29 @@ export default function TasteDashboardPanel({ dashboard, loading }) {
     const hasSignal = favoriteGenres.length || ratingCount > 0 || eventCount > 0;
 
     return (
-        <section className="mx-3 rounded-2xl border border-white/8 bg-gradient-to-br from-[var(--bg-elevated)] to-[var(--bg-card)] p-4 sm:mx-6 sm:p-5">
-            <div className="mb-3 flex items-center justify-between gap-2 sm:mb-4">
-                <h2 className="flex min-w-0 items-center gap-2 text-base font-bold text-white sm:text-lg">
-                    <FaChartLine className="shrink-0 text-[var(--accent-green)]" /> Your Taste Map
+        <section className="mx-4 rounded-xl border border-white/8 bg-gradient-to-br from-[var(--bg-elevated)] to-[var(--bg-card)] p-3.5 sm:mx-6 sm:rounded-2xl sm:p-5">
+            <div className="mb-2.5 flex items-center justify-between gap-2 sm:mb-4">
+                <h2 className="flex min-w-0 items-center gap-1.5 text-[15px] font-bold tracking-tight text-white sm:gap-2 sm:text-lg">
+                    <FaChartLine className="shrink-0 text-[13px] text-[var(--accent-green)] sm:text-base" /> Your Taste Map
                 </h2>
-                <Link
-                    to="/settings/taste"
-                    className="inline-flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full border border-white/12 px-3 py-1.5 text-xs font-medium text-white/70 transition-colors hover:border-white/30 hover:text-white"
-                >
-                    <FaSlidersH className="text-[10px]" /> Customize
-                </Link>
+                <div className="flex shrink-0 items-center gap-1.5">
+                    <Link
+                        to="/taste-map"
+                        className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full border border-white/12 px-2.5 py-1 text-[11px] font-medium text-white/70 transition-colors hover:border-white/30 hover:text-white sm:min-h-[40px] sm:px-3 sm:py-1.5 sm:text-xs"
+                    >
+                        <FaChartLine className="text-[10px]" /> Open
+                    </Link>
+                    <Link
+                        to="/settings/taste"
+                        className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full border border-white/12 px-2.5 py-1 text-[11px] font-medium text-white/70 transition-colors hover:border-white/30 hover:text-white sm:min-h-[40px] sm:px-3 sm:py-1.5 sm:text-xs"
+                    >
+                        <FaSlidersH className="text-[10px]" /> Customize
+                    </Link>
+                </div>
             </div>
 
             {tasteSummary && (
-                <p className="mb-4 text-sm italic text-white/60">“{tasteSummary}”</p>
+                <p className="mb-3 text-[12px] italic leading-snug text-white/55 sm:mb-4 sm:text-sm">“{tasteSummary}”</p>
             )}
 
             {!hasSignal ? (

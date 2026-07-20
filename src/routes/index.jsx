@@ -33,6 +33,7 @@ import DiaryPage from "../views/DiaryPage";
 import FeedPage from "../views/FeedPage";
 import WatchPage from "../views/WatchPage";
 import TasteSettingsPage from "../views/TasteSettingsPage";
+import TasteMapPage from "../views/TasteMapPage";
 import SettingsPage from "../views/SettingsPage";
 import AchievementsPage from "../views/AchievementsPage";
 
@@ -233,6 +234,10 @@ const router = createBrowserRouter([
           {
             path: "settings/taste",
             element: <TasteSettingsPage />,
+          },
+          {
+            path: "taste-map",
+            element: <TasteMapPage />,
           },
           {
             path: "diary",

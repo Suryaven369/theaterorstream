@@ -12,9 +12,9 @@ function toggle(list, value) {
 
 function ChipGroup({ title, options, selected, onToggle, getKey = (o) => o.id, getLabel = (o) => o.label }) {
     return (
-        <section className="mb-8">
-            <h2 className="mb-3 text-base font-semibold text-white">{title}</h2>
-            <div className="flex flex-wrap gap-2">
+        <section className="mb-6 sm:mb-8">
+            <h2 className="mb-2.5 text-[15px] font-semibold text-white sm:mb-3 sm:text-base">{title}</h2>
+            <div className="flex flex-wrap gap-1.5 sm:gap-2">
                 {options.map((opt) => {
                     const key = getKey(opt);
                     const active = selected.includes(key);
@@ -23,7 +23,7 @@ function ChipGroup({ title, options, selected, onToggle, getKey = (o) => o.id, g
                             key={key}
                             type="button"
                             onClick={() => onToggle(key)}
-                            className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-all ${
+                            className={`inline-flex min-h-[40px] items-center gap-1.5 rounded-full border px-3 py-2 text-[13px] font-medium transition-all sm:min-h-0 sm:px-3.5 sm:py-1.5 sm:text-sm ${
                                 active
                                     ? 'border-[var(--primary)] bg-[var(--primary)]/12 text-[var(--primary)]'
                                     : 'border-white/12 bg-white/[0.03] text-white/70 hover:border-white/25 hover:text-white'
@@ -79,7 +79,6 @@ export default function TasteSettingsPage() {
         setSaving(false);
         if (res?.ok) {
             setSavedAt(Date.now());
-            // Show the confirmation briefly, then return to the previous page.
             setTimeout(() => {
                 if (window.history.length > 1) navigate(-1);
                 else navigate('/watch');
@@ -90,34 +89,39 @@ export default function TasteSettingsPage() {
     };
 
     return (
-        <div className="min-h-screen bg-[var(--bg-primary)] px-4 pb-28 pt-24 sm:px-8 lg:pb-12">
+        <div className="min-h-screen bg-[var(--bg-primary)] px-3 pb-[calc(6.5rem+env(safe-area-inset-bottom,0px))] pt-[calc(4.75rem+env(safe-area-inset-top,0px))] sm:px-8 sm:pb-12 sm:pt-24">
             <div className="mx-auto max-w-3xl">
-                <Link to="/watch" className="mb-6 inline-flex items-center gap-2 text-sm text-white/50 transition-colors hover:text-white">
-                    <FaArrowLeft /> Back to Watch
-                </Link>
+                <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 sm:mb-6">
+                    <Link to="/taste-map" className="inline-flex min-h-[40px] items-center gap-2 text-sm text-white/50 transition-colors hover:text-white">
+                        <FaArrowLeft /> Taste Map
+                    </Link>
+                    <span className="text-white/20">·</span>
+                    <Link to="/settings" className="inline-flex min-h-[40px] items-center text-sm text-white/50 hover:text-white">
+                        Settings
+                    </Link>
+                </div>
 
                 <div className="mb-2">
-                    <h1 className="text-2xl font-bold text-white sm:text-3xl">
+                    <h1 className="text-xl font-bold text-white sm:text-3xl">
                         Taste <span className="text-gradient">Preferences</span>
                     </h1>
-                    <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                        Optional. Fine-tune your recommendations — everything here is a starting point.
+                    <p className="mt-1 text-[13px] text-[var(--text-secondary)] sm:text-sm">
+                        Optional. Fine-tune recommendations — a starting point only.
                     </p>
                 </div>
 
-                <div className="mb-8 flex items-start gap-2.5 rounded-xl border border-white/8 bg-white/[0.03] px-4 py-3 text-xs text-white/55">
+                <div className="mb-6 flex items-start gap-2.5 rounded-xl border border-white/8 bg-white/[0.03] px-3.5 py-3 text-[11px] leading-snug text-white/55 sm:mb-8 sm:px-4 sm:text-xs">
                     <FaInfoCircle className="mt-0.5 shrink-0 text-[var(--accent-green)]" />
                     <p>
-                        Taste is driven by what you like and rate. Marking a film watched only hides it
-                        from recommendations — it does not mean you loved it. These prefs nudge the engine
-                        until you have enough likes and ratings.
+                        Taste is driven by what you like and rate. Watched alone does not mean you loved it.
+                        These prefs nudge the engine until you have enough likes and ratings.
                     </p>
                 </div>
 
                 {loading ? (
-                    <div className="space-y-6">
+                    <div className="space-y-4 sm:space-y-6">
                         {Array.from({ length: 4 }).map((_, i) => (
-                            <div key={i} className="h-24 animate-pulse rounded-xl skeleton" />
+                            <div key={i} className="h-20 animate-pulse rounded-xl skeleton sm:h-24" />
                         ))}
                     </div>
                 ) : (
@@ -133,20 +137,24 @@ export default function TasteSettingsPage() {
 
                         {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
 
-                        <div className="sticky bottom-4 flex items-center gap-3">
-                            <button
-                                type="button"
-                                onClick={handleSave}
-                                disabled={saving}
-                                className="btn-primary disabled:opacity-60"
-                            >
-                                {saving ? 'Saving…' : 'Save preferences'}
-                            </button>
-                            {savedAt && (
-                                <span className="inline-flex items-center gap-1.5 text-sm text-[var(--accent-green)]">
-                                    <FaCheck /> Saved
-                                </span>
-                            )}
+                        <div
+                            className="fixed bottom-[calc(3.75rem+env(safe-area-inset-bottom,0px))] left-0 right-0 z-30 border-t border-white/10 bg-[#14181c]/95 px-3 py-2.5 backdrop-blur-md lg:static lg:bottom-auto lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none"
+                        >
+                            <div className="mx-auto flex max-w-3xl items-center gap-3">
+                                <button
+                                    type="button"
+                                    onClick={handleSave}
+                                    disabled={saving}
+                                    className="btn-primary min-h-[48px] flex-1 disabled:opacity-60 lg:min-h-0 lg:flex-none"
+                                >
+                                    {saving ? 'Saving…' : 'Save preferences'}
+                                </button>
+                                {savedAt && (
+                                    <span className="inline-flex items-center gap-1.5 text-sm text-[var(--accent-green)]">
+                                        <FaCheck /> Saved
+                                    </span>
+                                )}
+                            </div>
                         </div>
                     </>
                 )}

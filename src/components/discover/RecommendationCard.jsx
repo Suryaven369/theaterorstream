@@ -51,13 +51,13 @@ export default function RecommendationCard({
 
     return (
         <div
-            className="group relative w-[132px] shrink-0 snap-start animate-fadeInUp sm:w-[170px] lg:w-[185px]"
-            style={{ animationDelay: `${Math.min(index * 35, 350)}ms` }}
+            className="group relative w-[108px] shrink-0 snap-start sm:w-[170px] lg:w-[185px]"
+            style={{ animationDelay: `${Math.min(index * 25, 200)}ms` }}
         >
             <Link
                 to={to}
                 onClick={handleClick}
-                className="relative block overflow-hidden rounded-lg bg-[var(--bg-elevated)] ring-1 ring-white/5 transition-all duration-300 active:scale-[0.98] sm:rounded-xl group-hover:ring-[var(--primary)]/50 group-hover:shadow-[0_18px_40px_rgba(0,0,0,0.55)]"
+                className="relative block overflow-hidden rounded-md bg-[var(--bg-elevated)] ring-1 ring-white/5 transition-transform duration-200 active:scale-[0.97] sm:rounded-xl sm:duration-300 group-hover:ring-[var(--primary)]/50 group-hover:shadow-[0_18px_40px_rgba(0,0,0,0.55)]"
             >
                 <div className="relative aspect-[2/3]">
                     {poster ? (
@@ -72,14 +72,14 @@ export default function RecommendationCard({
                     )}
 
                     {matchPct != null && (
-                        <div className="absolute left-1.5 top-1.5 z-10 rounded-md bg-black/70 px-1 py-0.5 text-[10px] font-bold text-[var(--accent-green)] backdrop-blur-sm sm:left-2 sm:top-2 sm:px-1.5 sm:text-[11px]">
+                        <div className="absolute left-1 top-1 z-10 rounded bg-black/75 px-1 py-0.5 text-[9px] font-bold text-[var(--accent-green)] backdrop-blur-sm sm:left-2 sm:top-2 sm:rounded-md sm:px-1.5 sm:text-[11px]">
                             {matchPct}%
                         </div>
                     )}
 
                     {rating > 0 && (
-                        <div className="absolute right-1.5 top-1.5 z-10 flex items-center gap-0.5 rounded-md bg-black/60 px-1 py-0.5 text-[10px] font-medium text-yellow-400 backdrop-blur-sm sm:right-2 sm:top-2 sm:gap-1 sm:px-1.5 sm:text-[11px]">
-                            <FaStar className="text-[8px] sm:text-[9px]" />
+                        <div className="absolute right-1 top-1 z-10 flex items-center gap-0.5 rounded bg-black/65 px-1 py-0.5 text-[9px] font-medium text-yellow-400 backdrop-blur-sm sm:right-2 sm:top-2 sm:gap-1 sm:rounded-md sm:px-1.5 sm:text-[11px]">
+                            <FaStar className="text-[7px] sm:text-[9px]" />
                             {rating.toFixed(1)}
                         </div>
                     )}
@@ -96,15 +96,16 @@ export default function RecommendationCard({
                 </div>
             </Link>
 
-            <Link to={to} onClick={handleClick} className="mt-1.5 block px-0.5">
-                <h3 className="line-clamp-2 text-[12px] font-medium leading-snug text-white/90 transition-colors sm:line-clamp-1 sm:text-[13px] group-hover:text-[var(--primary)]">
+            <Link to={to} onClick={handleClick} className="mt-1 block px-0.5 sm:mt-1.5">
+                <h3 className="line-clamp-2 text-[11px] font-medium leading-snug text-white/90 transition-colors sm:line-clamp-1 sm:text-[13px] group-hover:text-[var(--primary)]">
                     {title}
                 </h3>
-                <p className="text-[10px] text-white/40 sm:text-[11px]">
-                    {year}{mediaType === 'tv' ? ' • Series' : ''}
+                <p className="text-[9px] text-white/40 sm:text-[11px]">
+                    {year}{mediaType === 'tv' ? ' · Series' : ''}
                 </p>
+                {/* Reasons stay desktop/sm+ — mobile stays poster-first like a native app */}
                 {showReason && movie.reason && (
-                    <p className="mt-0.5 line-clamp-2 text-[10px] leading-snug text-white/35 sm:hidden">
+                    <p className="mt-0.5 hidden line-clamp-2 text-[10px] leading-snug text-white/35 sm:block">
                         {movie.reason}
                     </p>
                 )}

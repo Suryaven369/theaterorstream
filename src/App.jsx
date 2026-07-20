@@ -9,6 +9,7 @@ import { TMDB_IMAGE_BASE } from "./utils/imageHelper";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 import MobileNavigation from "./components/MobileNavigation";
+import RecoChatBubble from "./components/RecoChatBubble";
 
 function App() {
   const dispatch = useDispatch();
@@ -36,8 +37,9 @@ function App() {
         (payload) => {
           console.log('\u26a1 Realtime: movies_library changed', payload.eventType);
           const tmdbId = payload.new?.tmdb_id || payload.old?.tmdb_id;
+          // Only invalidate the changed title — do not refetch all homepage sections
+          // on every library sync (that thrashed egress on connected clients).
           dispatch(invalidateMovieDetails(tmdbId || null));
-          dispatch(invalidateHomepageSections());
         }
       )
       .subscribe();
@@ -49,12 +51,13 @@ function App() {
 
   const isSearchPage = location.pathname === '/search';
 
-  // Scroll to top on route change (skip search overlay — it manages its own scroll)
+  // Scroll to top on route / home-tab change (not mood/ott filter tweaks)
+  const homeTab = new URLSearchParams(location.search).get('tab') || '';
   useEffect(() => {
     if (!isSearchPage) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
-  }, [location.pathname, isSearchPage]);
+  }, [location.pathname, homeTab, isSearchPage]);
 
   return (
     <div className="bg-[var(--bg-primary)] min-h-screen">
@@ -64,6 +67,7 @@ function App() {
       </main>
       {!isSearchPage && <Footer />}
       {!isSearchPage && <MobileNavigation />}
+      <RecoChatBubble />
     </div>
   );
 }

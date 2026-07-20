@@ -16,7 +16,7 @@ import FeedShareModal from "../components/social/FeedShareModal";
 import HomeSocialSidebar from "../components/home/HomeSocialSidebar";
 import HomeBrowseTab from "../components/home/HomeBrowseTab";
 import { getSavedRegion, persistRegion } from "../constants/regions";
-import { getTrailersFromEdge, getRssTrailersFromEdge, getArticlesFromEdge } from "../lib/contentEdgeApi";
+import { getRssTrailersFromEdge, getArticlesFromEdge } from "../lib/contentEdgeApi";
 import { getAllUserRatings, getHomepageSections, getOfficialProfile } from "../lib/supabase";
 import { getRecentPublicBlogs } from "../lib/blogs";
 import { computeOverallFromRatingRow } from "../lib/ratingUtils";
@@ -101,6 +101,11 @@ const Home = () => {
       const next = new URLSearchParams(prev);
       if (nextTab === 'home') next.delete('tab');
       else next.set('tab', nextTab);
+      // Mood/OTT filters belong to Watch only — drop them when leaving the tab.
+      if (nextTab !== 'watch') {
+        next.delete('mood');
+        next.delete('ott');
+      }
       return next;
     }, { replace: true });
   };
@@ -304,7 +309,11 @@ const Home = () => {
 
   const mapBlogRow = (b) => {
     const profile = b.user_profiles || {};
-    const excerpt = String(b.content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 280);
+    const excerpt = String(b.content || b.title || '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 280);
     return {
       id: `blog-${b.id}`,
       type: 'blog',
@@ -403,15 +412,16 @@ const Home = () => {
 
         const extrasPromise = feedScope === 'all'
           ? Promise.all([
-              getRssTrailersFromEdge({ daysBack: 21, limit: 15, fresh: true }),
-              getTrailersFromEdge({ sortBy: 'recent', daysBack: 14, type: 'launch', limit: 15 }),
-              getArticlesFromEdge({ limit: 20, fresh: true }),
+              // Use CDN cache (no fresh bust). Library /trailers scan is admin-only —
+              // Home trailers come from trailer_posts via rss-trailers.
+              getRssTrailersFromEdge({ daysBack: 21, limit: 15 }),
+              getArticlesFromEdge({ limit: 20 }),
               getOfficialProfile(),
               getRecentPublicBlogs(12),
             ])
-          : Promise.resolve([null, null, [], null, []]);
+          : Promise.resolve([null, [], null, []]);
 
-        const [postsRes, [rss, lib, articlesRaw, officialProfile, blogsRaw]] = await Promise.all([postsPromise, extrasPromise]);
+        const [postsRes, [rss, articlesRaw, officialProfile, blogsRaw]] = await Promise.all([postsPromise, extrasPromise]);
         if (cancelled) return;
 
         const officialUser = officialProfile
@@ -431,10 +441,6 @@ const Home = () => {
         if (feedScope === 'all') {
           for (const m of (rss?.data || [])) {
             if (m.featured_trailer?.key) byId.set(String(m.tmdb_id ?? m.id), mapTrailer(m, officialUser));
-          }
-          for (const m of (lib?.data || [])) {
-            const key = String(m.tmdb_id ?? m.id);
-            if (m.featured_trailer?.key && !byId.has(key)) byId.set(key, mapTrailer(m, officialUser));
           }
         }
         const trailers = [...byId.values()];
@@ -894,7 +900,7 @@ const Home = () => {
 
       {/* Tab Content */}
       {activeTab === 'watch' ? (
-        <div className="pt-[calc(4rem+env(safe-area-inset-top,0px))] lg:pt-0">
+        <div className="pt-[calc(3.5rem+env(safe-area-inset-top,0px))] lg:pt-0">
           <WatchPage embedded />
         </div>
       ) : activeTab === 'home' ? (

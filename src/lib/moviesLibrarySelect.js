@@ -1,9 +1,11 @@
 /**
  * PostgREST returns 500 for SELECT * when movies_library.embedding (vector) exists.
  * Always use these projections instead of * for reads/upsert returns.
+ *
+ * Prefer CARD/LIST for browse paths — credits/videos/images JSONB dominate egress.
  */
 
-export const MOVIES_LIBRARY_SELECT = [
+const LIBRARY_LIST_COLUMNS = [
     'id',
     'tmdb_id',
     'media_type',
@@ -21,24 +23,13 @@ export const MOVIES_LIBRARY_SELECT = [
     'popularity',
     'genres',
     'genre_ids',
-    'production_companies',
-    'production_countries',
-    'spoken_languages',
-    'imdb_id',
-    'homepage',
-    'budget',
-    'revenue',
     'is_active',
     'featured',
     'priority',
     'collection_tags',
     'display_sections',
     'streaming_platforms',
-    'custom_vibes',
-    'custom_parent_guide',
     'certification',
-    'admin_notes',
-    'editor_review',
     'editor_rating',
     'created_at',
     'updated_at',
@@ -48,10 +39,26 @@ export const MOVIES_LIBRARY_SELECT = [
     'number_of_seasons',
     'number_of_episodes',
     'networks',
-    'in_production',
-    'episode_run_time',
     'origin_country',
     'original_language',
+    'belongs_to_collection',
+    'adult',
+];
+
+const LIBRARY_DETAIL_EXTRA_COLUMNS = [
+    'production_companies',
+    'production_countries',
+    'spoken_languages',
+    'imdb_id',
+    'homepage',
+    'budget',
+    'revenue',
+    'custom_vibes',
+    'custom_parent_guide',
+    'admin_notes',
+    'editor_review',
+    'in_production',
+    'episode_run_time',
     'credits',
     'videos',
     'images',
@@ -60,8 +67,22 @@ export const MOVIES_LIBRARY_SELECT = [
     'recommendations',
     'keywords',
     'release_dates_data',
-    'belongs_to_collection',
-    'adult',
+];
+
+/** Card rails / homepage hydration — match Edge LIBRARY_CARD_SELECT (no fat JSONB). */
+export const LIBRARY_CARD_SELECT =
+    'tmdb_id, title, poster_path, backdrop_path, media_type, release_date, first_air_date, vote_average, popularity, overview, genres, runtime, number_of_seasons, number_of_episodes';
+
+/**
+ * Admin / client list browse — scalars + light admin fields only.
+ * Never include images/reviews/similar/recommendations/credits/videos here.
+ */
+export const MOVIES_LIBRARY_LIST_SELECT = LIBRARY_LIST_COLUMNS.join(',');
+
+/** Full row for detail/editor — still omit embedding; include heavy JSONB only here. */
+export const MOVIES_LIBRARY_SELECT = [
+    ...LIBRARY_LIST_COLUMNS,
+    ...LIBRARY_DETAIL_EXTRA_COLUMNS,
 ].join(',');
 
 /** Optional columns — only after taste onboarding migration (20260522000000) */
@@ -69,9 +90,6 @@ export const MOVIES_LIBRARY_OPTIONAL_COLUMNS = [
     'mood_tags',
     'family_score',
 ];
-
-export const LIBRARY_CARD_SELECT =
-    'tmdb_id, title, poster_path, backdrop_path, media_type, release_date, first_air_date, vote_average, overview, genres, runtime, number_of_seasons, number_of_episodes, images';
 
 /** Safe columns for upsert RETURNING — avoids heavy JSONB / vector serialization issues */
 export const LIBRARY_UPSERT_SELECT =

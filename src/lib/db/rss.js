@@ -132,6 +132,30 @@ export const deleteRssSource = async (id) => {
 };
 
 // status: 'pending' | 'approved' | 'rejected'
+// Admin RSS review list — exclude body_html (can be hundreds of KB per row).
+const FEED_ARTICLE_LIST_SELECT = [
+    'id',
+    'source_id',
+    'source_name',
+    'source_logo_url',
+    'title',
+    'link',
+    'author',
+    'summary',
+    'summary_items',
+    'image_url',
+    'published_at',
+    'updated_at',
+    'status',
+    'is_active',
+    'tmdb_id',
+    'media_type',
+    'classification_status',
+    'relevance_score',
+    'rejection_reason',
+    'created_at',
+].join(',');
+
 export const getFeedArticles = async (
     status = 'pending',
     limit = 50,
@@ -145,7 +169,7 @@ export const getFeedArticles = async (
 
     let query = supabase
         .from('feed_articles')
-        .select('*')
+        .select(FEED_ARTICLE_LIST_SELECT)
         .eq('status', status)
         .order('published_at', { ascending: sortOrder === 'asc' })
         .range(safeOffset, safeOffset + safeLimit - 1);
@@ -168,6 +192,31 @@ export const getFeedArticles = async (
     const { data, error } = await query;
 
     if (error) {
+        // Pre-migration DBs may not have summary_items yet.
+        if (/summary_items/i.test(error.message || '')) {
+            let fallback = supabase
+                .from('feed_articles')
+                .select(FEED_ARTICLE_LIST_SELECT.replace(',summary_items', ''))
+                .eq('status', status)
+                .order('published_at', { ascending: sortOrder === 'asc' })
+                .range(safeOffset, safeOffset + safeLimit - 1);
+            if (Array.isArray(sourceId)) {
+                if (!sourceId.length) return [];
+                fallback = fallback.in('source_id', sourceId);
+            } else if (sourceId) {
+                fallback = fallback.eq('source_id', sourceId);
+            }
+            if (daysBack > 0) {
+                const since = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000);
+                fallback = fallback.gte('published_at', since.toISOString());
+            }
+            const res = await fallback;
+            if (res.error) {
+                console.error('Error fetching feed articles:', res.error);
+                return [];
+            }
+            return res.data || [];
+        }
         console.error('Error fetching feed articles:', error);
         return [];
     }

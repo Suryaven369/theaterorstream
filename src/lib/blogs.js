@@ -258,11 +258,11 @@ export const getUserBlogPosts = async (userId) => {
     return data || [];
 };
 
-/** Recent public blogs for Explore browse rail. */
+/** Recent public blogs for Explore / Home fill — no full HTML body. */
 export const getRecentPublicBlogs = async (limit = 5) => {
     const { data, error } = await supabase
         .from('blog_posts')
-        .select('id, title, content, cover_image, user_id, created_at, updated_at')
+        .select('id, title, cover_image, user_id, created_at, updated_at')
         .eq('visibility', 'public')
         .order('created_at', { ascending: false })
         .limit(limit);
