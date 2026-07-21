@@ -2,7 +2,24 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 2026 · HEAD `8a8a362` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 2026 · HEAD `PENDING` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Jul 22, 2026 — Fix Node 20 WebSocket / Supabase 500s
+
+### Root cause: supabase-js on Node 20 without WebSocket ✅
+
+**Problem:** All `/api/recommendations/*` returned 500 after service role was correctly set.
+
+**Evidence:** `GET /api/health` → `hasServiceRole: true` but `db.error`: "Node.js 20 detected without native WebSocket support".
+
+**Files changed:**
+- `api/_lib/supabase-admin.js`, `api/_lib/user-auth.js` — pass `realtime: { transport: ws }`
+- `package.json` — add `ws`, pin `engines.node` to `24.x`
+- `api/health.js` — diagnostics (already shipped)
+
+**Behavior:** Server Supabase clients work on Vercel Node 20; next deploys prefer Node 24.
 
 ---
 
@@ -1395,6 +1412,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `8a8a362` | Jul 2026 | Add /api/health for Supabase env diagnostics |
 | `7fb4843` | Jul 2026 | Clearer feed-upvote 500s; service_role grant on likes |
 | `528805a` | Jul 2026 | Discovery/mood API routes + service-role error copy |
 | `8e7e1d4` | Jul 2026 | Fix duplicate resolveApiBase import (Vite build) |

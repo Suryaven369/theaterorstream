@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import ws from 'ws';
 
 function getSupabaseAuthClient(accessToken) {
     const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -14,6 +15,8 @@ function getSupabaseAuthClient(accessToken) {
                 Authorization: `Bearer ${accessToken}`,
             },
         },
+        auth: { persistSession: false, autoRefreshToken: false },
+        realtime: { transport: ws },
     });
 }
 

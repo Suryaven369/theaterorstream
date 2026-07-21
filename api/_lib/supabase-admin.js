@@ -1,5 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
+import ws from 'ws';
 
+/**
+ * Server-side Supabase client (service role).
+ * Pass `ws` so @supabase/realtime-js works on Node 20 (no native WebSocket).
+ */
 export function getSupabaseAdmin() {
     const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -18,5 +23,6 @@ export function getSupabaseAdmin() {
 
     return createClient(supabaseUrl, serviceKey, {
         auth: { persistSession: false, autoRefreshToken: false },
+        realtime: { transport: ws },
     });
 }
