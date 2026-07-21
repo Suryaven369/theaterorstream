@@ -27,7 +27,7 @@ export default async function handler(req, res) {
         try {
             const { getSupabaseAdmin } = await import('./_lib/supabase-admin.js');
             const supabase = getSupabaseAdmin();
-            const { error } = await supabase.from('movies').select('tmdb_id').limit(1);
+            const { error } = await supabase.from('movies_library').select('tmdb_id').limit(1);
             dbOk = !error;
             dbError = error?.message || null;
             dbHint = error?.hint || error?.code || null;

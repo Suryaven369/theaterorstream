@@ -390,7 +390,7 @@ export async function getTasteDashboard(userId) {
         }
         if (ids.length) {
             const { data: movies } = await supabase
-                .from('movies')
+                .from('movies_library')
                 .select('tmdb_id, title, poster_path, media_type')
                 .in('tmdb_id', ids);
             const byId = new Map((movies || []).map((m) => [String(m.tmdb_id), m]));
