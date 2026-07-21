@@ -2,7 +2,24 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 2026 · HEAD `8e7e1d4` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 2026 · HEAD `PENDING` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Jul 22, 2026 — Fix discovery/mood 404 + clearer service-role error
+
+### Dedicated nested reco routes + env error copy ✅
+
+**Problem:** Live console showed discovery rails 404 and for-you/tonight/dashboard/feed-upvote 500.
+
+**Root cause:** Vercel did not route multi-segment paths through `api/recommendations/[...route].js` (platform NOT_FOUND). 500s are almost certainly missing `SUPABASE_SERVICE_ROLE_KEY` on Vercel (admin client required by reco + feed likes).
+
+**Files changed:**
+- `api/recommendations/discovery/[section].js` — explicit discovery sections
+- `api/recommendations/mood/[moodId].js` — explicit mood route
+- `api/_lib/supabase-admin.js` — clearer Vercel env error message
+
+**Behavior:** Discovery/mood URLs resolve on Vercel. Missing service role returns an actionable 500 body. User must still add `SUPABASE_SERVICE_ROLE_KEY` + redeploy for 500s to clear.
 
 ---
 
