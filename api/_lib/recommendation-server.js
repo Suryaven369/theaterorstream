@@ -1637,8 +1637,8 @@ export async function getMoodRecommendations(userId, moodId, options = {}) {
     const useMyOtt = !hasProvider && options.ottMode === true;
     const watchRegion = options.watchRegion || options.region || 'IN';
     const ottKey = hasProvider ? `p${providerId}` : (useMyOtt ? 'my' : 'any');
-    // v3: mood + optional OTT provider filter
-    const cacheKey = `mood_v3_${moodId}_${ottKey}`;
+    // v4: trust provider-scoped TMDB hits; movie+tv when OTT selected
+    const cacheKey = `mood_v4_${moodId}_${ottKey}`;
     const limit = Math.min(24, Math.max(1, Number(options.limit) || 12));
 
     if (!options.refresh) {
