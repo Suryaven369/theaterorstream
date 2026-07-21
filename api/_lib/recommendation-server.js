@@ -1464,7 +1464,7 @@ export const MOOD_CONFIG = {
 };
 
 /** True if title fits the mood genre rules (require + any + excludes). */
-function movieMatchesMoodGenres(movie, config) {
+function movieMatchesMoodGenres(movie, config, { softSecondary = false } = {}) {
     const ids = extractGenreIds(movie).map(Number);
     if (!ids.length) return false;
 
@@ -1475,8 +1475,32 @@ function movieMatchesMoodGenres(movie, config) {
     if (allowed.length && !ids.some((id) => allowed.includes(id))) return false;
 
     const banned = config.withoutGenres || [];
-    if (banned.length && ids.some((id) => banned.includes(id))) return false;
+    if (!banned.length) return true;
 
+    // Family + Animation are hard off-mood when listed (never for Family Night itself).
+    const HARD = new Set([10751, 16]);
+    const hardBanned = banned.filter((g) => HARD.has(g));
+    const softBanned = banned.filter((g) => !HARD.has(g));
+
+    if (hardBanned.some((g) => ids.includes(g))) return false;
+
+    if (!softSecondary) {
+        return !softBanned.some((g) => ids.includes(g));
+    }
+
+    // Soft: allow Comedy/Romance/etc. as secondary only if a mood genre ranks
+    // higher (earlier) in TMDB genre_ids — keeps Action Packed actually action-led.
+    const moodIdx = Math.min(
+        ...allowed.map((g) => {
+            const i = ids.indexOf(g);
+            return i === -1 ? 999 : i;
+        }),
+    );
+    for (const g of softBanned) {
+        const bi = ids.indexOf(g);
+        if (bi === -1) continue;
+        if (bi <= moodIdx) return false;
+    }
     return true;
 }
 
@@ -1491,6 +1515,8 @@ function moodFitnessScore(config, movie) {
     const genreScore = allowed.length
         ? Math.min(1, genreHits / Math.max(1, Math.min(allowed.length, 2)))
         : 0.5;
+    // Prefer titles whose lead TMDB genre is the mood genre (accuracy signal).
+    const primaryBoost = allowed.length && allowed.includes(ids[0]) ? 0.2 : 0;
 
     const tags = Array.isArray(movie.mood_tags) ? movie.mood_tags : [];
     const wantTags = config.tags || [];
@@ -1508,7 +1534,13 @@ function moodFitnessScore(config, movie) {
         vibeScore = Math.min(1, avg / 70);
     }
 
-    return Math.min(1, genreScore * 0.55 + tagScore * 0.25 + vibeScore * 0.20);
+    return Math.min(1, genreScore * 0.5 + primaryBoost + tagScore * 0.2 + vibeScore * 0.15);
+}
+
+/** Hard without-genres for TMDB discover (Family/Animation when mood excludes them). */
+function hardWithoutGenres(config) {
+    const HARD = new Set([10751, 16]);
+    return (config.withoutGenres || []).filter((g) => HARD.has(g));
 }
 
 /** Pull popular titles that match the mood genre rules from TMDB Discover. */
@@ -1517,6 +1549,7 @@ async function fetchMoodPoolFromTmdb(config, {
     mediaType = 'movie',
     providerId = null,
     watchRegion = 'IN',
+    strictWithout = true,
 } = {}) {
     const type = mediaType === 'tv' ? 'tv' : 'movie';
     const out = [];
@@ -1524,6 +1557,9 @@ async function fetchMoodPoolFromTmdb(config, {
         ? config.requireGenres
         : config.genres).join('|');
     const hasProvider = providerId != null && Number(providerId) > 0;
+    const without = strictWithout
+        ? (config.withoutGenres || [])
+        : hardWithoutGenres(config);
 
     for (let page = 1; page <= pages; page += 1) {
         let data;
@@ -1531,15 +1567,13 @@ async function fetchMoodPoolFromTmdb(config, {
             const params = {
                 with_genres: withGenres,
                 sort_by: 'popularity.desc',
-                // Provider catalogs (esp. regional) are thinner — don't demand 80 votes.
-                'vote_count.gte': hasProvider ? '20' : '80',
+                'vote_count.gte': hasProvider ? '25' : '80',
                 include_adult: 'false',
                 page: String(page),
             };
-            // When scoping to an OTT, skip without_genres on discover so Prime/Netflix
-            // action/thriller catalogs aren't wiped by secondary genre tags.
-            if (!hasProvider && config.withoutGenres?.length) {
-                params.without_genres = config.withoutGenres.join(',');
+            // Always ask TMDB to exclude off-mood genres for accuracy.
+            if (without.length) {
+                params.without_genres = without.join(',');
             }
             if (hasProvider) {
                 params.with_watch_providers = String(providerId);
@@ -1581,15 +1615,8 @@ async function fetchMoodPoolFromTmdb(config, {
                 overview: m.overview || null,
                 _fromProviderDiscover: hasProvider,
             };
-            // Provider discover: require primary mood genre only (skip withoutGenres).
-            if (hasProvider) {
-                const allowed = config.requireGenres?.length
-                    ? config.requireGenres
-                    : (config.genres || []);
-                if (allowed.length && !ids.some((id) => allowed.includes(id))) return;
-            } else if (!movieMatchesMoodGenres(card, config)) {
-                return;
-            }
+            // Enforce genre accuracy on every discover hit (soft secondary for OTT).
+            if (!movieMatchesMoodGenres(card, config, { softSecondary: hasProvider })) return;
             out.push(card);
         });
         if (page >= (data?.total_pages || 1)) break;
@@ -1597,7 +1624,7 @@ async function fetchMoodPoolFromTmdb(config, {
     return out;
 }
 
-/** Library titles that match mood genres and/or mood_tags. */
+/** Library titles that match mood genres (tags alone are not enough). */
 async function fetchMoodPoolFromLibrary(supabase, config, { limit = 200 } = {}) {
     const { data: rows } = await supabase
         .from('movies_library')
@@ -1610,15 +1637,7 @@ async function fetchMoodPoolFromLibrary(supabase, config, { limit = 200 } = {}) 
     for (const row of rows || []) {
         const m = normalizeLibraryItem(row);
         if (row.custom_vibes) m.custom_vibes = row.custom_vibes;
-
-        const tagHit = (config.tags || []).some((t) => (m.mood_tags || []).includes(t));
-        const genreOk = movieMatchesMoodGenres(m, config);
-        if (!tagHit && !genreOk) continue;
-
-        const ids = extractGenreIds(m).map(Number);
-        const banned = config.withoutGenres || [];
-        if (banned.length && ids.some((id) => banned.includes(id))) continue;
-
+        if (!movieMatchesMoodGenres(m, config, { softSecondary: false })) continue;
         matched.push(m);
         if (matched.length >= limit) break;
     }
@@ -1653,8 +1672,8 @@ export async function getMoodRecommendations(userId, moodId, options = {}) {
     const useMyOtt = !hasProvider && options.ottMode === true;
     const watchRegion = options.watchRegion || options.region || 'IN';
     const ottKey = hasProvider ? `p${providerId}` : (useMyOtt ? 'my' : 'any');
-    // v5: OTT mood browse — broader TMDB pool, don't cache-kill empties client-side
-    const cacheKey = `mood_v5_${moodId}_${ottKey}`;
+    // v6: genre-accurate mood + OTT (TMDB genres are source of truth)
+    const cacheKey = `mood_v6_${moodId}_${ottKey}`;
     const limit = Math.min(24, Math.max(1, Number(options.limit) || 12));
 
     if (!options.refresh) {
@@ -1668,35 +1687,31 @@ export async function getMoodRecommendations(userId, moodId, options = {}) {
         : null;
     const discoverPages = hasProvider || useMyOtt ? 5 : 3;
 
-    // When an OTT is selected, pull both movies and TV from TMDB discover
-    // (provider-scoped). Library fills gaps / metadata.
-    const tmdbJobs = mediaType
-        ? [fetchMoodPoolFromTmdb(config, {
-            pages: discoverPages,
-            mediaType,
-            providerId: hasProvider ? providerId : null,
-            watchRegion,
-        })]
-        : [
-            fetchMoodPoolFromTmdb(config, {
-                pages: discoverPages,
-                mediaType: 'movie',
-                providerId: hasProvider ? providerId : null,
-                watchRegion,
-            }),
-            fetchMoodPoolFromTmdb(config, {
-                pages: Math.max(2, discoverPages - 1),
-                mediaType: 'tv',
-                providerId: hasProvider ? providerId : null,
-                watchRegion,
-            }),
-        ];
+    const discoverOpts = (type, strictWithout) => ({
+        pages: type === 'tv' ? Math.max(2, discoverPages - 1) : discoverPages,
+        mediaType: type,
+        providerId: hasProvider ? providerId : null,
+        watchRegion,
+        strictWithout,
+    });
 
-    const [tmdbParts, libPool] = await Promise.all([
-        Promise.all(tmdbJobs),
-        fetchMoodPoolFromLibrary(supabase, config, { limit: 240 }),
-    ]);
-    const tmdbPool = tmdbParts.flat();
+    const runDiscover = async (strictWithout) => {
+        const jobs = mediaType
+            ? [fetchMoodPoolFromTmdb(config, discoverOpts(mediaType, strictWithout))]
+            : [
+                fetchMoodPoolFromTmdb(config, discoverOpts('movie', strictWithout)),
+                fetchMoodPoolFromTmdb(config, discoverOpts('tv', strictWithout)),
+            ];
+        return (await Promise.all(jobs)).flat();
+    };
+
+    // Pass 1: full genre excludes. Pass 2 (OTT only): hard excludes if the pool is thin.
+    let tmdbPool = await runDiscover(true);
+    if (hasProvider && tmdbPool.length < Math.min(8, limit)) {
+        tmdbPool = mergeMoodPools(tmdbPool, await runDiscover(false));
+    }
+
+    const libPool = await fetchMoodPoolFromLibrary(supabase, config, { limit: 240 });
     const discoverIds = new Set(tmdbPool.map((m) => String(m.tmdb_id)));
 
     let pool = mergeMoodPools(tmdbPool, libPool);
@@ -1715,51 +1730,45 @@ export async function getMoodRecommendations(userId, moodId, options = {}) {
             const merged = {
                 ...m,
                 ...Object.fromEntries(Object.entries(lib).filter(([, v]) => v != null)),
-                // Keep TMDB discover genres for provider hits — library tags often
-                // add secondary genres that falsely fail withoutGenres checks.
-                genre_ids: fromDiscover && m.genre_ids?.length ? m.genre_ids : (m.genre_ids?.length ? m.genre_ids : lib.genre_ids),
-                genres: fromDiscover && m.genres?.length ? m.genres : (m.genres?.length ? m.genres : lib.genres),
+                genre_ids: fromDiscover && m.genre_ids?.length
+                    ? m.genre_ids
+                    : (m.genre_ids?.length ? m.genre_ids : lib.genre_ids),
+                genres: fromDiscover && m.genres?.length
+                    ? m.genres
+                    : (m.genres?.length ? m.genres : lib.genres),
                 _fromProviderDiscover: fromDiscover && hasProvider,
             };
-            // Prefer discover provider stamp over empty/stale library platforms.
-                if (fromDiscover && hasProvider) {
-                    const plats = merged.streaming_platforms;
-                    if (!Array.isArray(plats) || !plats.length || !movieOnTmdbProviders(merged, [providerId])) {
-                        const alias = (TMDB_PROVIDER_ALIASES[providerId] || [])[0] || 'streaming';
-                        merged.streaming_platforms = [
-                            { provider_id: providerId, name: alias },
-                            ...(Array.isArray(plats) ? plats : []),
-                        ];
-                    }
+            if (fromDiscover && hasProvider) {
+                const plats = merged.streaming_platforms;
+                if (!Array.isArray(plats) || !plats.length || !movieOnTmdbProviders(merged, [providerId])) {
+                    const alias = (TMDB_PROVIDER_ALIASES[providerId] || [])[0] || 'streaming';
+                    merged.streaming_platforms = [
+                        { provider_id: providerId, name: alias },
+                        ...(Array.isArray(plats) ? plats : []),
+                    ];
                 }
+            }
             return merged;
         });
     }
 
-    pool = pool.filter((m) => {
-        // Provider-scoped TMDB hits already matched the mood genre at discover time.
-        if (discoverIds.has(String(m.tmdb_id))) return true;
-        const tagHit = (config.tags || []).some((t) => (m.mood_tags || []).includes(t));
-        if (movieMatchesMoodGenres(m, config)) return true;
-        if (!tagHit) return false;
-        const ids = extractGenreIds(m).map(Number);
-        const banned = config.withoutGenres || [];
-        return !(banned.length && ids.some((id) => banned.includes(id)));
-    });
+    // Genre gate — every title must match mood genres (soft secondary only for OTT).
+    pool = pool.filter((m) => movieMatchesMoodGenres(m, config, {
+        softSecondary: hasProvider,
+    }));
 
-    // Hard OTT gate: specific provider, or user's linked services ("My OTTs").
     if (hasProvider) {
         pool = pool.filter((m) => {
             if (discoverIds.has(String(m.tmdb_id)) || m._fromProviderDiscover) return true;
             return movieOnTmdbProviders(m, [providerId]);
         });
         if (!pool.length && tmdbPool.length) {
-            pool = [...tmdbPool];
+            pool = tmdbPool.filter((m) => movieMatchesMoodGenres(m, config, {
+                softSecondary: true,
+            }));
         }
     }
 
-    // Mood + specific OTT is a catalog browse: don't empty the rail because the
-    // user already watched popular Prime action titles.
     const { items: candidates } = applyFiltersWithFallback(pool, context, {
         requireOtt: useMyOtt,
         excludeRated: hasProvider ? false : options.excludeRated !== false,
@@ -1767,12 +1776,25 @@ export async function getMoodRecommendations(userId, moodId, options = {}) {
         ignoreSeen: hasProvider,
     }, hasProvider ? 1 : Math.min(limit, 8));
 
-    let finalCandidates = candidates;
+    let finalCandidates = candidates.filter((m) => movieMatchesMoodGenres(m, config, {
+        softSecondary: hasProvider,
+    }));
     if (!finalCandidates.length && tmdbPool.length) {
-        finalCandidates = tmdbPool.filter(
-            (m) => !context.suppressTmdbIds?.has(String(m.tmdb_id)),
-        );
+        finalCandidates = tmdbPool.filter((m) => (
+            !context.suppressTmdbIds?.has(String(m.tmdb_id))
+            && movieMatchesMoodGenres(m, config, { softSecondary: true })
+        ));
     }
+
+    const moodGenreLabel = (() => {
+        const map = {
+            28: 'Action', 53: 'Thriller', 35: 'Comedy', 18: 'Drama', 27: 'Horror',
+            878: 'Sci-Fi', 10749: 'Romance', 80: 'Crime', 9648: 'Mystery',
+            10751: 'Family', 16: 'Animation', 14: 'Fantasy',
+        };
+        const g = (config.genres || [])[0];
+        return map[g] || config.label;
+    })();
 
     const maxPop = finalCandidates.length
         ? Math.max(...finalCandidates.map((m) => Number(m.popularity) || 0), 1)
@@ -1781,21 +1803,32 @@ export async function getMoodRecommendations(userId, moodId, options = {}) {
         const fitness = moodFitnessScore(config, movie);
         const taste = genreMatchScore(context.profile?.genre_weights, movie);
         const pop = popularityScore(movie.popularity, maxPop);
-        const finalScore = fitness * 0.75 + taste * 0.15 + pop * 0.10;
+        const ids = extractGenreIds(movie).map(Number);
+        const primaryIsMood = (config.genres || []).includes(ids[0]);
+        const finalScore = fitness * 0.8 + taste * 0.1 + pop * 0.1;
         const tagHit = (config.tags || []).find((t) => (movie.mood_tags || []).includes(t));
         return {
             ...movie,
             score: Math.round(finalScore * 1000) / 1000,
             scores: { mood: fitness, genre: taste, popularity: pop },
-            reason: tagHit && MOOD_LABELS[tagHit]
-                ? `A ${MOOD_LABELS[tagHit]} ${config.label.toLowerCase()} pick`
-                : `Matches ${config.label}`,
+            reason: primaryIsMood
+                ? `${moodGenreLabel} · ${config.label}`
+                : (tagHit && MOOD_LABELS[tagHit]
+                    ? `A ${MOOD_LABELS[tagHit]} ${config.label.toLowerCase()} pick`
+                    : `Matches ${config.label}`),
         };
     });
 
-    scored.sort((a, b) => (b.score - a.score)
-        || ((Number(b.popularity) || 0) - (Number(a.popularity) || 0))
-        || (Number(a.tmdb_id) - Number(b.tmdb_id)));
+    scored.sort((a, b) => {
+        const aIds = extractGenreIds(a).map(Number);
+        const bIds = extractGenreIds(b).map(Number);
+        const aPrimary = (config.genres || []).includes(aIds[0]) ? 1 : 0;
+        const bPrimary = (config.genres || []).includes(bIds[0]) ? 1 : 0;
+        return (bPrimary - aPrimary)
+            || (b.score - a.score)
+            || ((Number(b.popularity) || 0) - (Number(a.popularity) || 0))
+            || (Number(a.tmdb_id) - Number(b.tmdb_id));
+    });
 
     const items = scored.slice(0, limit).map(({ scores, ...rest }) => ({
         ...rest,
@@ -1812,6 +1845,7 @@ export async function getMoodRecommendations(userId, moodId, options = {}) {
             count: items.length,
             candidatePool: finalCandidates.length,
             moodFirst: true,
+            genreAccurate: true,
             ott: ottKey,
             providerId: hasProvider ? providerId : null,
             tmdbPool: tmdbPool.length,
