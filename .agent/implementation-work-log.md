@@ -2,7 +2,7 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 2026 · HEAD `PENDING` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 2026 · HEAD `528805a` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
 
 ---
 
@@ -1371,6 +1371,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `528805a` | Jul 2026 | Discovery/mood API routes + service-role error copy |
 | `8e7e1d4` | Jul 2026 | Fix duplicate resolveApiBase import (Vite build) |
 | `3543c72` | Jul 2026 | Fix live Watch recommendations (API base + empty cache) |
 | `7b15a47` | Jul 2026 | Taste Map page, reco chat, mobile settings polish |
