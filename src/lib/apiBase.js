@@ -5,8 +5,6 @@
  * is never dropped by the apex → www 308 redirect.
  */
 export function resolveApiBase() {
-    const configured = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
-
     const toWww = (originOrUrl) => {
         try {
             const u = new URL(originOrUrl);
@@ -19,13 +17,17 @@ export function resolveApiBase() {
         }
     };
 
+    // Prefer same-origin on the live site (no env needed).
     if (typeof window !== 'undefined') {
         const host = window.location.hostname || '';
         if (host === 'www.theaterorstream.com' || host === 'theaterorstream.com') {
             return toWww(window.location.origin);
         }
-        if (!configured) return '';
     }
+
+    // Vite injects import.meta.env; guard for non-Vite / odd runtimes.
+    const env = (typeof import.meta !== 'undefined' && import.meta && import.meta.env) || {};
+    const configured = String(env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
     if (!configured) return '';
     return toWww(configured);
