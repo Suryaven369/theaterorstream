@@ -1412,6 +1412,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `38a84a5` | Jul 2026 | Health probe movies_library; dashboard dislikes catalog fix |
 | `e83ff10` | Jul 2026 | Fix Node 20 WebSocket — Supabase ws transport + Node 24 |
 | `8a8a362` | Jul 2026 | Add /api/health for Supabase env diagnostics |
 | `7fb4843` | Jul 2026 | Clearer feed-upvote 500s; service_role grant on likes |
