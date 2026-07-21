@@ -2,7 +2,19 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 2026 · HEAD `7fb4843` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 2026 · HEAD `8a8a362` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Jul 22, 2026 — /api/health diagnostics
+
+### Public env/DB health check ✅
+
+**Problem:** All Watch reco routes still 500 after service-role env was added; need to confirm the running deployment actually has the key and can query Supabase.
+
+**Files changed:** `api/health.js` — reports hasUrl/hasAnon/hasServiceRole/serviceRoleLen + movies probe (no secrets).
+
+**Next:** Open `https://www.theaterorstream.com/api/health` after deploy; fix env/redeploy based on JSON.
 
 ---
 
