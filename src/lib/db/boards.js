@@ -527,16 +527,10 @@ export function itemImageUrl(imageURL, item) {
     const size = item.item_type === 'director' || item.item_type === 'actor'
         ? 'w185'
         : isWide
-            ? 'w780'
-            : 'w342';
+            ? 'w500'
+            : 'w185';
     const path = item.image_path.startsWith('/') ? item.image_path : `/${item.image_path}`;
-    const base = String(imageURL || '');
-    if (base.includes('/t/p/') && (base.endsWith('/original') || base.endsWith('/original/'))) {
-        return `${base.replace(/\/$/, '')}${path}`;
-    }
-    if (base.includes('/t/p/w') && !base.includes('/original')) {
-        return `${base.replace(/\/$/, '')}${path}`;
-    }
+    // Always use the size matched to item type — ignore Redux /original base
     return `https://image.tmdb.org/t/p/${size}${path}`;
 }
 

@@ -1,19 +1,18 @@
 import React, { useMemo } from "react";
 import { useSelector } from "react-redux";
-import moment from "moment";
 import { Link } from "react-router-dom";
 import { generateSlugWithId } from "../lib/slugUtils";
 import { pickBestPosterPath, resolveTmdbImageUrl } from "../utils/imageHelper";
 import { formatHotTagLabel } from "../utils/hotContentTags";
 import PosterQuickActions from "./PosterQuickActions";
 
-const POSTER_SIZE = 'w500';
-
-const Card = ({ data, trending, index, media_type }) => {
+const Card = ({ data, trending, index, media_type, compact = false, posterSize, prioritize = false }) => {
   const userRatedMovieIds = useSelector((state) => state.movieData.userRatedMovieIds);
   const mediaType = data.media_type ?? media_type;
 
   const movieId = String(data.id ?? data.tmdb_id ?? "");
+  // Explore rails are ~116–148px wide — w185 is enough; w342 for larger cards
+  const resolvedPosterSize = posterSize || (compact ? 'w185' : 'w342');
 
   // Generate SEO-friendly slug URL
   const movieUrl = useMemo(() => {
@@ -32,14 +31,16 @@ const Card = ({ data, trending, index, media_type }) => {
   const posterPath = pickBestPosterPath(data);
 
   // Construct image source with proper fallbacks
-  const imageSrc = resolveTmdbImageUrl(posterPath, { size: POSTER_SIZE })
+  const imageSrc = resolveTmdbImageUrl(posterPath, { size: resolvedPosterSize })
     || (data.images?.poster_base64?.startsWith('data:image') ? data.images.poster_base64 : null);
+
+  const preferEarly = prioritize && typeof index === 'number' && index < 6;
 
   return (
     <Link
       to={movieUrl}
       className="group relative block animate-fadeInUp hover:z-40 focus-within:z-50"
-      style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
+      style={{ animationDelay: `${Math.min((index || 0) * 30, 300)}ms` }}
     >
       <div className="relative overflow-hidden rounded-xl bg-white/5 card-hover">
         {/* Image */}
@@ -49,7 +50,9 @@ const Card = ({ data, trending, index, media_type }) => {
               src={imageSrc}
               alt={data?.title || data?.name}
               className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-              loading="lazy"
+              loading={preferEarly ? 'eager' : 'lazy'}
+              decoding="async"
+              fetchPriority={preferEarly ? 'high' : 'auto'}
               onError={(e) => {
                 // Hide broken images gracefully
                 e.target.style.display = 'none';
@@ -118,7 +121,7 @@ const Card = ({ data, trending, index, media_type }) => {
           {data?.title || data?.name}
         </h3>
         <p className="text-xs text-white/40 mt-0.5">
-          {moment(data.release_date || data.first_air_date).format("YYYY")}
+          {(data.release_date || data.first_air_date || '').slice(0, 4) || '—'}
           {data.media_type === "tv" && " • Series"}
         </p>
       </div>

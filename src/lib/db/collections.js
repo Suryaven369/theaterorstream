@@ -73,6 +73,17 @@ function sortCollectionMoviesNewestFirst(movies) {
     });
 }
 
+/** Chronological by release (MCU / franchise lists). Falls back to added_at. */
+function sortCollectionMoviesByRelease(movies) {
+    if (!Array.isArray(movies) || movies.length < 2) return movies || [];
+    return [...movies].sort((a, b) => {
+        const aKey = String(a.release_date || a.first_air_date || a.added_at || '');
+        const bKey = String(b.release_date || b.first_air_date || b.added_at || '');
+        if (aKey && bKey && aKey !== bKey) return aKey.localeCompare(bKey);
+        return String(a.movie_title || a.title || '').localeCompare(String(b.movie_title || b.title || ''));
+    });
+}
+
 export const getUserCollections = async (userId) => {
     if (!userId) return [];
     const { data } = await supabase
@@ -81,10 +92,11 @@ export const getUserCollections = async (userId) => {
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .order('added_at', { foreignTable: 'collection_movies', ascending: false });
-    return (data || []).map((c) => ({
+    const mapped = (data || []).map((c) => ({
         ...c,
         collection_movies: sortCollectionMoviesNewestFirst(c.collection_movies),
     }));
+    return fillMissingCollectionPosters(mapped);
 };
 
 export const LIST_NAME_MAX = 70;
@@ -108,22 +120,96 @@ const normalizeTags = (tags) =>
 
 const hasFranchiseTag = (tags) => normalizeTags(tags).includes('franchise');
 
-/** Cover for feed/cards: explicit cover_image, else first movie poster(s). */
+/** Poster paths suitable for collage / cover (skips empties). */
+export function getCollectionPosterPaths(collection, limit = 4) {
+    const paths = (collection?.collection_movies || [])
+        .map((m) => m?.poster_path)
+        .filter((p) => typeof p === 'string' && p.trim().length > 0);
+    return paths.slice(0, limit);
+}
+
+/** Cover for feed/cards: uploaded cover_image, else first movie poster(s). */
 export function resolveCollectionCoverUrl(collection) {
     const cover = collection?.cover_image || collection?.banner_image || null;
     if (cover && /^https?:\/\//i.test(cover)) return cover;
     if (cover && cover.startsWith('/')) {
-        return `https://image.tmdb.org/t/p/w780${cover}`;
+        return `https://image.tmdb.org/t/p/w342${cover}`;
     }
     if (cover) return cover;
 
-    const posters = (collection?.collection_movies || [])
-        .map((m) => m.poster_path)
-        .filter(Boolean);
+    const posters = getCollectionPosterPaths(collection, 1);
     if (!posters.length) return null;
     const path = posters[0];
     if (/^https?:\/\//i.test(path)) return path;
-    return `https://image.tmdb.org/t/p/w780${path}`;
+    return `https://image.tmdb.org/t/p/w342${path}`;
+}
+
+/**
+ * Fill missing collection_movies.poster_path from movies_library so list
+ * thumbnails / collages work without a custom uploaded cover.
+ */
+export async function fillMissingCollectionPosters(collections) {
+    const list = Array.isArray(collections) ? collections : [collections];
+    const missingIds = [];
+    for (const c of list) {
+        for (const m of c?.collection_movies || []) {
+            if (!m?.poster_path && m?.movie_id != null) missingIds.push(String(m.movie_id));
+        }
+    }
+    if (!missingIds.length) return collections;
+
+    const unique = [...new Set(missingIds)];
+    const posterMap = new Map();
+    const chunkSize = 100;
+    for (let i = 0; i < unique.length; i += chunkSize) {
+        const chunk = unique.slice(i, i + chunkSize);
+        const { data } = await supabase
+            .from('movies_library')
+            .select('tmdb_id, poster_path')
+            .in('tmdb_id', chunk)
+            .not('poster_path', 'is', null);
+        for (const row of data || []) {
+            if (row.poster_path) posterMap.set(String(row.tmdb_id), row.poster_path);
+        }
+    }
+    if (!posterMap.size) return collections;
+
+    const persist = [];
+    const apply = (c) => {
+        if (!c?.collection_movies?.length) return c;
+        const collection_movies = c.collection_movies.map((m) => {
+            if (m.poster_path || m.movie_id == null) return m;
+            const poster_path = posterMap.get(String(m.movie_id));
+            if (!poster_path) return m;
+            if (c.id) {
+                persist.push({
+                    collection_id: c.id,
+                    movie_id: String(m.movie_id),
+                    poster_path,
+                });
+            }
+            return { ...m, poster_path };
+        });
+        return { ...c, collection_movies };
+    };
+
+    const result = Array.isArray(collections) ? collections.map(apply) : apply(collections);
+
+    // Persist so next load / feed cover sync has posters without re-joining library
+    if (persist.length) {
+        Promise.all(
+            persist.slice(0, 60).map((row) =>
+                supabase
+                    .from('collection_movies')
+                    .update({ poster_path: row.poster_path })
+                    .eq('collection_id', row.collection_id)
+                    .eq('movie_id', row.movie_id)
+                    .is('poster_path', null),
+            ),
+        ).catch(() => {});
+    }
+
+    return result;
 }
 
 /**
@@ -134,13 +220,14 @@ export async function syncListPostCover(collectionId) {
 
     const { data: collection } = await supabase
         .from('user_collections')
-        .select('id, name, user_id, is_public, cover_image, banner_image, collection_movies(poster_path)')
+        .select('id, name, user_id, is_public, cover_image, banner_image, collection_movies(movie_id, poster_path)')
         .eq('id', collectionId)
         .maybeSingle();
 
     if (!collection?.is_public || !collection.user_id) return;
 
-    const cover = resolveCollectionCoverUrl(collection);
+    const enriched = await fillMissingCollectionPosters(collection);
+    const cover = resolveCollectionCoverUrl(enriched);
     if (!cover) return;
 
     const { data: posts } = await supabase
@@ -200,7 +287,7 @@ export const createUserCollection = async (userId, name, description = '', isPub
     let { data, error } = await supabase
         .from('user_collections')
         .insert(row)
-        .select()
+        .select('id, user_id, name, description, is_public, category, tags, moderation_status, cover_image, banner_image, created_at, updated_at, is_system, collection_kind')
         .single();
 
     // Pre-migration DBs may not have category / moderation_status / tags yet.
@@ -213,8 +300,18 @@ export const createUserCollection = async (userId, name, description = '', isPub
                 description: cleanDescription,
                 is_public: isPublic,
             })
-            .select()
+            .select('id, user_id, name, description, is_public, created_at, updated_at')
             .single());
+    }
+
+    // If RETURNING omitted name (RLS), re-fetch the row we just wrote.
+    if (!error && data?.id && !data.name) {
+        const { data: refetched } = await supabase
+            .from('user_collections')
+            .select('id, user_id, name, description, is_public, category, tags, moderation_status, cover_image, banner_image, created_at, updated_at, is_system, collection_kind')
+            .eq('id', data.id)
+            .maybeSingle();
+        if (refetched) data = refetched;
     }
 
     if (!error && isPublic) {
@@ -226,7 +323,7 @@ export const createUserCollection = async (userId, name, description = '', isPub
             engagement_score: 5,
         });
 
-        const cover = resolveCollectionCoverUrl(data);
+        const cover = resolveCollectionCoverUrl({ ...data, name: cleanName });
         await supabase.from('feed_posts').insert({
             user_id: userId,
             content: cleanDescription ? `${cleanName}\n${cleanDescription}` : cleanName,
@@ -246,7 +343,19 @@ export const createUserCollection = async (userId, name, description = '', isPub
         });
     }
 
-    return { success: !error, data };
+    // Always hydrate name/description — insert RETURNING can omit columns under some RLS setups,
+    // which left the UI showing "Untitled collection" until a full reload.
+    const hydrated = data
+        ? {
+            ...data,
+            name: data.name || cleanName,
+            description: data.description ?? cleanDescription,
+            is_public: data.is_public ?? isPublic,
+            collection_movies: Array.isArray(data.collection_movies) ? data.collection_movies : [],
+        }
+        : null;
+
+    return { success: !error && !!hydrated, data: hydrated, error };
 };
 
 export const getCollectionBySlug = async (slug, viewerUserId = null) => {
@@ -349,17 +458,24 @@ export const getCollectionBySlug = async (slug, viewerUserId = null) => {
                     backdrop_path: libraryMovie.backdrop_path,
                     title: libraryMovie.title || collMovie.movie_title,
                     vote_average: libraryMovie.vote_average,
-                    release_date: libraryMovie.release_date,
+                    release_date: libraryMovie.release_date || libraryMovie.first_air_date || collMovie.release_date,
                     overview: libraryMovie.overview,
                     genres: libraryMovie.genres,
                     runtime: libraryMovie.runtime,
                 };
             });
         }
-        collection.collection_movies = sortCollectionMoviesNewestFirst(collection.collection_movies);
+        const isFranchise = collection.category === 'franchise'
+            || (Array.isArray(collection.tags) && collection.tags.includes('franchise'))
+            || /marvel cinematic universe/i.test(collection.name || '');
+        collection.collection_movies = isFranchise
+            ? sortCollectionMoviesByRelease(collection.collection_movies)
+            : sortCollectionMoviesNewestFirst(collection.collection_movies);
     }
 
-    return collection;
+    // Persist any library-filled posters so list cards / feed covers stay populated
+    const enriched = await fillMissingCollectionPosters(collection);
+    return enriched;
 };
 
 export const updateUserCollection = async (collectionId, updates) => {
@@ -408,7 +524,8 @@ export const updateUserCollection = async (collectionId, updates) => {
         .single();
 
     if (error) console.error('Error updating collection:', error);
-    if (!error && (updates.cover_image !== undefined || updates.banner_image !== undefined)) {
+    // Uploaded cover changed, or cleared → refresh feed thumb from posters
+    if (!error) {
         syncListPostCover(collectionId).catch(() => {});
     }
     return { success: !error, data, error };
@@ -445,6 +562,7 @@ export const removeFromCollection = async (collectionId, movieId) => {
         .delete()
         .eq('collection_id', collectionId)
         .eq('movie_id', movieId);
+    if (!error) syncListPostCover(collectionId).catch(() => {});
     return { success: !error, error };
 };
 
@@ -530,6 +648,7 @@ export const addMoviesToCollection = async (collectionId, movies) => {
         .select();
 
     if (error) console.error('Error adding movies:', error);
+    if (!error) syncListPostCover(collectionId).catch(() => {});
     return { success: !error, error, data };
 };
 

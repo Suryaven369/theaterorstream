@@ -69,7 +69,7 @@ export async function createMovieLog(userId, input) {
             movie_poster: row.poster_path,
             movie_rating: row.rating,
             post_type: 'log',
-            has_image: false,
+            has_image: Boolean(row.poster_path),
             visibility: 'public',
         }).then(({ error: feedErr }) => {
             if (feedErr) console.warn('log -> feed_posts failed:', feedErr.message);
@@ -209,7 +209,7 @@ export async function toggleSeasonWatched(userId, input) {
         movie_poster: row.poster_path,
         season_number: seasonNumber,
         post_type: 'log',
-        has_image: false,
+        has_image: Boolean(row.poster_path),
         visibility: 'public',
     }).then(({ error: feedErr }) => {
         if (feedErr) console.warn('season log -> feed_posts failed:', feedErr.message);

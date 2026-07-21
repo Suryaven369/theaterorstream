@@ -143,7 +143,9 @@ export default function FeedPostCard({
       {item.postType === 'log' && (
         <div className="px-3 pb-1">
           <span className="inline-block text-[10px] px-2 py-0.5 rounded-md bg-[var(--color-theater)]/15 text-[var(--color-theater)]">
-            🎬 Logged a film
+            {item.rating != null
+              ? `⭐ Rated ${item.movieTitle || item.movie?.title || 'a film'}${item.rating ? ` · ${item.rating}/10` : ''}`
+              : `🎬 Logged ${item.movieTitle || item.movie?.title || 'a film'}`}
           </span>
         </div>
       )}
@@ -267,7 +269,7 @@ export default function FeedPostCard({
         />
       )}
 
-      {item.movie && item.hasImage && (
+      {item.movie && (item.movie.poster || item.movie.backdrop || item.movie.title) && (
         <div className="relative">
           {item.movie.backdrop ? (
             isThread ? (
@@ -300,7 +302,7 @@ export default function FeedPostCard({
             ) : (
             <div className="relative aspect-[16/10] overflow-hidden">
               <img
-                src={`https://image.tmdb.org/t/p/w780${item.movie.backdrop}`}
+                src={`https://image.tmdb.org/t/p/w500${item.movie.backdrop}`}
                 alt={item.movie.title}
                 className="w-full h-full object-cover"
                 onDoubleClick={() => onLike(item)}
@@ -329,15 +331,19 @@ export default function FeedPostCard({
             )
           ) : (
             <div className="px-3 pb-2">
-              <div className="flex items-center gap-2 p-2 rounded-lg bg-white/5">
+              <div className="flex items-center gap-2.5 w-fit max-w-full">
                 <div className="w-14 h-20 rounded overflow-hidden bg-white/10 shrink-0">
-                  <img
-                    src={`https://image.tmdb.org/t/p/w92${item.movie.poster}`}
-                    alt={item.movie.title}
-                    className="w-full h-full object-cover"
-                  />
+                  {item.movie.poster ? (
+                    <img
+                      src={`https://image.tmdb.org/t/p/w92${item.movie.poster}`}
+                      alt={item.movie.title}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-white/25 text-lg">🎬</div>
+                  )}
                 </div>
-                <div>
+                <div className="min-w-0">
                   <h3 className="text-sm text-white font-medium">{item.movie.title}</h3>
                   <p className="text-[11px] text-white/40">{item.movie.year}</p>
                   {item.rating && (

@@ -10,11 +10,21 @@ import {
     saveFullMovieToLibrary,
     deleteUserCollection,
 } from '../lib/supabase';
-import { FaTrash, FaLock, FaGlobe, FaFolderOpen, FaArrowLeft, FaPlus, FaSearch, FaCheck, FaTimes, FaEdit, FaSave, FaShare, FaLink, FaTwitter } from 'react-icons/fa';
+import { FaTrash, FaLock, FaGlobe, FaFolderOpen, FaArrowLeft, FaPlus, FaSearch, FaCheck, FaTimes, FaEdit, FaSave, FaShare, FaLink, FaTwitter, FaEllipsisH, FaImage } from 'react-icons/fa';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { searchContentFromEdge, getMovieDetailFromEdge } from '../lib/contentEdgeApi';
 import { isTheaterSystemCollection } from '../lib/theaterWatch';
-import { getAvatarUrl } from '../lib/storagePublicUrl';
+import { getAvatarUrl, toPublicStorageUrl } from '../lib/storagePublicUrl';
+import { resolveTmdbImageUrl } from '../utils/imageHelper';
+import { uploadCollectionImage } from '../lib/profileSystem';
+import {
+    getPageCache,
+    loadWithPageCache,
+    setPageCache,
+    invalidatePageCache,
+    collectionPageKey,
+    collectionsListKey,
+} from '../lib/pageSessionCache';
 
 // Helper to create URL-friendly slug
 const createSlug = (text) => {
@@ -88,37 +98,60 @@ const CollectionPeopleStack = ({ owner, collaborators = [] }) => {
 
 // Poster Collage Component - Shows first 4 movie posters in a grid
 const PosterCollage = ({ movies, imageURL, size = 'large' }) => {
-    const posters = movies.slice(0, 4);
+    const posters = (movies || []).filter((m) => m?.poster_path).slice(0, 4);
     // Responsive sizing: smaller on mobile
     const sizeClasses = size === 'large' ? 'w-20 h-20 sm:w-24 sm:h-24 md:w-32 md:h-32' : 'w-16 h-16 sm:w-20 sm:h-20';
 
     if (posters.length === 0) {
         return (
-            <div className={`${sizeClasses} rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg`}>
+            <div className={`${sizeClasses} rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center`}>
                 <FaFolderOpen className="text-4xl text-white" />
             </div>
         );
     }
 
+    if (posters.length === 1) {
+        const src = resolveTmdbImageUrl(posters[0].poster_path, {
+            base64: posters[0].images?.poster_base64,
+            baseUrl: imageURL || undefined,
+            size: 'w342',
+        });
+        return (
+            <div className={`${sizeClasses} rounded-2xl overflow-hidden bg-black/40`}>
+                {src ? (
+                    <img src={src} alt="" className="w-full h-full object-cover" loading="lazy" />
+                ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-gray-700 to-gray-800" />
+                )}
+            </div>
+        );
+    }
+
     return (
-        <div className={`${sizeClasses} rounded-2xl overflow-hidden grid grid-cols-2 gap-0.5 bg-white/10 shadow-lg`}>
+        <div className={`${sizeClasses} rounded-2xl overflow-hidden grid grid-cols-2 gap-0 bg-black/40`}>
             {posters.map((movie, index) => (
                 <div key={movie.movie_id || index} className="relative overflow-hidden">
-                    {(movie.images?.poster_base64 || movie.poster_path) ? (
-                        <img
-                            src={movie.images?.poster_base64 || `${imageURL}${movie.poster_path}`}
-                            alt=""
-                            className="w-full h-full object-cover"
-                            loading="lazy"
-                        />
-                    ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center">
-                            <span className="text-lg">🎬</span>
-                        </div>
-                    )}
+                    {(() => {
+                        const src = resolveTmdbImageUrl(movie.poster_path, {
+                            base64: movie.images?.poster_base64,
+                            baseUrl: imageURL || undefined,
+                            size: 'w342',
+                        });
+                        return src ? (
+                            <img
+                                src={src}
+                                alt=""
+                                className="w-full h-full object-cover"
+                                loading="lazy"
+                            />
+                        ) : (
+                            <div className="w-full h-full bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center">
+                                <span className="text-lg">🎬</span>
+                            </div>
+                        );
+                    })()}
                 </div>
             ))}
-            {/* Fill remaining slots if less than 4 movies */}
             {Array.from({ length: 4 - posters.length }).map((_, index) => (
                 <div key={`empty-${index}`} className="bg-gradient-to-br from-gray-700 to-gray-800" />
             ))}
@@ -190,7 +223,7 @@ const ShareModal = ({ collection, movies, imageURL, shareUrl, onClose }) => {
                         {/* Collection Cover Preview */}
                         <div className="flex gap-4 items-start">
                             {/* Poster Grid */}
-                            <div className="w-24 h-24 rounded-xl overflow-hidden grid grid-cols-2 gap-0.5 bg-black/30 flex-shrink-0">
+                            <div className="w-24 h-24 rounded-xl overflow-hidden grid grid-cols-2 gap-0 bg-black/30 flex-shrink-0">
                                 {posters.map((movie, index) => (
                                     <div key={movie.movie_id || index} className="relative overflow-hidden">
                                         {movie.poster_path ? (
@@ -298,10 +331,16 @@ const CollectionDetails = () => {
     const [editDescription, setEditDescription] = useState('');
     const [editIsPublic, setEditIsPublic] = useState(false);
     const [editFranchise, setEditFranchise] = useState(false);
+    const [editCoverImage, setEditCoverImage] = useState(null);
+    const [coverUploading, setCoverUploading] = useState(false);
+    const [coverError, setCoverError] = useState('');
     const [saving, setSaving] = useState(false);
+    const coverInputRef = useRef(null);
 
     // Share modal state
     const [showShareModal, setShowShareModal] = useState(false);
+    const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
+    const actionsMenuRef = useRef(null);
 
     // Add Movies Modal State
     const [showAddModal, setShowAddModal] = useState(false);
@@ -317,29 +356,96 @@ const CollectionDetails = () => {
         }
     }, [slug, user?.id]);
 
-    const loadCollection = async () => {
-        setLoading(true);
-        try {
-            const data = await getCollectionBySlug(slug, user?.id || null);
-            setCollection(data);
-            if (data) {
-                setEditName(data.name);
-                setEditDescription(data.description || '');
-                setEditIsPublic(data.is_public);
-                setEditFranchise(
-                    data.category === 'franchise'
-                    || (Array.isArray(data.tags) && data.tags.includes('franchise')),
-                );
+    useEffect(() => {
+        if (!actionsMenuOpen) return undefined;
+        const onDoc = (e) => {
+            if (actionsMenuRef.current && !actionsMenuRef.current.contains(e.target)) {
+                setActionsMenuOpen(false);
             }
+        };
+        const onKey = (e) => {
+            if (e.key === 'Escape') setActionsMenuOpen(false);
+        };
+        document.addEventListener('mousedown', onDoc);
+        document.addEventListener('keydown', onKey);
+        return () => {
+            document.removeEventListener('mousedown', onDoc);
+            document.removeEventListener('keydown', onKey);
+        };
+    }, [actionsMenuOpen]);
+
+    const applyCollectionToForm = (data) => {
+        if (!data) return;
+        setEditName(data.name);
+        setEditDescription(data.description || '');
+        setEditIsPublic(data.is_public);
+        setEditFranchise(
+            data.category === 'franchise'
+            || (Array.isArray(data.tags) && data.tags.includes('franchise')),
+        );
+        setEditCoverImage(toPublicStorageUrl(data.cover_image) || data.cover_image || null);
+        setCoverError('');
+    };
+
+    const loadCollection = async () => {
+        const key = collectionPageKey(slug, user?.id || null);
+        const existing = getPageCache(key);
+        let showedCache = Boolean(existing);
+        if (existing) {
+            setCollection(existing);
+            applyCollectionToForm(existing);
+            setLoading(false);
+        } else {
+            setCollection(null);
+            setLoading(true);
+        }
+
+        try {
+            await loadWithPageCache({
+                key,
+                fetcher: () => getCollectionBySlug(slug, user?.id || null),
+                onCached: (data) => {
+                    showedCache = true;
+                    setCollection(data);
+                    applyCollectionToForm(data);
+                    setLoading(false);
+                },
+                onFresh: (data) => {
+                    setCollection(data);
+                    applyCollectionToForm(data);
+                    setLoading(false);
+                },
+            });
         } catch (error) {
             console.error('Error loading collection:', error);
+            if (!showedCache) setCollection(null);
+            setLoading(false);
         }
-        setLoading(false);
+    };
+
+    const bumpCollectionCache = (next) => {
+        setCollection(next);
+        if (next && slug) setPageCache(collectionPageKey(slug, user?.id || null), next);
+        if (next?.user_id) {
+            invalidatePageCache(collectionsListKey(next.user_id, true));
+            invalidatePageCache(collectionsListKey(next.user_id, false));
+        }
     };
 
     // Check if viewing own collection
     const isOwnCollection = user?.id && collection?.user_id === user.id;
     const isTheaterCollection = isTheaterSystemCollection(collection);
+
+    // Open edit / add from Collections list ⋯ menu (any list, not just franchise)
+    useEffect(() => {
+        if (!collection || loading) return;
+        const openEdit = location.state?.openEdit;
+        const openAdd = location.state?.openAdd;
+        if (!openEdit && !openAdd) return;
+        if (openEdit && isOwnCollection) setIsEditing(true);
+        if (openAdd && isOwnCollection && !isTheaterCollection) setShowAddModal(true);
+        navigate(location.pathname, { replace: true, state: { from: location.state?.from } });
+    }, [collection, loading, location.state, location.pathname, isOwnCollection, isTheaterCollection, navigate]);
 
     const confirmRemove = async () => {
         if (!itemToDelete || !isOwnCollection) return;
@@ -349,10 +455,10 @@ const CollectionDetails = () => {
         setRemoving(movieId);
         const result = await removeFromCollection(collection.id, movieId);
         if (result.success) {
-            setCollection(prev => ({
-                ...prev,
-                collection_movies: prev.collection_movies.filter(m => m.movie_id !== movieId)
-            }));
+            bumpCollectionCache({
+                ...collection,
+                collection_movies: (collection.collection_movies || []).filter((m) => m.movie_id !== movieId),
+            });
         }
         setRemoving(null);
         setItemToDelete(null);
@@ -365,6 +471,11 @@ const CollectionDetails = () => {
         setDeletingCollection(false);
         setDeleteCollectionOpen(false);
         if (result.success) {
+            invalidatePageCache(collectionPageKey(slug, user?.id || null));
+            if (collection.user_id) {
+                invalidatePageCache(collectionsListKey(collection.user_id, true));
+                invalidatePageCache(collectionsListKey(collection.user_id, false));
+            }
             const uname = collection.user_profiles?.username || profile?.username;
             navigate(uname ? `/${uname}/collections` : '/');
         } else {
@@ -440,6 +551,11 @@ const CollectionDetails = () => {
             const result = await addMoviesToCollection(collection.id, processedMovies);
 
             if (result.success) {
+                invalidatePageCache(collectionPageKey(slug, user?.id || null));
+                if (collection.user_id) {
+                    invalidatePageCache(collectionsListKey(collection.user_id, true));
+                    invalidatePageCache(collectionsListKey(collection.user_id, false));
+                }
                 await loadCollection();
                 closeAddModal();
             } else {
@@ -462,6 +578,34 @@ const CollectionDetails = () => {
         setSelectedMovies([]);
     };
 
+    const beginEditing = () => {
+        setEditName(collection?.name || '');
+        setEditDescription(collection?.description || '');
+        setEditIsPublic(!!collection?.is_public);
+        setEditFranchise(
+            collection?.category === 'franchise'
+            || (Array.isArray(collection?.tags) && collection.tags.includes('franchise')),
+        );
+        setEditCoverImage(toPublicStorageUrl(collection?.cover_image) || collection?.cover_image || null);
+        setCoverError('');
+        setIsEditing(true);
+    };
+
+    const handleCoverUpload = async (e) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file || !user?.id) return;
+        setCoverError('');
+        setCoverUploading(true);
+        const r = await uploadCollectionImage(file, user.id);
+        setCoverUploading(false);
+        if (!r.ok) {
+            setCoverError(r.error || 'Upload failed');
+            return;
+        }
+        setEditCoverImage(r.url);
+    };
+
     const handleSaveEdit = async () => {
         if (!isTheaterCollection && !editName.trim()) return;
 
@@ -471,13 +615,23 @@ const CollectionDetails = () => {
             description: editDescription.trim(),
             is_public: editIsPublic,
             franchise: isTheaterCollection ? false : editFranchise,
+            cover_image: editCoverImage || null,
         });
 
         if (result.success) {
+            invalidatePageCache(collectionPageKey(slug, user?.id || null));
+            if (collection.user_id) {
+                invalidatePageCache(collectionsListKey(collection.user_id, true));
+                invalidatePageCache(collectionsListKey(collection.user_id, false));
+            }
             if (!isTheaterCollection) {
                 const newSlug = createSlug(editName.trim());
                 if (newSlug !== slug) {
+                    invalidatePageCache(collectionPageKey(newSlug, user?.id || null));
                     navigate(`/collection/${newSlug}`, { replace: true });
+                    setIsEditing(false);
+                    setSaving(false);
+                    return;
                 }
             }
             await loadCollection();
@@ -488,7 +642,7 @@ const CollectionDetails = () => {
         setSaving(false);
     };
 
-    if (authLoading || loading) {
+    if ((authLoading && !collection) || loading) {
         return (
             <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
                 <div className="animate-spin w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full" />
@@ -556,10 +710,18 @@ const CollectionDetails = () => {
         navigate(fallbackPath);
     };
 
-    // Get first poster for OG image
-    const ogImage = movies.length > 0 && movies[0].poster_path
-        ? `https://image.tmdb.org/t/p/w500${movies[0].poster_path}`
-        : null;
+    // Get first poster for OG image (uploaded cover, else auto from posters)
+    const ogImage = (() => {
+        const uploaded = collection.cover_image || collection.banner_image;
+        if (uploaded && /^https?:\/\//i.test(uploaded)) return uploaded;
+        if (uploaded && String(uploaded).startsWith('/')) {
+            return `https://image.tmdb.org/t/p/w500${uploaded}`;
+        }
+        const withPoster = movies.find((m) => m.poster_path);
+        if (!withPoster?.poster_path) return null;
+        if (/^https?:\/\//i.test(withPoster.poster_path)) return withPoster.poster_path;
+        return `https://image.tmdb.org/t/p/w500${withPoster.poster_path}`;
+    })();
 
     return (
         <>
@@ -611,6 +773,61 @@ const CollectionDetails = () => {
                             {isEditing ? (
                                 /* Edit Mode */
                                 <div className="space-y-4">
+                                    <div>
+                                        <label className="text-xs text-white/50 mb-2 block">Thumbnail</label>
+                                        <div className="flex items-start gap-3 sm:gap-4">
+                                            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl overflow-hidden bg-white/5 shrink-0 flex items-center justify-center">
+                                                {editCoverImage ? (
+                                                    <img
+                                                        src={toPublicStorageUrl(editCoverImage) || editCoverImage}
+                                                        alt=""
+                                                        className="w-full h-full object-cover"
+                                                    />
+                                                ) : (
+                                                    <FaImage className="text-white/25 text-xl" />
+                                                )}
+                                            </div>
+                                            <div className="min-w-0 flex-1 space-y-2">
+                                                <div className="flex flex-wrap gap-2">
+                                                    <button
+                                                        type="button"
+                                                        disabled={coverUploading}
+                                                        onClick={() => coverInputRef.current?.click()}
+                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs sm:text-sm bg-white/10 text-white/75 hover:bg-white/15 hover:text-white border border-white/10 transition-colors disabled:opacity-50"
+                                                    >
+                                                        <FaImage className="text-[11px] opacity-70" />
+                                                        {coverUploading ? 'Uploading…' : (editCoverImage ? 'Change' : 'Upload')}
+                                                    </button>
+                                                    {editCoverImage && (
+                                                        <button
+                                                            type="button"
+                                                            disabled={coverUploading}
+                                                            onClick={() => {
+                                                                setEditCoverImage(null);
+                                                                setCoverError('');
+                                                            }}
+                                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs sm:text-sm text-white/45 hover:text-white/80 hover:bg-white/5 transition-colors disabled:opacity-50"
+                                                        >
+                                                            Remove
+                                                        </button>
+                                                    )}
+                                                </div>
+                                                <p className="text-[11px] text-white/35 leading-snug">
+                                                    Optional. JPG, PNG, or WEBP · max 6MB. Falls back to posters if empty.
+                                                </p>
+                                                {coverError && (
+                                                    <p className="text-[11px] text-red-400">{coverError}</p>
+                                                )}
+                                                <input
+                                                    ref={coverInputRef}
+                                                    type="file"
+                                                    accept="image/jpeg,image/png,image/webp,image/gif"
+                                                    className="hidden"
+                                                    onChange={handleCoverUpload}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
                                     <div>
                                         <label className="text-xs text-white/50 mb-2 block">Collection Name</label>
                                         {isTheaterCollection ? (
@@ -699,91 +916,147 @@ const CollectionDetails = () => {
                                 </div>
                             ) : (
                                 /* View Mode */
-                                <div className="flex flex-col gap-4 sm:gap-6">
-                                    <div className="flex items-start gap-4 sm:gap-6">
-                                        {/* Poster Collage */}
+                                <div className="flex items-start gap-3 sm:gap-5">
+                                    {collection.cover_image ? (
+                                        <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl overflow-hidden bg-white/5 shrink-0">
+                                            <img
+                                                src={toPublicStorageUrl(collection.cover_image) || collection.cover_image}
+                                                alt=""
+                                                className="w-full h-full object-cover"
+                                            />
+                                        </div>
+                                    ) : (
                                         <PosterCollage movies={movies} imageURL={imageURL} size="large" />
+                                    )}
 
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-2">
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-start gap-2 mb-2">
+                                            <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
                                                 <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-white break-words">{collection.name}</h1>
                                                 {collection.is_public ? (
-                                                    <span className="px-2 py-1 rounded bg-green-500/20 text-green-400 text-xs flex items-center gap-1">
-                                                        <FaGlobe /> Public
+                                                    <span className="px-2 py-0.5 rounded-md bg-green-500/15 text-green-400 text-[11px] sm:text-xs flex items-center gap-1 shrink-0">
+                                                        <FaGlobe className="text-[9px]" /> Public
                                                     </span>
                                                 ) : (
-                                                    <span className="px-2 py-1 rounded bg-white/10 text-white/60 text-xs flex items-center gap-1">
-                                                        <FaLock /> Private
+                                                    <span className="px-2 py-0.5 rounded-md bg-white/10 text-white/55 text-[11px] sm:text-xs flex items-center gap-1 shrink-0">
+                                                        <FaLock className="text-[9px]" /> Private
                                                     </span>
                                                 )}
                                                 {collection.moderation_status === 'approved'
                                                     && (collection.category === 'franchise' || collection.tags?.includes?.('franchise')) && (
-                                                    <span className="px-2 py-1 rounded text-xs bg-amber-500/20 text-amber-300">
+                                                    <span className="px-2 py-0.5 rounded-md text-[11px] sm:text-xs bg-amber-500/15 text-amber-300 shrink-0">
                                                         Franchise
                                                     </span>
                                                 )}
                                             </div>
-                                            <p className="text-white/60 text-sm sm:text-base line-clamp-2 sm:line-clamp-none mb-2 sm:mb-3">{collection.description || 'No description'}</p>
-                                            {isOwnCollection && isTheaterCollection && (
-                                                <p className="text-xs text-amber-400/90 mb-2">
-                                                    🍿 Titles appear here when you log a movie with &quot;In theater&quot; on your diary.
-                                                </p>
-                                            )}
-                                            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs sm:text-sm text-white/40">
-                                                <CollectionPeopleStack
-                                                    owner={collection.user_profiles}
-                                                    collaborators={collection.collaborators}
-                                                />
-                                                <span className="text-white/25">•</span>
-                                                <span>{movies.length} items</span>
-                                            </div>
-                                        </div>
-                                    </div>
 
-                                    {/* Action Buttons - Full width on mobile */}
-                                    <div className="flex flex-wrap gap-2 sm:gap-3 w-full sm:w-auto">
-                                        {/* Share Button */}
-                                        {collection.is_public && (
-                                            <button
-                                                onClick={() => setShowShareModal(true)}
-                                                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 sm:px-4 py-2.5 bg-white/5 text-white/70 rounded-xl hover:bg-white/10 hover:text-white transition-all border border-white/10 text-sm sm:text-base"
-                                            >
-                                                <FaShare /> <span className="hidden sm:inline">Share</span>
-                                            </button>
-                                        )}
-
-                                        {isOwnCollection && (
-                                            <>
-                                                <button
-                                                    onClick={() => setIsEditing(true)}
-                                                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 sm:px-4 py-2.5 bg-white/5 text-white/70 rounded-xl hover:bg-white/10 hover:text-white transition-all text-sm sm:text-base"
-                                                >
-                                                    <FaEdit /> <span className="hidden sm:inline">Edit</span>
-                                                </button>
-                                                {!isTheaterCollection && (
-                                                    <button
-                                                        onClick={() => setShowAddModal(true)}
-                                                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:from-purple-600 hover:to-pink-600 transition-all font-medium shadow-lg shadow-purple-500/25 text-sm sm:text-base"
-                                                    >
-                                                        <FaPlus /> <span>Add</span>
-                                                    </button>
-                                                )}
-                                                {!isTheaterCollection && (
+                                            {(collection.is_public || isOwnCollection) && (
+                                                <div className="relative shrink-0 -mt-0.5" ref={actionsMenuRef}>
                                                     <button
                                                         type="button"
-                                                        onClick={() => setDeleteCollectionOpen(true)}
-                                                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 sm:px-4 py-2.5 bg-red-500/10 text-red-400 rounded-xl hover:bg-red-500/20 transition-all border border-red-500/20 text-sm sm:text-base"
+                                                        aria-label="Collection options"
+                                                        aria-expanded={actionsMenuOpen}
+                                                        aria-haspopup="menu"
+                                                        onClick={() => setActionsMenuOpen((v) => !v)}
+                                                        className="w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-white/45 hover:text-white hover:bg-white/10 transition-colors"
                                                     >
-                                                        <FaTrash /> <span className="hidden sm:inline">Delete</span>
+                                                        <FaEllipsisH className="text-sm" />
                                                     </button>
-                                                )}
-                                            </>
+                                                    {actionsMenuOpen && (
+                                                        <div
+                                                            role="menu"
+                                                            className="absolute right-0 top-9 z-30 min-w-[168px] rounded-xl border border-white/10 bg-[#1c1f22] shadow-2xl py-1 overflow-hidden"
+                                                        >
+                                                            {collection.is_public && (
+                                                                <button
+                                                                    type="button"
+                                                                    role="menuitem"
+                                                                    onClick={() => {
+                                                                        setActionsMenuOpen(false);
+                                                                        setShowShareModal(true);
+                                                                    }}
+                                                                    className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-white/75 hover:bg-white/10 hover:text-white transition-colors"
+                                                                >
+                                                                    <FaShare className="text-[11px] opacity-70" /> Share
+                                                                </button>
+                                                            )}
+                                                            {isOwnCollection && (
+                                                                <>
+                                                                    <button
+                                                                        type="button"
+                                                                        role="menuitem"
+                                                                        onClick={() => {
+                                                                            setActionsMenuOpen(false);
+                                                                            beginEditing();
+                                                                        }}
+                                                                        className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-white/75 hover:bg-white/10 hover:text-white transition-colors"
+                                                                    >
+                                                                        <FaEdit className="text-[11px] opacity-70" /> Edit
+                                                                    </button>
+                                                                    {!isTheaterCollection && (
+                                                                        <button
+                                                                            type="button"
+                                                                            role="menuitem"
+                                                                            onClick={() => {
+                                                                                setActionsMenuOpen(false);
+                                                                                setShowAddModal(true);
+                                                                            }}
+                                                                            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-white/75 hover:bg-white/10 hover:text-white transition-colors"
+                                                                        >
+                                                                            <FaPlus className="text-[11px] opacity-70" /> Add titles
+                                                                        </button>
+                                                                    )}
+                                                                    {!isTheaterCollection && (
+                                                                        <>
+                                                                            <div className="my-1 border-t border-white/10" />
+                                                                            <button
+                                                                                type="button"
+                                                                                role="menuitem"
+                                                                                onClick={() => {
+                                                                                    setActionsMenuOpen(false);
+                                                                                    setDeleteCollectionOpen(true);
+                                                                                }}
+                                                                                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+                                                                            >
+                                                                                <FaTrash className="text-[11px]" /> Delete
+                                                                            </button>
+                                                                        </>
+                                                                    )}
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <p className="text-white/55 text-sm sm:text-[15px] leading-relaxed line-clamp-2 sm:line-clamp-none mb-2.5 sm:mb-3">
+                                            {collection.description || 'No description'}
+                                        </p>
+                                        {isOwnCollection && isTheaterCollection && (
+                                            <p className="text-xs text-amber-400/90 mb-2">
+                                                🍿 Titles appear here when you log a movie with &quot;In theater&quot; on your diary.
+                                            </p>
                                         )}
+                                        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs sm:text-sm text-white/40">
+                                            <CollectionPeopleStack
+                                                owner={collection.user_profiles}
+                                                collaborators={collection.collaborators}
+                                            />
+                                            <span className="text-white/25">•</span>
+                                            <span>{movies.length} items</span>
+                                        </div>
                                     </div>
                                 </div>
                             )}
                         </div>
                     </div>
+
+                    {isEditing && isOwnCollection && movies.length > 0 && (
+                        <p className="text-xs text-white/40 mb-3 -mt-2 sm:-mt-3">
+                            Tap the <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-black/60 border border-white/20 text-[9px] mx-0.5 align-middle"><FaTimes /></span> on a poster to remove it from this list.
+                        </p>
+                    )}
 
                     {/* Movies Grid — 3 across on phones */}
                     {movies.length > 0 ? (
@@ -791,50 +1064,87 @@ const CollectionDetails = () => {
                             {movies.map((movie) => (
                                 <div
                                     key={movie.id || movie.movie_id}
-                                    className="group relative rounded-lg sm:rounded-xl overflow-hidden bg-[#1a1a1a] border border-white/5 hover:border-purple-500/30 transition-all min-w-0"
+                                    className="group relative rounded-lg sm:rounded-xl overflow-hidden bg-[#1a1a1a] transition-all min-w-0"
                                 >
-                                    <Link to={`/${movie.media_type || 'movie'}/${movie.movie_id}`}>
-                                        <div className="aspect-[2/3] relative">
-                                            {(movie.images?.poster_base64 || movie.poster_path) ? (
-                                                <img
-                                                    src={movie.images?.poster_base64 || `${imageURL}${movie.poster_path}`}
-                                                    alt={movie.movie_title || movie.title}
-                                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                                    loading="lazy"
-                                                />
-                                            ) : (
-                                                <div className="w-full h-full bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
-                                                    <span className="text-2xl sm:text-4xl">🎬</span>
-                                                </div>
+                                    <div className="aspect-[2/3] relative">
+                                        <Link
+                                            to={`/${movie.media_type || 'movie'}/${movie.movie_id}`}
+                                            className="absolute inset-0 block"
+                                            tabIndex={isEditing ? -1 : undefined}
+                                            onClick={isEditing ? (e) => e.preventDefault() : undefined}
+                                        >
+                                            {(() => {
+                                                const posterSrc = resolveTmdbImageUrl(movie.poster_path, {
+                                                    base64: movie.images?.poster_base64,
+                                                    baseUrl: imageURL || undefined,
+                                                    size: 'w500',
+                                                });
+                                                return posterSrc ? (
+                                                    <img
+                                                        src={posterSrc}
+                                                        alt={movie.movie_title || movie.title}
+                                                        className={`w-full h-full object-cover transition-transform duration-300 ${
+                                                            isEditing ? '' : 'group-hover:scale-105'
+                                                        }`}
+                                                        loading="lazy"
+                                                        decoding="async"
+                                                    />
+                                                ) : (
+                                                    <div className="w-full h-full bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
+                                                        <span className="text-2xl sm:text-4xl">🎬</span>
+                                                    </div>
+                                                );
+                                            })()}
+                                            {!isEditing && (
+                                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                                             )}
-                                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                                        </div>
-                                    </Link>
+                                        </Link>
+                                        {isEditing && isOwnCollection && (
+                                            <button
+                                                type="button"
+                                                aria-label={`Remove ${movie.movie_title || 'title'}`}
+                                                disabled={removing === movie.movie_id}
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    setItemToDelete(movie);
+                                                }}
+                                                className="absolute top-1.5 right-1.5 z-10 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/75 text-white/90 hover:bg-red-500 hover:text-white flex items-center justify-center shadow-lg transition-colors disabled:opacity-50"
+                                            >
+                                                {removing === movie.movie_id ? (
+                                                    <div className="w-3 h-3 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
+                                                ) : (
+                                                    <FaTimes className="text-xs sm:text-sm" />
+                                                )}
+                                            </button>
+                                        )}
+                                    </div>
                                     <div className="p-1.5 sm:p-3">
-                                        <div className="flex items-start justify-between gap-1 sm:gap-2 min-w-0">
-                                            <Link to={`/${movie.media_type || 'movie'}/${movie.movie_id}`} className="flex-1 min-w-0 overflow-hidden">
-                                                <h3 className="text-[11px] sm:text-sm font-medium text-white leading-snug line-clamp-2 break-words hover:text-purple-400 transition-colors">
-                                                    {movie.movie_title}
-                                                </h3>
-                                                <p className="text-[10px] sm:text-xs text-white/40 mt-0.5 truncate">
-                                                    {movie.added_at ? `Added ${new Date(movie.added_at).toLocaleDateString()}` : ''}
-                                                </p>
-                                            </Link>
-                                            {isOwnCollection && (
-                                                <button
-                                                    onClick={() => setItemToDelete(movie)}
-                                                    disabled={removing === movie.movie_id}
-                                                    className="p-1 sm:p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100 shrink-0"
-                                                    title="Remove from collection"
-                                                >
-                                                    {removing === movie.movie_id ? (
-                                                        <div className="w-3 h-3 border border-red-400 border-t-transparent rounded-full animate-spin" />
-                                                    ) : (
-                                                        <FaTrash className="text-xs" />
-                                                    )}
-                                                </button>
-                                            )}
-                                        </div>
+                                        <Link
+                                            to={`/${movie.media_type || 'movie'}/${movie.movie_id}`}
+                                            className="block min-w-0 overflow-hidden"
+                                            tabIndex={isEditing ? -1 : undefined}
+                                            onClick={isEditing ? (e) => e.preventDefault() : undefined}
+                                        >
+                                            <h3 className="text-[11px] sm:text-sm font-medium text-white leading-snug line-clamp-2 break-words hover:text-purple-400 transition-colors">
+                                                {movie.movie_title}
+                                            </h3>
+                                            <p className="text-[10px] sm:text-xs text-white/40 mt-0.5 truncate">
+                                                {(() => {
+                                                    const released = movie.release_date || movie.first_air_date;
+                                                    if (released) {
+                                                        const y = new Date(released).getFullYear();
+                                                        if (Number.isFinite(y) && y > 1900 && y <= new Date().getFullYear() + 2) {
+                                                            return String(y);
+                                                        }
+                                                    }
+                                                    if (!movie.added_at) return '';
+                                                    const y = new Date(movie.added_at).getFullYear();
+                                                    if (y > new Date().getFullYear() + 1) return '';
+                                                    return `Added ${new Date(movie.added_at).toLocaleDateString()}`;
+                                                })()}
+                                            </p>
+                                        </Link>
                                     </div>
                                 </div>
                             ))}

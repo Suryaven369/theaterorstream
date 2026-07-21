@@ -1,7 +1,5 @@
 export const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/';
 
-const TMDB_SIZE_PATTERN = /\/t\/p\/w\d+\//;
-
 /**
  * Pick the highest-voted poster from TMDB images, falling back to poster_path.
  */
@@ -70,18 +68,23 @@ export const resolveTmdbImageUrl = (path, options = {}) => {
         size = 'original',
     } = options;
 
-    const fallbackBase = `${TMDB_IMAGE_BASE}${size}`;
+    const sizedBase = `${TMDB_IMAGE_BASE}${size}`;
 
     if (path) {
         if (path.startsWith('data:')) return path;
         if (path.startsWith('http')) {
-            if (TMDB_SIZE_PATTERN.test(path)) {
-                return path.replace(TMDB_SIZE_PATTERN, `/t/p/${size}/`);
+            if (/\/t\/p\/(?:w\d+|original)\//.test(path)) {
+                return path.replace(/\/t\/p\/(?:w\d+|original)\//, `/t/p/${size}/`);
             }
             return path;
         }
         const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-        const prefix = (baseUrl || fallbackBase).replace(/\/$/, '');
+        // Never honor an /original Redux base for thumbnails — size wins
+        const base = String(baseUrl || '');
+        const useBase = base
+            && !/\/original\/?$/.test(base)
+            && !base.includes('/t/p/original');
+        const prefix = (useBase ? base : sizedBase).replace(/\/$/, '');
         return `${prefix}${normalizedPath}`;
     }
 

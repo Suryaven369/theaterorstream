@@ -113,6 +113,7 @@ export const AuthProvider = ({ children }) => {
         user,
         profile,
         loading,
+        sessionReady,
         isAuthenticated: !!user,
         isOnboarded: isProfileOnboarded(profile),
         isAdmin: !!profile?.is_admin,

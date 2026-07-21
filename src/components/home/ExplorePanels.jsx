@@ -2,8 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { FaFolderOpen, FaBookOpen } from 'react-icons/fa';
-import { getRecentPublicCollections, exploreBoards, boardPath, itemImageUrl } from '../../lib/supabase';
+import { getRecentPublicCollections, exploreBoards, boardPath, itemImageUrl, getCollectionBySlug } from '../../lib/supabase';
 import { getRecentPublicBlogs } from '../../lib/blogs';
+import { useAuth } from '../../context/AuthContext';
+import { prefetchCollectionPage } from '../../lib/pageSessionCache';
 
 function collectionSlug(name) {
   return String(name || '')
@@ -14,11 +16,13 @@ function collectionSlug(name) {
     .trim();
 }
 
-function posterSrc(imageURL, path) {
+function posterSrc(_imageURL, path) {
   if (!path) return null;
-  if (/^https?:\/\//i.test(path)) return path;
-  const base = imageURL || 'https://image.tmdb.org/t/p/w342';
-  return `${base}${path}`;
+  if (/^https?:\/\//i.test(path)) {
+    return path.replace(/\/t\/p\/(?:w\d+|original)\//, '/t/p/w185/');
+  }
+  const normalized = path.startsWith('/') ? path : `/${path}`;
+  return `https://image.tmdb.org/t/p/w185${normalized}`;
 }
 
 function CollectionCover({ collection, imageURL }) {
@@ -28,6 +32,8 @@ function CollectionCover({ collection, imageURL }) {
         src={collection.cover_image}
         alt=""
         className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+        loading="lazy"
+        decoding="async"
       />
     );
   }
@@ -50,18 +56,22 @@ function CollectionCover({ collection, imageURL }) {
         src={posterSrc(imageURL, posters[0].poster_path)}
         alt=""
         className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+        loading="lazy"
+        decoding="async"
       />
     );
   }
 
   return (
-    <div className="absolute inset-0 grid grid-cols-2 gap-px bg-black">
+    <div className="absolute inset-0 grid grid-cols-2 gap-0 bg-black">
       {posters.map((movie, i) => (
         <img
           key={movie.movie_id || i}
           src={posterSrc(imageURL, movie.poster_path)}
           alt=""
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+          loading="lazy"
+          decoding="async"
         />
       ))}
       {Array.from({ length: Math.max(0, 4 - posters.length) }).map((_, i) => (
@@ -101,6 +111,7 @@ const COLLECTION_CATEGORY_TABS = [
 
 export function ExploreCollectionsPanel() {
   const imageURL = useSelector((s) => s.movieData.imageURL);
+  const { user } = useAuth();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState('all');
@@ -116,6 +127,14 @@ export function ExploreCollectionsPanel() {
     });
     return () => { cancelled = true; };
   }, [category]);
+
+  const prefetchRow = (c) => {
+    const slug = c.slug || collectionSlug(c.name);
+    if (!slug) return;
+    prefetchCollectionPage(slug, user?.id || null, () =>
+      getCollectionBySlug(slug, user?.id || null),
+    );
+  };
 
   return (
     <PanelShell loading={false}>
@@ -166,7 +185,9 @@ export function ExploreCollectionsPanel() {
                   ],
                 },
               }}
-              className="group relative block overflow-hidden rounded-xl sm:rounded-2xl border border-white/[0.06] bg-[#0e0e0e] hover:border-[var(--primary)]/35 transition-all"
+              onMouseEnter={() => prefetchRow(c)}
+              onFocus={() => prefetchRow(c)}
+              className="group relative block overflow-hidden rounded-xl sm:rounded-2xl bg-[#0e0e0e] transition-all"
             >
               <div className="relative aspect-[4/3] sm:aspect-[16/11] overflow-hidden">
                 <CollectionCover collection={c} imageURL={imageURL} />

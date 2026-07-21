@@ -2,7 +2,29 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 2026 · HEAD `38a84a5` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 22, 2026 · HEAD `PENDING` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Jul 22, 2026 — Collections UX, feed polish, mobile perf
+
+### Instant collection navigation + feed/log polish + mobile load ✅
+
+**Problem:** Collection pages full-spinner on every back/forward; feed log posts showed “Logged a film” without title; new posts flashed away on mobile; Explore posters slow; profile menu clutter.
+
+**Files changed:**
+- `src/lib/pageSessionCache.js` — session cache + SWR + prefetch helpers
+- `src/views/CollectionDetails.jsx`, `CollectionsPage.jsx`, `ProfilePage.jsx`, `ExplorePanels.jsx` — cache, ⋯ menus, collage thumbs, prefetch
+- `src/lib/db/collections.js`, `social.js`, `movieDiary.js`, `socialFeedApi.js` — covers, list posts, log has_image
+- `src/components/social/FeedPostCard.jsx`, `FeedComposer.jsx` — show movie title on logs; fix post flash
+- `src/views/Home.jsx`, `Card.jsx`, `App.jsx`, `routes/*`, `vite.config.js`, `imageHelper.js` — mobile perf (w185/w342, lazy routes, feed paint-first)
+- `src/components/ProfileMenu.jsx` — remove Taste Map / Taste Preferences rows
+- `supabase/scripts/bulk_*.sql` — franchise seed scripts (MCU, DCEU, DCU, HP, Star Wars, Pirates)
+- `scripts/backfill-mcu-collection-posters.mjs`, `fix-mcu-collection-dates.mjs`
+
+**Behavior:** Collections navigate instantly from cache; logs show film titles + posters; home posts stay after create; Explore/Home load faster on phones; profile menu no longer lists taste pages.
+
+**Next recommended:** Extend pageSessionCache to boards/details if back/forward still feels slow; confirm franchise SQL scripts run in Supabase if not already.
 
 ---
 

@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, lazy, Suspense } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { FaFilm, FaHome, FaMagic } from "react-icons/fa";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import WatchPage from "./WatchPage";
 import FollowingFeed from "../components/discover/FollowingFeed";
 import FeedPostCard from "../components/social/FeedPostCard";
 import FeedTrailerCard from "../components/social/FeedTrailerCard";
@@ -14,7 +13,6 @@ import FeedComposer from "../components/social/FeedComposer";
 import FeedCommentModal from "../components/social/FeedCommentModal";
 import FeedShareModal from "../components/social/FeedShareModal";
 import HomeSocialSidebar from "../components/home/HomeSocialSidebar";
-import HomeBrowseTab from "../components/home/HomeBrowseTab";
 import { getSavedRegion, persistRegion } from "../constants/regions";
 import { getRssTrailersFromEdge, getArticlesFromEdge } from "../lib/contentEdgeApi";
 import { getAllUserRatings, getHomepageSections, getOfficialProfile } from "../lib/supabase";
@@ -35,6 +33,9 @@ import {
 } from "../lib/feedSessionCache";
 import ConfirmationModal from "../components/ConfirmationModal";
 import { useToast } from "../components/Toast";
+
+const WatchPage = lazy(() => import("./WatchPage"));
+const HomeBrowseTab = lazy(() => import("../components/home/HomeBrowseTab"));
 
 const VALID_TABS = ['home', 'explore', 'watch'];
 
@@ -81,7 +82,7 @@ const Home = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const toast = useToast();
-  const { user, profile, isAuthenticated, loading: authLoading } = useAuth();
+  const { user, profile, isAuthenticated, sessionReady } = useAuth();
   const cachedSections = useSelector((state) => state.movieData.homepageSections);
   const cachedTimestamp = useSelector((state) => state.movieData.homepageSectionsTimestamp);
 
@@ -154,8 +155,10 @@ const Home = () => {
     }
   }, [cachedSections]);
 
-  // Load movies the signed-in user has rated
+  // Load ratings when Explore/Watch need them — not on every Home feed mount
   useEffect(() => {
+    if (activeTab !== 'explore' && activeTab !== 'watch') return undefined;
+
     const loadUserRatings = async () => {
       if (!user?.id) {
         dispatch(setUserRatedMovies({}));
@@ -176,25 +179,14 @@ const Home = () => {
     };
 
     loadUserRatings();
-
-    const refreshOnFocus = () => {
-      if (document.visibilityState === "visible") loadUserRatings();
-    };
-    window.addEventListener("focus", refreshOnFocus);
-    document.addEventListener("visibilitychange", refreshOnFocus);
-    return () => {
-      window.removeEventListener("focus", refreshOnFocus);
-      document.removeEventListener("visibilitychange", refreshOnFocus);
-    };
-  }, [user?.id, dispatch]);
+    return undefined;
+  }, [user?.id, dispatch, activeTab]);
 
   // Fetch My Feed sections from Supabase (skip edge CDN so admin publishes show immediately)
   useEffect(() => {
     const now = Date.now();
-    // My Feed: treat cache as stale after 15s so Save & Publish shows up without a full reload.
-    // Other tabs: keep the longer TTL.
-    const ttl = activeTab === 'explore' ? 15_000 : SECTIONS_CACHE_TTL;
-    const isCacheValid = cachedSections && cachedTimestamp && (now - cachedTimestamp < ttl);
+    // 5 min TTL — admin publish still invalidates via realtime + focus rev key
+    const isCacheValid = cachedSections && cachedTimestamp && (now - cachedTimestamp < SECTIONS_CACHE_TTL);
 
     if (isCacheValid) {
       setCmsSections(cachedSections);
@@ -204,7 +196,8 @@ const Home = () => {
 
     let cancelled = false;
     const fetchCmsSections = async () => {
-      setLoadingSections(true);
+      // Keep showing cached posters while refreshing — don't blank to skeletons
+      if (!cachedSections?.length) setLoadingSections(true);
       try {
         const sections = await getHomepageSections(true);
         if (cancelled) return;
@@ -252,6 +245,30 @@ const Home = () => {
 
   const sortByRecency = (items) =>
     [...items].sort((a, b) => getItemSortTime(b) - getItemSortTime(a));
+
+  /** Keep own posts that landed optimistically while a slower feed fetch was in flight. */
+  const mergePreservingOwnRecent = (fetched, previous, userId) => {
+    if (!previous?.length) return fetched;
+    const fetchedIds = new Set(fetched.map((i) => i.id));
+    const keep = previous.filter((p) => {
+      if (!p?.id || fetchedIds.has(p.id)) return false;
+      if (String(p.id).startsWith('local-')) return true;
+      if (!userId || p.user?.id !== userId) return false;
+      const ts = getItemSortTime(p);
+      return ts > 0 && Date.now() - ts < 120_000;
+    });
+    if (!keep.length) return fetched;
+    return sortByRecency([...keep, ...fetched]);
+  };
+
+  const writeFeedCache = (items, { offset, hasMore } = {}) => {
+    const cached = getCachedFeed(feedScope, true);
+    setCachedFeed(feedScope, {
+      items,
+      offset: offset ?? cached?.offset ?? items.length,
+      hasMore: hasMore ?? cached?.hasMore ?? true,
+    });
+  };
 
   const mapTrailer = (m, officialUser = null) => {
     const feedAt =
@@ -387,9 +404,8 @@ const Home = () => {
       appearedIds.current.clear();
     }
 
-    // If auth is still loading, we already showed cached data above.
-    // Schedule refresh once auth settles.
-    if (authLoading) {
+    // Wait only for session (not full profile) so public feed isn't blocked
+    if (!sessionReady) {
       return () => { cancelled = true; };
     }
 
@@ -468,16 +484,45 @@ const Home = () => {
           .map(mapBlogRow);
 
         const merged = sortByRecency([...posts, ...trailers, ...articles, ...blogsFromTable]);
-        const withLikes = await attachFeedItemLikes(merged, user?.id);
-        const withComments = await attachFeedItemCommentCounts(withLikes);
-        if (cancelled) return;
-        setFeedItems(withComments);
+        // Paint feed ASAP; likes/comments hydrate in parallel then patch
+        setFeedItems((prev) => {
+          const next = mergePreservingOwnRecent(merged, prev, user?.id);
+          setCachedFeed(feedScope, {
+            items: next,
+            offset: posts.length,
+            hasMore: posts.length >= FEED_PAGE_SIZE,
+          });
+          return next;
+        });
         setFeedOffset(posts.length);
         setHasMoreFeed(posts.length >= FEED_PAGE_SIZE);
-        setCachedFeed(feedScope, {
-          items: withComments,
-          offset: posts.length,
-          hasMore: posts.length >= FEED_PAGE_SIZE,
+        setFeedInitialLoading(false);
+
+        const [withLikes, withComments] = await Promise.all([
+          attachFeedItemLikes(merged, user?.id),
+          attachFeedItemCommentCounts(merged),
+        ]);
+        if (cancelled) return;
+        // Merge like + comment fields onto the painted rows
+        const likesById = new Map(withLikes.map((p) => [p.id, p]));
+        const commentsById = new Map(withComments.map((p) => [p.id, p]));
+        const hydrated = merged.map((p) => {
+          const liked = likesById.get(p.id);
+          const commented = commentsById.get(p.id);
+          return {
+            ...p,
+            ...(liked ? { isLiked: liked.isLiked, likes: liked.likes } : {}),
+            ...(commented ? { comments: commented.comments } : {}),
+          };
+        });
+        setFeedItems((prev) => {
+          const next = mergePreservingOwnRecent(hydrated, prev, user?.id);
+          setCachedFeed(feedScope, {
+            items: next,
+            offset: posts.length,
+            hasMore: posts.length >= FEED_PAGE_SIZE,
+          });
+          return next;
         });
         if (shouldSyncLocalLikes(user?.id)) {
           syncLocalFeedLikesToServer(user.id).catch(() => {});
@@ -492,7 +537,7 @@ const Home = () => {
 
     loadFeed();
     return () => { cancelled = true; };
-  }, [authLoading, user?.id, feedScope]);
+  }, [sessionReady, user?.id, feedScope]);
 
   // Instagram-style infinite scroll: fetch the next page of real posts as the
   // sentinel below the feed scrolls into view, rather than a "Load More" button.
@@ -734,16 +779,10 @@ const Home = () => {
   };
 
   const handleComposerPostCreated = (newItem) => {
-    setFeedItems((prev) => [newItem, ...prev]);
-  };
-
-  const handleComposerFeedReload = (reloadItems) => {
     setFeedItems((prev) => {
-      const reloadIds = new Set(reloadItems.map((p) => p.id));
-      // Keep items not in the reload batch (trailers, articles, older posts)
-      const rest = prev.filter((p) => !reloadIds.has(p.id) && !String(p.id).startsWith('local-'));
-      // Merge and re-sort by time to maintain proper chronological order
-      return sortByRecency([...reloadItems, ...rest]);
+      const next = [newItem, ...prev.filter((p) => p.id !== newItem.id)];
+      writeFeedCache(next);
+      return next;
     });
   };
 
@@ -901,7 +940,9 @@ const Home = () => {
       {/* Tab Content */}
       {activeTab === 'watch' ? (
         <div className="pt-[calc(3.5rem+env(safe-area-inset-top,0px))] lg:pt-0">
-          <WatchPage embedded />
+          <Suspense fallback={<div className="min-h-[40vh] flex items-center justify-center"><div className="animate-spin w-8 h-8 border-2 border-[var(--accent-green)] border-t-transparent rounded-full" /></div>}>
+            <WatchPage embedded />
+          </Suspense>
         </div>
       ) : activeTab === 'home' ? (
         <section className="pt-[calc(4rem+env(safe-area-inset-top,0px))] lg:pt-0 px-0 sm:px-8 py-2 sm:py-6">
@@ -932,10 +973,8 @@ const Home = () => {
                   isAuthenticated={isAuthenticated}
                   user={user}
                   profile={profile}
-                  feedScope={feedScope}
                   onRequireSignIn={requireSignIn}
                   onPostCreated={handleComposerPostCreated}
-                  onFeedReload={handleComposerFeedReload}
                 />
 
                 {/* Topics you follow (directors / genres / franchises) — new releases */}
@@ -996,12 +1035,14 @@ const Home = () => {
         </section>
       ) : (
         <section className="pt-[calc(4rem+env(safe-area-inset-top,0px))] lg:pt-0 px-3 sm:px-8 py-4 sm:py-6">
-          <HomeBrowseTab
-            selectedRegion={selectedRegion}
-            onRegionSelect={handleRegionSelect}
-            cmsSections={cmsSections}
-            loadingSections={loadingSections}
-          />
+          <Suspense fallback={<div className="min-h-[40vh] flex items-center justify-center"><div className="animate-spin w-8 h-8 border-2 border-[var(--accent-green)] border-t-transparent rounded-full" /></div>}>
+            <HomeBrowseTab
+              selectedRegion={selectedRegion}
+              onRegionSelect={handleRegionSelect}
+              cmsSections={cmsSections}
+              loadingSections={loadingSections}
+            />
+          </Suspense>
         </section>
       )}
 

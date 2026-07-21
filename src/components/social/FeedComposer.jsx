@@ -6,7 +6,6 @@ import MentionEditor from '../MentionEditor';
 import { getPlainTextLength } from '../../lib/movieMentions';
 import {
   createPost,
-  getFeedPosts,
   uploadPostImage,
   parseMediaCarouselForFeed,
   POST_IMAGE_MAX_BYTES,
@@ -33,10 +32,8 @@ export default function FeedComposer({
   isAuthenticated,
   user,
   profile,
-  feedScope = 'all',
   onRequireSignIn,
   onPostCreated,
-  onFeedReload,
 }) {
   const [postText, setPostText] = useState('');
   const [postImages, setPostImages] = useState([]);
@@ -244,12 +241,6 @@ export default function FeedComposer({
 
       onPostCreated?.(newItem);
       resetComposer();
-
-      getFeedPosts({ limit: 30, userId: user.id, mode: feedScope }).then((reload) => {
-        if (reload.ok && reload.items.length) {
-          onFeedReload?.(reload.items);
-        }
-      });
     } catch (err) {
       setComposerError(err?.message || 'Something went wrong.');
     } finally {

@@ -118,10 +118,21 @@ export const getHomepageSections = async (activeOnly = false, { mergeTv = false 
 
     if (tmdbIdsToFetch.size === 0) return sections;
 
-    const { data: globalMovies, error: libError } = await supabase
-        .from('movies_library')
-        .select(LIBRARY_CARD_SELECT)
-        .in('tmdb_id', Array.from(tmdbIdsToFetch));
+    const ids = Array.from(tmdbIdsToFetch);
+
+    // Library + ratings in parallel so posters aren't blocked on ratings
+    const [libResult, ratingsMap] = await Promise.all([
+        supabase
+            .from('movies_library')
+            .select(LIBRARY_CARD_SELECT)
+            .in('tmdb_id', ids),
+        getBatchMovieRatings(ids).catch((err) => {
+            console.error('Error fetching batch ratings for sections:', err);
+            return new Map();
+        }),
+    ]);
+
+    const { data: globalMovies, error: libError } = libResult;
 
     if (libError) {
         console.error('Error fetching global movies for sections:', libError);
@@ -133,8 +144,6 @@ export const getHomepageSections = async (activeOnly = false, { mergeTv = false 
         movieMap.set(`${m.media_type || 'movie'}:${m.tmdb_id}`, m);
         if (!movieMap.has(`*:${m.tmdb_id}`)) movieMap.set(`*:${m.tmdb_id}`, m);
     });
-
-    const ratingsMap = await getBatchMovieRatings(Array.from(tmdbIdsToFetch));
 
     return sections.map((section) => {
         if (!section.movies_by_region) return section;

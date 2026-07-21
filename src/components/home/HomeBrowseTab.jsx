@@ -224,7 +224,7 @@ export default function HomeBrowseTab({
                     selectedRegion={selectedRegion}
                   />
 
-                  {loadingSections && (
+                  {loadingSections && cmsSections.length === 0 && (
                     <div className="space-y-7 sm:space-y-8">
                       {[1, 2, 3].map((i) => (
                         <div key={i}>
@@ -242,8 +242,9 @@ export default function HomeBrowseTab({
                     </div>
                   )}
 
-                  {!loadingSections &&
-                    visibleSections.map((section) => {
+                  {/* Show cached rails while a background refresh runs */}
+                  {(cmsSections.length > 0 || !loadingSections) &&
+                    visibleSections.map((section, sectionIndex) => {
                       const { movies: regionMovies, isFallback, usedRegion } = getSectionMovies(
                         section,
                         selectedRegion.code,
@@ -299,6 +300,7 @@ export default function HomeBrowseTab({
                                   media_type={movie.media_type || 'movie'}
                                   index={index}
                                   compact={true}
+                                  prioritize={sectionIndex === 0}
                                 />
                               </div>
                             ))}
@@ -307,7 +309,7 @@ export default function HomeBrowseTab({
                       );
                     })}
 
-                  {!loadingSections && visibleSections.length === 0 && (
+                  {!loadingSections && visibleSections.length === 0 && cmsSections.length === 0 && (
                     <div className="text-center py-12 sm:py-16 px-4 sm:px-6">
                       <div className="text-4xl sm:text-5xl mb-3 sm:mb-4">{selectedRegion.flag}</div>
                       <h3 className="text-lg sm:text-xl font-semibold text-white mb-2">

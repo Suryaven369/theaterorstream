@@ -17,6 +17,7 @@ import {
     getUserTasteProfile,
     normalizeUsername,
     getUsernameValidationError,
+    getCollectionBySlug,
 } from '../lib/supabase';
 import {
     uploadAvatarImage,
@@ -28,6 +29,7 @@ import {
     canViewProfile,
 } from '../lib/profileSystem';
 import { getUserBadges, getUserActivityFeed, getUserMovieLogs } from '../lib/movieDiary';
+import { prefetchCollectionPage } from '../lib/pageSessionCache';
 import { getUserBlogPosts } from '../lib/blogs';
 import FollowListModal from '../components/social/FollowListModal';
 import { generateTasteSummary } from '../lib/tasteSummary';
@@ -651,6 +653,18 @@ const ProfilePage = () => {
                                         ],
                                     },
                                 } : undefined}
+                                onMouseEnter={() => {
+                                    const slug = slugifyName(c.name);
+                                    prefetchCollectionPage(slug, user?.id || null, () =>
+                                        getCollectionBySlug(slug, user?.id || null),
+                                    );
+                                }}
+                                onFocus={() => {
+                                    const slug = slugifyName(c.name);
+                                    prefetchCollectionPage(slug, user?.id || null, () =>
+                                        getCollectionBySlug(slug, user?.id || null),
+                                    );
+                                }}
                                 className="flex items-center gap-3 p-3 rounded-xl bg-[#1a1d1f] border border-white/5 hover:border-white/15 transition-colors"
                             >
                                 <div className="flex -space-x-3 shrink-0">

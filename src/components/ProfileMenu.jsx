@@ -7,9 +7,7 @@ import {
     FiFolder,
     FiCompass,
     FiAward,
-    FiMap,
     FiSettings,
-    FiSliders,
     FiLogOut,
     FiChevronRight,
 } from 'react-icons/fi';
@@ -115,20 +113,6 @@ export default function ProfileMenu({ profile, userId, isOnboarded, onClose, onS
                             icon={FiAward}
                             label="Achievements"
                             sublabel={badgeCount != null ? `${badgeCount} unlocked` : undefined}
-                            onClick={close}
-                        />
-                        <MenuRow
-                            to="/taste-map"
-                            icon={FiMap}
-                            label="Taste Map"
-                            sublabel="Your cinematic preferences"
-                            onClick={close}
-                        />
-                        <MenuRow
-                            to="/settings/taste"
-                            icon={FiSliders}
-                            label="Taste Preferences"
-                            sublabel="Genres, moods & languages"
                             onClick={close}
                         />
                         <MenuRow

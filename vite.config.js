@@ -23,5 +23,22 @@ export default defineConfig(({ mode }) => {
         server: {
             proxy,
         },
+        build: {
+            rollupOptions: {
+                output: {
+                    manualChunks(id) {
+                        if (!id.includes('node_modules')) return undefined;
+                        if (id.includes('@supabase')) return 'supabase';
+                        if (id.includes('react-dom') || id.includes('react-router') || id.includes('/react/')) {
+                            return 'react-vendor';
+                        }
+                        if (id.includes('moment')) return 'moment';
+                        if (id.includes('html2canvas') || id.includes('dompurify')) return 'heavy-ui';
+                        if (id.includes('react-icons')) return 'icons';
+                        return undefined;
+                    },
+                },
+            },
+        },
     };
 });

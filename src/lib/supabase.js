@@ -146,6 +146,9 @@ export {
     deleteUserCollection,
     getFranchiseModerationQueue,
     setCollectionModerationStatus,
+    resolveCollectionCoverUrl,
+    getCollectionPosterPaths,
+    fillMissingCollectionPosters,
 } from './db/collections.js';
 
 export {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSelector } from 'react-redux';
 import {
@@ -7,13 +7,24 @@ import {
     getUserCollections,
     createUserCollection,
     deleteUserCollection,
+    getCollectionBySlug,
 } from '../lib/supabase';
 import {
     ensureWatchedInTheaterCollection,
     isTheaterSystemCollection,
 } from '../lib/theaterWatch';
-import { FaFolder, FaPlus, FaLock, FaGlobe, FaChevronRight, FaArrowLeft, FaEllipsisV, FaTrash } from 'react-icons/fa';
+import { FaFolder, FaPlus, FaLock, FaGlobe, FaChevronRight, FaArrowLeft, FaEllipsisH, FaTrash, FaShare, FaEdit } from 'react-icons/fa';
 import ConfirmationModal from '../components/ConfirmationModal';
+import { toPublicStorageUrl } from '../lib/storagePublicUrl';
+import {
+    getPageCache,
+    loadWithPageCache,
+    setPageCache,
+    invalidatePageCache,
+    collectionsListKey,
+    collectionPageKey,
+    prefetchCollectionPage,
+} from '../lib/pageSessionCache';
 
 const createSlug = (text) => {
     const slug = String(text || '')
@@ -25,30 +36,64 @@ const createSlug = (text) => {
     return slug || 'collection';
 };
 
-const MiniPosterCollage = ({ movies, imageURL }) => {
-    const posters = (movies || []).slice(0, 4);
+const collectionPath = (collection) =>
+    `/collection/${collection.slug || createSlug(collection.name) || collection.id}`;
+
+const sortCollections = (list) =>
+    [...(list || [])].sort((a, b) => {
+        if (isTheaterSystemCollection(a)) return -1;
+        if (isTheaterSystemCollection(b)) return 1;
+        return 0;
+    });
+
+const MiniPosterCollage = ({ movies, imageURL, coverImage }) => {
+    const cover = coverImage ? (toPublicStorageUrl(coverImage) || coverImage) : null;
+    if (cover) {
+        return (
+            <div className="w-16 h-16 rounded-xl overflow-hidden bg-black/30 shrink-0">
+                <img src={cover} alt="" className="w-full h-full object-cover" loading="lazy" />
+            </div>
+        );
+    }
+
+    // Auto thumbnail from posters when no custom cover is uploaded
+    const posters = (movies || []).filter((m) => m?.poster_path).slice(0, 4);
 
     if (posters.length === 0) {
         return (
-            <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center border border-white/5">
+            <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center">
                 <FaFolder className="text-2xl text-purple-400" />
             </div>
         );
     }
 
+    if (posters.length === 1) {
+        return (
+            <div className="w-16 h-16 rounded-xl overflow-hidden bg-black/30 shrink-0">
+                <img
+                    src={/^https?:\/\//i.test(posters[0].poster_path)
+                        ? posters[0].poster_path
+                        : `${imageURL || 'https://image.tmdb.org/t/p/w185'}${posters[0].poster_path}`}
+                    alt=""
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                />
+            </div>
+        );
+    }
+
     return (
-        <div className="w-16 h-16 rounded-xl overflow-hidden grid grid-cols-2 gap-0.5 bg-black/30 border border-white/5">
+        <div className="w-16 h-16 rounded-xl overflow-hidden grid grid-cols-2 gap-0 bg-black/30">
             {posters.map((movie, index) => (
                 <div key={movie.movie_id || index} className="relative overflow-hidden">
-                    {movie.poster_path ? (
-                        <img
-                            src={`${imageURL}${movie.poster_path}`}
-                            alt=""
-                            className="w-full h-full object-cover"
-                        />
-                    ) : (
-                        <div className="w-full h-full bg-gray-700" />
-                    )}
+                    <img
+                        src={/^https?:\/\//i.test(movie.poster_path)
+                            ? movie.poster_path
+                            : `${imageURL || 'https://image.tmdb.org/t/p/w185'}${movie.poster_path}`}
+                        alt=""
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                    />
                 </div>
             ))}
             {Array.from({ length: Math.max(0, 4 - posters.length) }).map((_, i) => (
@@ -58,52 +103,124 @@ const MiniPosterCollage = ({ movies, imageURL }) => {
     );
 };
 
-const CollectionCardMenu = ({ collection, onDelete }) => {
+/** Overflow menu on every list card (Share / Edit / Add / Delete). */
+const CollectionCardMenu = ({ collection, onDelete, onShareCopied }) => {
+    const navigate = useNavigate();
     const [open, setOpen] = useState(false);
     const menuRef = useRef(null);
+    const isTheater = isTheaterSystemCollection(collection);
+    const path = collectionPath(collection);
+    const shareUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}${path}`;
 
     useEffect(() => {
         if (!open) return undefined;
         const onDoc = (e) => {
             if (menuRef.current && !menuRef.current.contains(e.target)) setOpen(false);
         };
+        const onKey = (e) => {
+            if (e.key === 'Escape') setOpen(false);
+        };
         document.addEventListener('mousedown', onDoc);
-        return () => document.removeEventListener('mousedown', onDoc);
+        document.addEventListener('keydown', onKey);
+        return () => {
+            document.removeEventListener('mousedown', onDoc);
+            document.removeEventListener('keydown', onKey);
+        };
     }, [open]);
 
-    if (isTheaterSystemCollection(collection)) return null;
+    const go = (state) => {
+        setOpen(false);
+        navigate(path, { state });
+    };
+
+    const handleShare = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setOpen(false);
+        try {
+            await navigator.clipboard.writeText(shareUrl);
+            onShareCopied?.();
+        } catch {
+            window.prompt('Copy link:', shareUrl);
+        }
+    };
 
     return (
-        <div className="absolute top-3 right-3 z-20" ref={menuRef}>
+        <div className="absolute top-2.5 right-2.5 z-20" ref={menuRef}>
             <button
                 type="button"
                 aria-label="Collection options"
+                aria-expanded={open}
+                aria-haspopup="menu"
                 onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     setOpen((v) => !v);
                 }}
-                className="w-9 h-9 rounded-full flex items-center justify-center bg-black/50 border border-white/15 text-white hover:bg-white/15 transition-colors shadow-lg"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-colors"
             >
-                <FaEllipsisV className="text-xs" />
+                <FaEllipsisH className="text-sm" />
             </button>
             {open && (
                 <div
-                    className="absolute right-0 top-11 z-30 min-w-[150px] rounded-xl border border-white/10 bg-[#1f1f1f] shadow-2xl py-1 overflow-hidden"
+                    role="menu"
+                    className="absolute right-0 top-9 z-30 min-w-[168px] rounded-xl border border-white/10 bg-[#1c1f22] shadow-2xl py-1 overflow-hidden"
                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
                 >
+                    {collection.is_public && (
+                        <button
+                            type="button"
+                            role="menuitem"
+                            onClick={handleShare}
+                            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-white/75 hover:bg-white/10 hover:text-white transition-colors"
+                        >
+                            <FaShare className="text-[11px] opacity-70" /> Share
+                        </button>
+                    )}
                     <button
                         type="button"
+                        role="menuitem"
                         onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            setOpen(false);
-                            onDelete(collection);
+                            go({ openEdit: true });
                         }}
-                        className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+                        className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-white/75 hover:bg-white/10 hover:text-white transition-colors"
                     >
-                        <FaTrash className="text-xs" /> Delete collection
+                        <FaEdit className="text-[11px] opacity-70" /> Edit
                     </button>
+                    {!isTheater && (
+                        <button
+                            type="button"
+                            role="menuitem"
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                go({ openAdd: true });
+                            }}
+                            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-white/75 hover:bg-white/10 hover:text-white transition-colors"
+                        >
+                            <FaPlus className="text-[11px] opacity-70" /> Add titles
+                        </button>
+                    )}
+                    {!isTheater && (
+                        <>
+                            <div className="my-1 border-t border-white/10" />
+                            <button
+                                type="button"
+                                role="menuitem"
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setOpen(false);
+                                    onDelete(collection);
+                                }}
+                                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+                            >
+                                <FaTrash className="text-[11px]" /> Delete
+                            </button>
+                        </>
+                    )}
                 </div>
             )}
         </div>
@@ -135,10 +252,10 @@ const CollectionsPage = () => {
     }, [username, currentUserProfile, user]);
 
     const loadData = async () => {
-        setLoading(true);
         let targetProfile = null;
 
         if (isOwnProfile) {
+            if (!currentUserProfile && authLoading) return;
             targetProfile = currentUserProfile;
         } else {
             targetProfile = await getProfileByUsername(username);
@@ -146,49 +263,107 @@ const CollectionsPage = () => {
 
         setViewedProfile(targetProfile);
 
-        if (targetProfile?.id) {
-            if (isOwnProfile && user?.id) {
-                await ensureWatchedInTheaterCollection(user.id);
-            }
-            const userCollections = await getUserCollections(targetProfile.id);
-            const sorted = [...(userCollections || [])].sort((a, b) => {
-                if (isTheaterSystemCollection(a)) return -1;
-                if (isTheaterSystemCollection(b)) return 1;
-                return 0;
-            });
-            if (isOwnProfile) {
-                setCollections(sorted);
-            } else {
-                setCollections(sorted.filter((c) => c.is_public));
-            }
+        if (!targetProfile?.id) {
+            setCollections([]);
+            setLoading(false);
+            return;
         }
-        setLoading(false);
+
+        const key = collectionsListKey(targetProfile.id, isOwnProfile);
+        const cached = getPageCache(key);
+        if (cached) {
+            setCollections(cached);
+            setLoading(false);
+        } else {
+            setLoading(true);
+        }
+
+        try {
+            await loadWithPageCache({
+                key,
+                fetcher: async () => {
+                    if (isOwnProfile && user?.id) {
+                        await ensureWatchedInTheaterCollection(user.id);
+                    }
+                    const userCollections = await getUserCollections(targetProfile.id);
+                    const sorted = sortCollections(userCollections);
+                    return isOwnProfile ? sorted : sorted.filter((c) => c.is_public);
+                },
+                onCached: (data) => {
+                    setCollections(data || []);
+                    setLoading(false);
+                },
+                onFresh: (data) => {
+                    setCollections(data || []);
+                    setLoading(false);
+                },
+            });
+        } catch (error) {
+            console.error('Error loading collections:', error);
+            if (!cached) setCollections([]);
+            setLoading(false);
+        }
+    };
+
+    const syncListCache = (next) => {
+        setCollections(next);
+        if (viewedProfile?.id) {
+            setPageCache(collectionsListKey(viewedProfile.id, isOwnProfile), next);
+        }
+    };
+
+    const prefetchCollection = (collection) => {
+        const slug = collection.slug || createSlug(collection.name) || collection.id;
+        if (!slug) return;
+        prefetchCollectionPage(slug, user?.id || null, () =>
+            getCollectionBySlug(slug, user?.id || null),
+        );
     };
 
     const handleCreateCollection = async () => {
         if (!newCollectionName.trim() || !user?.id) return;
 
+        const createdName = newCollectionName.trim();
+        const wantFranchise = tagFranchise;
+        const wantPublic = isPublicCollection;
+
         setCreatingCollection(true);
         const result = await createUserCollection(
             user.id,
-            newCollectionName.trim(),
+            createdName,
             '',
-            isPublicCollection,
-            { tags: tagFranchise ? ['franchise'] : [] },
+            wantPublic,
+            { tags: wantFranchise ? ['franchise'] : [] },
         );
 
-        if (result.success) {
-            setCollections((prev) => [result.data, ...prev]);
+        if (result.success && result.data) {
+            const created = {
+                ...result.data,
+                name: result.data.name || createdName,
+                collection_movies: result.data.collection_movies || [],
+            };
+            syncListCache(sortCollections([
+                created,
+                ...collections.filter((c) => c.id !== created.id),
+            ]));
             setNewCollectionName('');
             setIsPublicCollection(false);
             setTagFranchise(false);
             setShowCreateCollection(false);
             setSuccess(
-                tagFranchise
+                wantFranchise
                     ? 'Collection posted! It will show on Explore → Franchise after admin approval.'
                     : 'Collection created!',
             );
             setTimeout(() => setSuccess(''), 4000);
+
+            getUserCollections(user.id).then((fresh) => {
+                if (!fresh) return;
+                const sorted = sortCollections(fresh);
+                syncListCache(sorted);
+            }).catch(() => {});
+        } else {
+            alert(result.error?.message || 'Could not create collection');
         }
         setCreatingCollection(false);
     };
@@ -199,7 +374,9 @@ const CollectionsPage = () => {
         const result = await deleteUserCollection(toDelete.id, user.id);
         setDeleting(false);
         if (result.success) {
-            setCollections((prev) => prev.filter((c) => c.id !== toDelete.id));
+            const slug = toDelete.slug || createSlug(toDelete.name) || toDelete.id;
+            invalidatePageCache(collectionPageKey(slug, user?.id || null));
+            syncListCache(collections.filter((c) => c.id !== toDelete.id));
             setSuccess('Collection deleted');
             setTimeout(() => setSuccess(''), 3000);
             setToDelete(null);
@@ -208,7 +385,7 @@ const CollectionsPage = () => {
         }
     };
 
-    if (authLoading || loading) {
+    if (loading && collections.length === 0) {
         return (
             <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
                 <div className="animate-spin w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full" />
@@ -353,6 +530,10 @@ const CollectionsPage = () => {
                                     <CollectionCardMenu
                                         collection={collection}
                                         onDelete={setToDelete}
+                                        onShareCopied={() => {
+                                            setSuccess('Link copied');
+                                            setTimeout(() => setSuccess(''), 2000);
+                                        }}
                                     />
                                 )}
                                 <Link
@@ -367,10 +548,16 @@ const CollectionsPage = () => {
                                             ],
                                         },
                                     } : undefined}
+                                    onMouseEnter={() => prefetchCollection(collection)}
+                                    onFocus={() => prefetchCollection(collection)}
                                     className="flex items-center gap-3 sm:gap-4 min-w-0 w-full"
                                 >
                                     <div className="shrink-0">
-                                        <MiniPosterCollage movies={collection.collection_movies} imageURL={imageURL} />
+                                        <MiniPosterCollage
+                                            movies={collection.collection_movies}
+                                            imageURL={imageURL}
+                                            coverImage={collection.cover_image}
+                                        />
                                     </div>
                                     <div className="min-w-0 flex-1 overflow-hidden pr-1">
                                         <h3 className="text-base sm:text-lg font-bold text-white group-hover:text-purple-400 transition-colors mb-1 min-w-0">

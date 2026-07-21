@@ -1,5 +1,6 @@
 import { supabase } from '../supabaseClient.js';
 import { normalizeProfileMediaUrls } from '../storagePublicUrl.js';
+import { fillMissingCollectionPosters } from './collections.js';
 
 // =============================================
 // USER FOLLOWS
@@ -292,10 +293,10 @@ export const getRecentPublicCollections = async (limit = 6, options = {}) => {
         }
     }
 
-    return data.map((c) => {
+    return fillMissingCollectionPosters(data.map((c) => {
         const embedded = usedEmbed ? (c.collection_movies || []) : null;
         const movies = embedded
-            ? [...embedded].slice(0, 4)
+            ? [...embedded].slice(0, 8)
             : (moviesByCollection.get(c.id) || []);
         const movieCount = embedded
             ? embedded.length
@@ -315,7 +316,7 @@ export const getRecentPublicCollections = async (limit = 6, options = {}) => {
             movie_count: movieCount,
             owner: profileMap.get(c.user_id) || null,
         };
-    });
+    }));
 };
 
 // Get profile by username (case-insensitive — URLs / search casing may differ)

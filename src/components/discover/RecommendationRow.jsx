@@ -72,13 +72,22 @@ export default function RecommendationRow({
 
 function RowHeading({ heading, subtitle, icon, accent }) {
     return (
-        <div className="mb-1.5 flex items-baseline justify-between gap-2 sm:mb-2.5 sm:flex-row sm:gap-2.5">
+        <div className="mb-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 sm:mb-2.5">
             <h2 className="flex min-w-0 items-center gap-1.5 text-[15px] font-bold tracking-tight text-white sm:gap-2 sm:text-xl">
-                {icon && <span className="shrink-0 text-[13px] sm:text-base" style={accent ? { color: accent } : undefined}>{icon}</span>}
+                {icon && (
+                    <span
+                        className="shrink-0 text-[13px] sm:text-base"
+                        style={accent ? { color: accent } : undefined}
+                    >
+                        {icon}
+                    </span>
+                )}
                 <span className="truncate">{heading}</span>
             </h2>
             {subtitle && (
-                <span className="shrink-0 text-[10px] text-white/40 sm:text-xs">{subtitle}</span>
+                <span className="text-[10px] leading-none text-white/45 sm:text-xs">
+                    {subtitle}
+                </span>
             )}
         </div>
     );

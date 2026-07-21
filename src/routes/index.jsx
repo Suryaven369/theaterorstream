@@ -6,57 +6,57 @@ import ProtectedRoute from "../components/ProtectedRoute";
 import RequireAuth from "../components/RequireAuth";
 import GuestRoute from "../components/GuestRoute";
 import NotFound from "../components/NotFound";
+import { lazyPage } from "./lazyPage";
 
-// views
+// Eager: landing + auth (first paint)
 import Home from "../views/Home";
-import Explore from "../views/Explore";
-import Details from "../views/Details";
-import Search from "../views/Search";
-import CategoryBrowsePage from "../views/CategoryBrowsePage";
-import UpcomingPage from "../views/upcoming";
-import AdminPanel from "../views/AdminPanel";
 import AuthPage from "../views/AuthPage";
-import ProfilePage from "../views/ProfilePage";
-import WatchlistPage from "../views/WatchlistPage";
-import CollectionDetails from "../views/CollectionDetails";
-import CollectionsPage from "../views/CollectionsPage";
-import BoardsExplorePage from "../views/BoardsExplorePage";
-import BoardDetailsPage from "../views/BoardDetailsPage";
-import UserBoardsPage from "../views/UserBoardsPage";
-import BlogsPage from "../views/BlogsPage";
-import BlogDetails from "../views/BlogDetails";
-import PostDetails from "../views/PostDetails";
-import ThreadPage from "../views/ThreadPage";
-import WatchedMoviesPage from "../views/WatchedMoviesPage";
-import ActivityFeedPage from "../views/ActivityFeedPage";
-import DiaryPage from "../views/DiaryPage";
-import FeedPage from "../views/FeedPage";
-import WatchPage from "../views/WatchPage";
-import TasteSettingsPage from "../views/TasteSettingsPage";
-import TasteMapPage from "../views/TasteMapPage";
-import SettingsPage from "../views/SettingsPage";
-import AchievementsPage from "../views/AchievementsPage";
 
-import HashtagPage from "../views/HashtagPage";
-import TagsDiscoverPage from "../views/TagsDiscoverPage";
-import ParentGuideBrowsePage from "../views/ParentGuideBrowsePage";
-import AdminSectionsPage from "../views/admin/AdminSectionsPage";
-import AdminTrailersPage from "../views/admin/AdminTrailersPage";
-import AdminArticlesPage from "../views/admin/AdminArticlesPage";
-import AdminNewsIntelPage from "../views/admin/AdminNewsIntelPage";
-import AdminCollectionsPage from "../views/admin/AdminCollectionsPage";
-import AdminFranchiseListsPage from "../views/admin/AdminFranchiseListsPage";
-import AdminSettingsPage from "../views/admin/AdminSettingsPage";
-import AdminProfileConnectPage from "../views/admin/AdminProfileConnectPage";
-import AdminControlTowerPage from "../views/admin/AdminControlTowerPage";
-import AdminDashboardPage from "../views/admin/AdminDashboardPage";
-import ResetPasswordPage from "../views/ResetPasswordPage";
-import {
-  AboutPage,
-  PrivacyPage,
-  TermsPage,
-  AttributionsPage,
-} from "../views/LegalPages";
+// Lazy: everything else — smaller mobile JS parse on /
+const Explore = lazyPage(() => import("../views/Explore"));
+const Details = lazyPage(() => import("../views/Details"));
+const Search = lazyPage(() => import("../views/Search"));
+const CategoryBrowsePage = lazyPage(() => import("../views/CategoryBrowsePage"));
+const UpcomingPage = lazyPage(() => import("../views/upcoming"));
+const AdminPanel = lazyPage(() => import("../views/AdminPanel"));
+const ProfilePage = lazyPage(() => import("../views/ProfilePage"));
+const WatchlistPage = lazyPage(() => import("../views/WatchlistPage"));
+const CollectionDetails = lazyPage(() => import("../views/CollectionDetails"));
+const CollectionsPage = lazyPage(() => import("../views/CollectionsPage"));
+const BoardsExplorePage = lazyPage(() => import("../views/BoardsExplorePage"));
+const BoardDetailsPage = lazyPage(() => import("../views/BoardDetailsPage"));
+const UserBoardsPage = lazyPage(() => import("../views/UserBoardsPage"));
+const BlogsPage = lazyPage(() => import("../views/BlogsPage"));
+const BlogDetails = lazyPage(() => import("../views/BlogDetails"));
+const PostDetails = lazyPage(() => import("../views/PostDetails"));
+const ThreadPage = lazyPage(() => import("../views/ThreadPage"));
+const WatchedMoviesPage = lazyPage(() => import("../views/WatchedMoviesPage"));
+const ActivityFeedPage = lazyPage(() => import("../views/ActivityFeedPage"));
+const DiaryPage = lazyPage(() => import("../views/DiaryPage"));
+const FeedPage = lazyPage(() => import("../views/FeedPage"));
+const WatchPage = lazyPage(() => import("../views/WatchPage"));
+const TasteSettingsPage = lazyPage(() => import("../views/TasteSettingsPage"));
+const TasteMapPage = lazyPage(() => import("../views/TasteMapPage"));
+const SettingsPage = lazyPage(() => import("../views/SettingsPage"));
+const AchievementsPage = lazyPage(() => import("../views/AchievementsPage"));
+const HashtagPage = lazyPage(() => import("../views/HashtagPage"));
+const TagsDiscoverPage = lazyPage(() => import("../views/TagsDiscoverPage"));
+const ParentGuideBrowsePage = lazyPage(() => import("../views/ParentGuideBrowsePage"));
+const AdminSectionsPage = lazyPage(() => import("../views/admin/AdminSectionsPage"));
+const AdminTrailersPage = lazyPage(() => import("../views/admin/AdminTrailersPage"));
+const AdminArticlesPage = lazyPage(() => import("../views/admin/AdminArticlesPage"));
+const AdminNewsIntelPage = lazyPage(() => import("../views/admin/AdminNewsIntelPage"));
+const AdminCollectionsPage = lazyPage(() => import("../views/admin/AdminCollectionsPage"));
+const AdminFranchiseListsPage = lazyPage(() => import("../views/admin/AdminFranchiseListsPage"));
+const AdminSettingsPage = lazyPage(() => import("../views/admin/AdminSettingsPage"));
+const AdminProfileConnectPage = lazyPage(() => import("../views/admin/AdminProfileConnectPage"));
+const AdminControlTowerPage = lazyPage(() => import("../views/admin/AdminControlTowerPage"));
+const AdminDashboardPage = lazyPage(() => import("../views/admin/AdminDashboardPage"));
+const ResetPasswordPage = lazyPage(() => import("../views/ResetPasswordPage"));
+const AboutPage = lazyPage(() => import("../views/LegalPages").then((m) => ({ default: m.AboutPage })));
+const PrivacyPage = lazyPage(() => import("../views/LegalPages").then((m) => ({ default: m.PrivacyPage })));
+const TermsPage = lazyPage(() => import("../views/LegalPages").then((m) => ({ default: m.TermsPage })));
+const AttributionsPage = lazyPage(() => import("../views/LegalPages").then((m) => ({ default: m.AttributionsPage })));
 
 const router = createBrowserRouter([
   {

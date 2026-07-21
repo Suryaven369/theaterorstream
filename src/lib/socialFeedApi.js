@@ -487,7 +487,7 @@ function mapFeedPostRow(post, { author, isLiked = false, isSaved = false, userPo
         time: formatTimeAgo(post.created_at),
         createdAt: post.created_at,
         publishedAt: post.created_at,
-        hasImage: !!post.has_image || mediaItems.length > 0 || !!primaryImage,
+        hasImage: !!post.has_image || mediaItems.length > 0 || !!primaryImage || !!(post.movie_poster && post.post_type === 'log'),
         isLiked,
         isSaved,
         user: {
@@ -516,14 +516,14 @@ function posterPathToUrl(path) {
     if (!path) return null;
     if (/^https?:\/\//i.test(path)) return path;
     const p = String(path).startsWith('/') ? path : `/${path}`;
-    return `https://image.tmdb.org/t/p/w780${p}`;
+    return `https://image.tmdb.org/t/p/w342${p}`;
 }
 
 function coverFromCollectionRow(collection, posters = []) {
     const cover = collection?.cover_image || collection?.banner_image || null;
     if (cover) {
         if (/^https?:\/\//i.test(cover)) return cover;
-        if (String(cover).startsWith('/')) return `https://image.tmdb.org/t/p/w780${cover}`;
+        if (String(cover).startsWith('/')) return `https://image.tmdb.org/t/p/w342${cover}`;
         return cover;
     }
     const first = posters.find(Boolean) || (collection?.collection_movies || [])
