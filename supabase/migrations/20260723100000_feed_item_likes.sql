@@ -35,6 +35,7 @@ CREATE POLICY "Users delete own feed item likes" ON public.feed_item_likes
   USING (auth.uid() IS NOT NULL AND auth.uid() = user_id);
 
 GRANT SELECT ON public.feed_item_likes TO anon, authenticated;
+GRANT SELECT, INSERT, DELETE ON public.feed_item_likes TO service_role;
 GRANT INSERT, DELETE ON public.feed_item_likes TO authenticated;
 
 COMMENT ON TABLE public.feed_item_likes IS

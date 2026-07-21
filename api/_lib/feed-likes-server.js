@@ -24,13 +24,15 @@ export async function toggleFeedLikeForUser(userId, { kind, id, currentlyLiked }
                 .delete()
                 .eq('post_id', subjectId)
                 .eq('user_id', userId);
-            if (error) throw error;
+            if (error) throw new Error(error.message || 'Failed to remove post upvote');
             return { liked: false };
         }
         const { error } = await supabase
             .from('post_likes')
             .insert({ post_id: subjectId, user_id: userId });
-        if (error && error.code !== '23505') throw error;
+        if (error && error.code !== '23505') {
+            throw new Error(error.message || 'Failed to save post upvote');
+        }
         return { liked: true };
     }
 
@@ -53,7 +55,9 @@ export async function toggleFeedLikeForUser(userId, { kind, id, currentlyLiked }
                     .eq('subject_id', subjectId);
             }
             const { error } = await query;
-            if (error) throw error;
+            if (error) {
+                throw new Error(error.message || error.details || 'Failed to remove upvote');
+            }
             return { liked: false };
         }
 
@@ -65,10 +69,13 @@ export async function toggleFeedLikeForUser(userId, { kind, id, currentlyLiked }
                 user_id: userId,
             });
         if (error && error.code !== '23505') {
-            if (/feed_item_likes/i.test(error.message || '')) {
-                throw new Error('Run feed_item_likes migration in Supabase SQL Editor');
+            const msg = error.message || error.details || '';
+            if (/feed_item_likes/i.test(msg) || error.code === '42P01') {
+                throw new Error(
+                    'Missing feed_item_likes table — run supabase/migrations/20260723100000_feed_item_likes.sql in Supabase SQL Editor',
+                );
             }
-            throw error;
+            throw new Error(msg || 'Failed to save upvote');
         }
 
         const { data: row, error: readErr } = await supabase

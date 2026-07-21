@@ -161,6 +161,14 @@ export default async function handler(req, res) {
         });
     } catch (error) {
         console.error('social handler failed:', action, error);
-        return res.status(500).json({ error: error.message || 'Social request failed' });
+        const message = error?.message
+            || error?.error_description
+            || (typeof error === 'string' ? error : 'Social request failed');
+        return res.status(500).json({
+            error: message,
+            code: error?.code || undefined,
+            details: error?.details || undefined,
+            hint: error?.hint || undefined,
+        });
     }
 }

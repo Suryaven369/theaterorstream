@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { likePost, unlikePost } from './socialFeedApi';
+import { resolveApiBase } from './apiBase';
 
 /** Session cache for "my likes" — avoids re-fetching the full like history on every page. */
 const MY_LIKES_TTL_MS = 60_000;
@@ -116,12 +117,6 @@ export function setLocalFeedLike(userId, subject, liked) {
         else delete user[key];
         writeJsonMap(userLikesKey(userId), user);
     }
-}
-
-function resolveApiBase() {
-    const configured = import.meta.env.VITE_API_BASE_URL;
-    if (configured) return configured.replace(/\/$/, '');
-    return '';
 }
 
 async function getAccessToken() {

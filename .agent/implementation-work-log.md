@@ -2,7 +2,19 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 2026 · HEAD `528805a` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 2026 · HEAD `PENDING` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Jul 22, 2026 — feed-upvote 500 diagnostics
+
+### Clearer upvote errors + migration grant ✅
+
+**Problem:** After adding `SUPABASE_SERVICE_ROLE_KEY`, console still flooded with `/api/social/feed-upvote` 500s (Home sync of local likes).
+
+**Notes:** Env vars only apply after a **Redeploy**. Likely remaining cause is missing `feed_item_likes` table (migration not run in Supabase).
+
+**Files changed:** social handler error payload, feed-likes-server messages, feedLikes shared apiBase, migration GRANT to service_role.
 
 ---
 
