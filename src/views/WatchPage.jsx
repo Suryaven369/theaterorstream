@@ -287,11 +287,14 @@ export default function WatchPage({ embedded = false }) {
         }
 
         const hit = getWatchSessionCache(userId)?.moodRow;
+        // Never reuse an empty mood cache — that locked users on "No titles on that OTT"
+        // after a failed/partial fetch even when the API later returned picks.
         if (
             hit?.mood === activeMood
             && (hit.ott ?? '') === moodOtt
             && hit.loading === false
             && Array.isArray(hit.items)
+            && hit.items.length > 0
         ) {
             setMoodRow(hit);
             return undefined;
@@ -318,13 +321,23 @@ export default function WatchPage({ embedded = false }) {
                 loading: false,
                 mood: activeMood,
                 ott: moodOtt,
+                error: r.error || null,
             };
             setMoodRow(row);
-            setWatchSessionCache(userId, {
-                activeMood,
-                moodOtt,
-                moodRow: row,
-            });
+            // Only persist successful non-empty rows so empties can retry next visit.
+            if (row.items.length > 0) {
+                setWatchSessionCache(userId, {
+                    activeMood,
+                    moodOtt,
+                    moodRow: row,
+                });
+            } else {
+                setWatchSessionCache(userId, {
+                    activeMood,
+                    moodOtt,
+                    moodRow: null,
+                });
+            }
         });
 
         return () => { alive = false; };

@@ -721,12 +721,13 @@ function applyHardFilters(movies, context, filters) {
         maxRuntime = null,
         familyOnly = false,
         minFamilyScore = null,
+        ignoreSeen = false,
     } = filters;
 
     return movies.filter((movie) => {
         // Never recommend something the user has already seen (watched/logged/rated).
-        // Always on, regardless of which filters get relaxed.
-        if (context.seenIds?.has(String(movie.tmdb_id))) return false;
+        // Mood+OTT browse can opt out — otherwise popular Prime catalogs go empty.
+        if (!ignoreSeen && context.seenIds?.has(String(movie.tmdb_id))) return false;
 
         // Explicit dislikes / repeated ignores — hard exclude.
         if (context.suppressTmdbIds?.has(String(movie.tmdb_id))) return false;
@@ -1522,6 +1523,7 @@ async function fetchMoodPoolFromTmdb(config, {
     const withGenres = (config.requireGenres?.length
         ? config.requireGenres
         : config.genres).join('|');
+    const hasProvider = providerId != null && Number(providerId) > 0;
 
     for (let page = 1; page <= pages; page += 1) {
         let data;
@@ -1529,14 +1531,17 @@ async function fetchMoodPoolFromTmdb(config, {
             const params = {
                 with_genres: withGenres,
                 sort_by: 'popularity.desc',
-                'vote_count.gte': '80',
+                // Provider catalogs (esp. regional) are thinner — don't demand 80 votes.
+                'vote_count.gte': hasProvider ? '20' : '80',
                 include_adult: 'false',
                 page: String(page),
             };
-            if (config.withoutGenres?.length) {
+            // When scoping to an OTT, skip without_genres on discover so Prime/Netflix
+            // action/thriller catalogs aren't wiped by secondary genre tags.
+            if (!hasProvider && config.withoutGenres?.length) {
                 params.without_genres = config.withoutGenres.join(',');
             }
-            if (providerId) {
+            if (hasProvider) {
                 params.with_watch_providers = String(providerId);
                 params.watch_region = watchRegion || 'IN';
                 params.with_watch_monetization_types = 'flatrate|free|ads';
@@ -1564,7 +1569,9 @@ async function fetchMoodPoolFromTmdb(config, {
                 popularity: m.popularity ?? 0,
                 genre_ids: ids,
                 genres: ids.map((gid) => ({ id: gid })),
-                streaming_platforms: [],
+                streaming_platforms: hasProvider
+                    ? [{ provider_id: Number(providerId), name: 'Watch provider' }]
+                    : [],
                 certification: null,
                 custom_parent_guide: null,
                 mood_tags: [],
@@ -1572,8 +1579,17 @@ async function fetchMoodPoolFromTmdb(config, {
                 family_score: null,
                 movie_dna: {},
                 overview: m.overview || null,
+                _fromProviderDiscover: hasProvider,
             };
-            if (!movieMatchesMoodGenres(card, config)) return;
+            // Provider discover: require primary mood genre only (skip withoutGenres).
+            if (hasProvider) {
+                const allowed = config.requireGenres?.length
+                    ? config.requireGenres
+                    : (config.genres || []);
+                if (allowed.length && !ids.some((id) => allowed.includes(id))) return;
+            } else if (!movieMatchesMoodGenres(card, config)) {
+                return;
+            }
             out.push(card);
         });
         if (page >= (data?.total_pages || 1)) break;
@@ -1637,8 +1653,8 @@ export async function getMoodRecommendations(userId, moodId, options = {}) {
     const useMyOtt = !hasProvider && options.ottMode === true;
     const watchRegion = options.watchRegion || options.region || 'IN';
     const ottKey = hasProvider ? `p${providerId}` : (useMyOtt ? 'my' : 'any');
-    // v4: trust provider-scoped TMDB hits; movie+tv when OTT selected
-    const cacheKey = `mood_v4_${moodId}_${ottKey}`;
+    // v5: OTT mood browse — broader TMDB pool, don't cache-kill empties client-side
+    const cacheKey = `mood_v5_${moodId}_${ottKey}`;
     const limit = Math.min(24, Math.max(1, Number(options.limit) || 12));
 
     if (!options.refresh) {
@@ -1681,6 +1697,7 @@ export async function getMoodRecommendations(userId, moodId, options = {}) {
         fetchMoodPoolFromLibrary(supabase, config, { limit: 240 }),
     ]);
     const tmdbPool = tmdbParts.flat();
+    const discoverIds = new Set(tmdbPool.map((m) => String(m.tmdb_id)));
 
     let pool = mergeMoodPools(tmdbPool, libPool);
 
@@ -1691,26 +1708,37 @@ export async function getMoodRecommendations(userId, moodId, options = {}) {
             .select('tmdb_id, movie_dna, streaming_platforms, mood_tags, custom_vibes, family_score, certification, custom_parent_guide, runtime, genre_ids, genres')
             .in('tmdb_id', ids);
         const byId = new Map((libRows || []).map((r) => [String(r.tmdb_id), r]));
-        const tmdbDiscoverIds = new Set(tmdbPool.map((m) => String(m.tmdb_id)));
         pool = pool.map((m) => {
             const lib = byId.get(String(m.tmdb_id));
-            if (!lib) return m;
+            const fromDiscover = discoverIds.has(String(m.tmdb_id));
+            if (!lib) return { ...m, _fromProviderDiscover: fromDiscover && hasProvider };
             const merged = {
                 ...m,
                 ...Object.fromEntries(Object.entries(lib).filter(([, v]) => v != null)),
-                genre_ids: m.genre_ids?.length ? m.genre_ids : lib.genre_ids,
-                genres: m.genres?.length ? m.genres : lib.genres,
+                // Keep TMDB discover genres for provider hits — library tags often
+                // add secondary genres that falsely fail withoutGenres checks.
+                genre_ids: fromDiscover && m.genre_ids?.length ? m.genre_ids : (m.genre_ids?.length ? m.genre_ids : lib.genre_ids),
+                genres: fromDiscover && m.genres?.length ? m.genres : (m.genres?.length ? m.genres : lib.genres),
+                _fromProviderDiscover: fromDiscover && hasProvider,
             };
-            // Keep a marker so OTT filtering can trust provider-scoped TMDB hits
-            // even when library streaming_platforms is stale / incomplete.
-            if (tmdbDiscoverIds.has(String(m.tmdb_id))) {
-                merged._fromProviderDiscover = hasProvider;
-            }
+            // Prefer discover provider stamp over empty/stale library platforms.
+                if (fromDiscover && hasProvider) {
+                    const plats = merged.streaming_platforms;
+                    if (!Array.isArray(plats) || !plats.length || !movieOnTmdbProviders(merged, [providerId])) {
+                        const alias = (TMDB_PROVIDER_ALIASES[providerId] || [])[0] || 'streaming';
+                        merged.streaming_platforms = [
+                            { provider_id: providerId, name: alias },
+                            ...(Array.isArray(plats) ? plats : []),
+                        ];
+                    }
+                }
             return merged;
         });
     }
 
     pool = pool.filter((m) => {
+        // Provider-scoped TMDB hits already matched the mood genre at discover time.
+        if (discoverIds.has(String(m.tmdb_id))) return true;
         const tagHit = (config.tags || []).some((t) => (m.mood_tags || []).includes(t));
         if (movieMatchesMoodGenres(m, config)) return true;
         if (!tagHit) return false;
@@ -1720,30 +1748,36 @@ export async function getMoodRecommendations(userId, moodId, options = {}) {
     });
 
     // Hard OTT gate: specific provider, or user's linked services ("My OTTs").
-    // TMDB discover is already scoped by provider — always keep those titles.
-    // Library-only rows must match provider via streaming_platforms.
     if (hasProvider) {
-        const before = pool.length;
-        const tmdbIds = new Set(tmdbPool.map((m) => String(m.tmdb_id)));
         pool = pool.filter((m) => {
-            if (tmdbIds.has(String(m.tmdb_id)) || m._fromProviderDiscover) return true;
+            if (discoverIds.has(String(m.tmdb_id)) || m._fromProviderDiscover) return true;
             return movieOnTmdbProviders(m, [providerId]);
         });
         if (!pool.length && tmdbPool.length) {
-            pool = tmdbPool.filter((m) => movieMatchesMoodGenres(m, config));
+            pool = [...tmdbPool];
         }
     }
 
+    // Mood + specific OTT is a catalog browse: don't empty the rail because the
+    // user already watched popular Prime action titles.
     const { items: candidates } = applyFiltersWithFallback(pool, context, {
         requireOtt: useMyOtt,
-        excludeRated: options.excludeRated !== false,
+        excludeRated: hasProvider ? false : options.excludeRated !== false,
         familyOnly: moodId === 'family_night',
-    }, Math.min(limit, 8));
+        ignoreSeen: hasProvider,
+    }, hasProvider ? 1 : Math.min(limit, 8));
 
-    const maxPop = candidates.length
-        ? Math.max(...candidates.map((m) => Number(m.popularity) || 0), 1)
+    let finalCandidates = candidates;
+    if (!finalCandidates.length && tmdbPool.length) {
+        finalCandidates = tmdbPool.filter(
+            (m) => !context.suppressTmdbIds?.has(String(m.tmdb_id)),
+        );
+    }
+
+    const maxPop = finalCandidates.length
+        ? Math.max(...finalCandidates.map((m) => Number(m.popularity) || 0), 1)
         : 1;
-    const scored = candidates.map((movie) => {
+    const scored = finalCandidates.map((movie) => {
         const fitness = moodFitnessScore(config, movie);
         const taste = genreMatchScore(context.profile?.genre_weights, movie);
         const pop = popularityScore(movie.popularity, maxPop);
@@ -1776,14 +1810,17 @@ export async function getMoodRecommendations(userId, moodId, options = {}) {
         items,
         meta: {
             count: items.length,
-            candidatePool: candidates.length,
+            candidatePool: finalCandidates.length,
             moodFirst: true,
             ott: ottKey,
             providerId: hasProvider ? providerId : null,
+            tmdbPool: tmdbPool.length,
         },
     };
 
-    await writeCache(supabase, userId, cacheKey, payload);
+    if (items.length) {
+        await writeCache(supabase, userId, cacheKey, payload);
+    }
     return { ...payload, fromCache: false };
 }
 
