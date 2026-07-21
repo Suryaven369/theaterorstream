@@ -2,7 +2,7 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 22, 2026 · HEAD `PENDING` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 22, 2026 · HEAD `fb5b105` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
 
 ---
 
@@ -1434,6 +1434,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `fb5b105` | Jul 2026 | Collections cache, feed log titles, mobile perf, franchise SQL |
 | `38a84a5` | Jul 2026 | Health probe movies_library; dashboard dislikes catalog fix |
 | `e83ff10` | Jul 2026 | Fix Node 20 WebSocket — Supabase ws transport + Node 24 |
 | `8a8a362` | Jul 2026 | Add /api/health for Supabase env diagnostics |
