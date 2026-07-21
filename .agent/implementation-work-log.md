@@ -2,7 +2,19 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 2026 · HEAD `3543c72` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 2026 · HEAD `PENDING` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Jul 22, 2026 — Vercel build fix (duplicate import)
+
+### Remove duplicate `resolveApiBase` import ✅
+
+**Problem:** Vercel `vite build` failed: `tasteProfileApi.js` declared `resolveApiBase` twice.
+
+**Files changed:** `src/lib/tasteProfileApi.js` — keep single import from `apiBase.js`.
+
+**Behavior:** Production build should succeed again.
 
 ---
 

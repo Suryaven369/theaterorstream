@@ -74,8 +74,6 @@ export async function updateTasteMapControls(userId, patch = {}) {
     return { ok: true, data: step };
 }
 
-import { resolveApiBase } from './apiBase';
-
 /**
  * Fire-and-forget taste profile rebuild after ratings or onboarding.
  * Failures are logged only — never blocks the UI.
