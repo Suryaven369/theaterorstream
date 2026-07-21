@@ -1354,6 +1354,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `8e7e1d4` | Jul 2026 | Fix duplicate resolveApiBase import (Vite build) |
 | `3543c72` | Jul 2026 | Fix live Watch recommendations (API base + empty cache) |
 | `7b15a47` | Jul 2026 | Taste Map page, reco chat, mobile settings polish |
 | `437cd65` | Jul 2026 | Search write-through, acronym match, list feed cards |
