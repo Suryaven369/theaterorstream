@@ -92,7 +92,7 @@ const SERVICE_PLATFORM_ALIASES = {
 /** TMDB watch-provider id → name fragments for matching movies_library.streaming_platforms */
 const TMDB_PROVIDER_ALIASES = {
     8: ['netflix'],
-    9: ['prime', 'amazon prime', 'prime video'],
+    9: ['prime', 'amazon prime', 'prime video', 'amazon'],
     337: ['disney+', 'disney plus', 'disney'],
     122: ['hotstar', 'disney+ hotstar'],
     350: ['apple tv', 'apple tv+'],
@@ -1647,17 +1647,40 @@ export async function getMoodRecommendations(userId, moodId, options = {}) {
     }
 
     const context = await loadUserContext(supabase, userId);
-    const mediaType = options.mediaType === 'tv' ? 'tv' : 'movie';
+    const mediaType = options.mediaType === 'tv' || options.mediaType === 'movie'
+        ? options.mediaType
+        : null;
+    const discoverPages = hasProvider || useMyOtt ? 5 : 3;
 
-    const [tmdbPool, libPool] = await Promise.all([
-        fetchMoodPoolFromTmdb(config, {
-            pages: hasProvider || useMyOtt ? 4 : 3,
+    // When an OTT is selected, pull both movies and TV from TMDB discover
+    // (provider-scoped). Library fills gaps / metadata.
+    const tmdbJobs = mediaType
+        ? [fetchMoodPoolFromTmdb(config, {
+            pages: discoverPages,
             mediaType,
             providerId: hasProvider ? providerId : null,
             watchRegion,
-        }),
+        })]
+        : [
+            fetchMoodPoolFromTmdb(config, {
+                pages: discoverPages,
+                mediaType: 'movie',
+                providerId: hasProvider ? providerId : null,
+                watchRegion,
+            }),
+            fetchMoodPoolFromTmdb(config, {
+                pages: Math.max(2, discoverPages - 1),
+                mediaType: 'tv',
+                providerId: hasProvider ? providerId : null,
+                watchRegion,
+            }),
+        ];
+
+    const [tmdbParts, libPool] = await Promise.all([
+        Promise.all(tmdbJobs),
         fetchMoodPoolFromLibrary(supabase, config, { limit: 240 }),
     ]);
+    const tmdbPool = tmdbParts.flat();
 
     let pool = mergeMoodPools(tmdbPool, libPool);
 
@@ -1668,15 +1691,22 @@ export async function getMoodRecommendations(userId, moodId, options = {}) {
             .select('tmdb_id, movie_dna, streaming_platforms, mood_tags, custom_vibes, family_score, certification, custom_parent_guide, runtime, genre_ids, genres')
             .in('tmdb_id', ids);
         const byId = new Map((libRows || []).map((r) => [String(r.tmdb_id), r]));
+        const tmdbDiscoverIds = new Set(tmdbPool.map((m) => String(m.tmdb_id)));
         pool = pool.map((m) => {
             const lib = byId.get(String(m.tmdb_id));
             if (!lib) return m;
-            return {
+            const merged = {
                 ...m,
                 ...Object.fromEntries(Object.entries(lib).filter(([, v]) => v != null)),
                 genre_ids: m.genre_ids?.length ? m.genre_ids : lib.genre_ids,
                 genres: m.genres?.length ? m.genres : lib.genres,
             };
+            // Keep a marker so OTT filtering can trust provider-scoped TMDB hits
+            // even when library streaming_platforms is stale / incomplete.
+            if (tmdbDiscoverIds.has(String(m.tmdb_id))) {
+                merged._fromProviderDiscover = hasProvider;
+            }
+            return merged;
         });
     }
 
@@ -1690,18 +1720,16 @@ export async function getMoodRecommendations(userId, moodId, options = {}) {
     });
 
     // Hard OTT gate: specific provider, or user's linked services ("My OTTs").
-    // TMDB discover already scoped by provider when hasProvider; still filter library rows.
+    // TMDB discover is already scoped by provider — always keep those titles.
+    // Library-only rows must match provider via streaming_platforms.
     if (hasProvider) {
         const before = pool.length;
         const tmdbIds = new Set(tmdbPool.map((m) => String(m.tmdb_id)));
         pool = pool.filter((m) => {
-            if (movieOnTmdbProviders(m, [providerId])) return true;
-            // No local platforms data but came from provider-scoped TMDB discover
-            const plats = m.streaming_platforms;
-            const empty = !Array.isArray(plats) || !plats.length;
-            return empty && tmdbIds.has(String(m.tmdb_id));
+            if (tmdbIds.has(String(m.tmdb_id)) || m._fromProviderDiscover) return true;
+            return movieOnTmdbProviders(m, [providerId]);
         });
-        if (!pool.length && before) {
+        if (!pool.length && tmdbPool.length) {
             pool = tmdbPool.filter((m) => movieMatchesMoodGenres(m, config));
         }
     }
