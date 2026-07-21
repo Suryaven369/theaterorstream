@@ -117,7 +117,7 @@ const Header = () => {
           <button
             type="button"
             onClick={() => navigate('/search')}
-            className="md:hidden text-xl text-[var(--color-text-secondary)] hover:text-[var(--color-text)] p-2 rounded-lg hover:bg-[var(--color-surface-subtle)] transition-colors"
+            className="md:hidden tap-target text-xl text-[var(--color-text-secondary)] hover:text-[var(--color-text)] p-2.5 rounded-lg hover:bg-[var(--color-surface-subtle)] transition-colors flex items-center justify-center"
             aria-label="Search"
           >
             <IoSearchOutline />
@@ -130,10 +130,11 @@ const Header = () => {
               <div className="relative">
                 <button
                   onClick={() => setShowDropdown(!showDropdown)}
-                  className={`w-10 h-10 rounded-lg overflow-hidden flex items-center justify-center text-lg transition-colors ${profile?.avatar_url ? 'bg-[var(--color-surface)]' : getUserAvatar().bg}`}
+                  aria-label="Open profile menu"
+                  className={`tap-target w-11 h-11 rounded-lg overflow-hidden flex items-center justify-center text-lg transition-colors ${profile?.avatar_url ? 'bg-[var(--color-surface)]' : getUserAvatar().bg}`}
                 >
                   {profile?.avatar_url ? (
-                    <img src={getAvatarUrl(profile.avatar_url, 40)} alt="avatar" className="w-full h-full object-cover" />
+                    <img src={getAvatarUrl(profile.avatar_url, 44)} alt="avatar" className="w-full h-full object-cover" />
                   ) : (
                     getUserAvatar().emoji
                   )}
@@ -145,7 +146,7 @@ const Header = () => {
                       className="fixed inset-0 z-40"
                       onClick={() => setShowDropdown(false)}
                     />
-                    <div className="absolute right-0 top-full mt-2 z-50">
+                    <div className="absolute right-0 top-full mt-2 z-50 max-w-[calc(100vw-1rem)]">
                       <ProfileMenu
                         profile={profile}
                         userId={user?.id}
@@ -161,7 +162,7 @@ const Header = () => {
           ) : (
             <Link
               to="/auth"
-              className="px-4 py-2 rounded-lg bg-[var(--color-theater)] text-[var(--color-background)] text-sm font-medium hover:bg-[var(--color-theater)]/90 transition-colors"
+              className="tap-target inline-flex items-center px-4 py-2.5 rounded-lg bg-[var(--color-theater)] text-[var(--color-background)] text-sm font-medium hover:bg-[var(--color-theater)]/90 transition-colors"
             >
               Sign In
             </Link>

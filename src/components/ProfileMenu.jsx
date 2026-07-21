@@ -30,7 +30,7 @@ const AVATARS = {
 
 function MenuRow({ to, icon: Icon, label, sublabel, onClick }) {
     const className =
-        'flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-left text-sm text-white/90 hover:bg-white/[0.06] transition-colors group';
+        'flex items-center gap-3 w-full min-h-[48px] px-3 py-2.5 rounded-lg text-left text-sm text-white/90 hover:bg-white/[0.06] active:bg-white/[0.08] transition-colors group';
 
     const inner = (
         <>
@@ -77,7 +77,7 @@ export default function ProfileMenu({ profile, userId, isOnboarded, onClose, onS
     const close = onClose || (() => {});
 
     return (
-        <div className="profile-menu w-[280px] sm:w-[300px] bg-[#1c1c1c] border border-white/[0.08] rounded-2xl shadow-2xl overflow-hidden animate-fadeIn">
+        <div className="profile-menu w-[min(280px,calc(100vw-1.5rem))] sm:w-[300px] max-h-[min(70vh,calc(100dvh-5.5rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)))] overflow-y-auto overscroll-contain bg-[#1c1c1c] border border-white/[0.08] rounded-2xl shadow-2xl animate-fadeIn">
             <Link
                 to={username ? `/${username}/profile` : '/profile'}
                 onClick={close}

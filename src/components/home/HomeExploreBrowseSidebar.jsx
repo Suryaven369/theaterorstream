@@ -40,7 +40,7 @@ export default function HomeExploreBrowseSidebar({
 
   if (placement === 'mobile') {
     return (
-      <div className="lg:hidden sticky top-[calc(3.75rem+env(safe-area-inset-top,0px))] z-30 -mx-3 sm:-mx-6 mb-4 px-3 sm:px-6 py-2 bg-[#0a0a0a]/90 backdrop-blur-md border-b border-white/[0.06]">
+      <div className="lg:hidden sticky top-[calc(4.25rem+env(safe-area-inset-top,0px))] z-30 -mx-3 sm:-mx-6 mb-4 px-3 sm:px-6 py-2 bg-[#0a0a0a]/90 backdrop-blur-md border-b border-white/[0.06]">
         <div
           className="grid grid-cols-4 gap-1 p-1 rounded-2xl bg-white/[0.04] border border-white/[0.06]"
           role="tablist"

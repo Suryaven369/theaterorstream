@@ -21,8 +21,8 @@ function ActionBtn({
     children,
 }) {
     const sizeClass = size === 'lg'
-        ? 'h-10 w-10 sm:h-11 sm:w-11'
-        : 'h-7 w-7 sm:h-8 sm:w-8';
+        ? 'h-11 w-11 min-h-[44px] min-w-[44px] sm:h-11 sm:w-11'
+        : 'h-9 w-9 min-h-[36px] min-w-[36px] sm:h-8 sm:w-8';
     return (
         <button
             type="button"

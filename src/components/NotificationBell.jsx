@@ -159,7 +159,7 @@ const NotificationBell = () => {
                 // left side of the screen on narrow phones. `fixed` + explicit left/right
                 // insets sidesteps that entirely: full-width sheet on mobile, a fixed
                 // 320px panel pinned to the right on larger screens.
-                <div className="fixed left-4 right-4 top-20 sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80 max-h-[28rem] overflow-y-auto bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl z-50">
+                <div className="fixed left-4 right-4 top-[calc(5rem+env(safe-area-inset-top,0px))] sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80 max-h-[min(28rem,calc(100dvh-6.5rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)))] overflow-y-auto overscroll-contain bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl z-50">
                     <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 sticky top-0 bg-[#1a1a1a]">
                         <h3 className="text-sm font-semibold text-white">Notifications</h3>
                         {unreadCount > 0 && (

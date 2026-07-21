@@ -2,7 +2,19 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 22, 2026 · HEAD `fb5b105` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 22, 2026 · HEAD `PENDING` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Jul 22, 2026 — Mobile UX audit fixes
+
+### Safe-area, touch targets, Explore density ✅
+
+**Problem:** Mobile Watch sat under the header; Explore posters covered by tiny always-on actions; double bottom padding; profile menu / notifications ignored safe-area; sub-44px tap targets.
+
+**Files changed:** Home, WatchPage, Card, PosterQuickActions, ProfileMenu, NotificationBell, Header, FeedPostCard, FeedComposer, HomeBrowseTab, HomeExploreBrowseSidebar, index.css
+
+**Behavior:** Consistent header clearance; Explore rails clean on phone (actions on desktop hover); scrollable profile menu; ≥44px composer/feed/header taps; less dead space above bottom nav.
 
 ---
 

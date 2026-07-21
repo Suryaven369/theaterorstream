@@ -388,7 +388,11 @@ export default function WatchPage({ embedded = false }) {
     const personalMessage = forYou.meta?.message;
 
     return (
-        <div className="min-h-screen bg-[var(--bg-primary)] pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))] lg:pb-12 overflow-x-hidden">
+        <div className={`min-h-screen bg-[var(--bg-primary)] overflow-x-hidden ${
+            embedded
+                ? 'pb-4 lg:pb-12'
+                : 'pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))] lg:pb-12'
+        }`}>
             {showHero ? (
                 <SpotlightHero movies={heroPicks} loading={heroLoading} onDismiss={handleDismiss} />
             ) : (

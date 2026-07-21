@@ -939,13 +939,13 @@ const Home = () => {
 
       {/* Tab Content */}
       {activeTab === 'watch' ? (
-        <div className="pt-[calc(3.5rem+env(safe-area-inset-top,0px))] lg:pt-0">
+        <div className="page-below-header lg:pt-0">
           <Suspense fallback={<div className="min-h-[40vh] flex items-center justify-center"><div className="animate-spin w-8 h-8 border-2 border-[var(--accent-green)] border-t-transparent rounded-full" /></div>}>
             <WatchPage embedded />
           </Suspense>
         </div>
       ) : activeTab === 'home' ? (
-        <section className="pt-[calc(4rem+env(safe-area-inset-top,0px))] lg:pt-0 px-0 sm:px-8 py-2 sm:py-6">
+        <section className="page-below-header lg:pt-0 px-0 sm:px-8 py-2 sm:py-6">
           <div className="max-w-7xl mx-auto">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               {/* Left Spacer */}
@@ -1034,7 +1034,7 @@ const Home = () => {
           </div>
         </section>
       ) : (
-        <section className="pt-[calc(4rem+env(safe-area-inset-top,0px))] lg:pt-0 px-3 sm:px-8 py-4 sm:py-6">
+        <section className="page-below-header lg:pt-0 px-3 sm:px-8 py-4 sm:py-6">
           <Suspense fallback={<div className="min-h-[40vh] flex items-center justify-center"><div className="animate-spin w-8 h-8 border-2 border-[var(--accent-green)] border-t-transparent rounded-full" /></div>}>
             <HomeBrowseTab
               selectedRegion={selectedRegion}

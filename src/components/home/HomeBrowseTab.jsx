@@ -196,7 +196,7 @@ export default function HomeBrowseTab({
         </div>
       </section>
 
-      <section className="px-3 sm:px-6 md:px-6 lg:pl-6 xl:pl-8 py-2 sm:py-4 pb-24 lg:pb-8">
+      <section className="px-3 sm:px-6 md:px-6 lg:pl-6 xl:pl-8 py-2 sm:py-4 pb-4 lg:pb-8">
         <div className="container mx-auto">
           <HomeExploreBrowseSidebar
             placement="mobile"

@@ -351,7 +351,7 @@ export default function FeedComposer({
                       revokePreview(postImages[0].preview);
                       setPostImages([]);
                     }}
-                    className="absolute top-2 right-2 w-8 h-8 rounded-full bg-[#0f1419]/75 text-[#e7e9ea] flex items-center justify-center hover:bg-[#0f1419]"
+                    className="absolute top-2 right-2 tap-target w-11 h-11 rounded-full bg-[#0f1419]/75 text-[#e7e9ea] flex items-center justify-center hover:bg-[#0f1419]"
                     aria-label="Remove image"
                   >
                     ✕
@@ -479,7 +479,8 @@ export default function FeedComposer({
                     onClick={() => fileInputRef.current?.click()}
                     disabled={pollMode || postImages.length >= POST_IMAGE_MAX_COUNT}
                     title="Add images"
-                    className="p-2 rounded-full hover:bg-[var(--color-surface-subtle)] transition-colors disabled:cursor-not-allowed"
+                    aria-label="Add images"
+                    className="tap-target p-2.5 rounded-full hover:bg-[var(--color-surface-subtle)] transition-colors disabled:cursor-not-allowed flex items-center justify-center"
                   >
                     <FaImage
                       size={18}
@@ -491,7 +492,8 @@ export default function FeedComposer({
                     onClick={pollMode ? disablePollMode : enablePollMode}
                     disabled={postImages.length > 0}
                     title="Create poll (2 choices)"
-                    className={`p-2 rounded-full transition-colors disabled:cursor-not-allowed hover:bg-[var(--color-surface-subtle)] ${
+                    aria-label="Create poll"
+                    className={`tap-target p-2.5 rounded-full transition-colors disabled:cursor-not-allowed hover:bg-[var(--color-surface-subtle)] flex items-center justify-center ${
                       pollMode ? 'bg-[var(--color-surface-subtle)]' : ''
                     }`}
                   >
@@ -516,7 +518,7 @@ export default function FeedComposer({
                     type="button"
                     onClick={handleCreatePost}
                     disabled={posting || !canPost}
-                    className={`px-4 py-1.5 rounded-full text-sm font-semibold min-w-[72px] transition-colors ${
+                    className={`tap-target px-5 py-2.5 rounded-full text-sm font-semibold min-w-[72px] transition-colors ${
                       canPost && !posting
                         ? 'bg-[var(--color-theater)] text-[#0f1419] hover:bg-[var(--primary-hover)]'
                         : 'bg-[var(--color-theater)]/35 text-[#0f1419]/50 cursor-not-allowed'

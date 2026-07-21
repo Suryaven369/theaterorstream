@@ -104,15 +104,26 @@ const Card = ({ data, trending, index, media_type, compact = false, posterSize, 
           </div>
         )}
 
-        {/* Always available on mobile; fade in on desktop hover */}
-        <div className="opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
-          <PosterQuickActions
-            movieId={movieId}
-            movieTitle={data?.title || data?.name}
-            posterPath={posterPath || data.poster_path}
-            mediaType={mediaType}
-          />
-        </div>
+        {/* Compact Explore rails: hide overlay on mobile (too cramped); hover on sm+ */}
+        {compact ? (
+          <div className="hidden sm:block opacity-0 transition-opacity sm:group-hover:opacity-100 sm:focus-within:opacity-100">
+            <PosterQuickActions
+              movieId={movieId}
+              movieTitle={data?.title || data?.name}
+              posterPath={posterPath || data.poster_path}
+              mediaType={mediaType}
+            />
+          </div>
+        ) : (
+          <div className="opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
+            <PosterQuickActions
+              movieId={movieId}
+              movieTitle={data?.title || data?.name}
+              posterPath={posterPath || data.poster_path}
+              mediaType={mediaType}
+            />
+          </div>
+        )}
       </div>
 
       {/* Title and year below card */}

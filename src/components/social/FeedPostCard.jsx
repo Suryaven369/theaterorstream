@@ -77,8 +77,8 @@ export default function FeedPostCard({
       onClick={onOpenThread ? openThread : undefined}
       role={onOpenThread ? 'link' : undefined}
     >
-      <div className={`flex items-center justify-between ${isThread ? 'p-3 pb-2' : 'px-3 sm:px-4 pt-2.5 sm:pt-3 pb-1.5'}`}>
-        <div className="flex items-center gap-2.5">
+      <div className={`flex items-center justify-between gap-2 ${isThread ? 'p-3 pb-2' : 'px-3 sm:px-4 pt-2.5 sm:pt-3 pb-1.5'}`}>
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
           <div className="w-9 h-9 rounded-full bg-[var(--color-surface-subtle)] flex items-center justify-center text-sm overflow-hidden shrink-0">
             {item.user.avatarUrl ? (
               <img src={getAvatarUrl(item.user.avatarUrl, 36)} alt="" className="w-full h-full object-cover" />
@@ -86,15 +86,15 @@ export default function FeedPostCard({
               item.user.avatar || '🎬'
             )}
           </div>
-          <div>
+          <div className="min-w-0 flex-1">
             <Link
               to={`/${item.user.username}/profile`}
-              className="text-sm font-medium text-[var(--color-text)] hover:text-[var(--color-theater)] transition-colors inline-flex items-center gap-1"
+              className="text-sm font-medium text-[var(--color-text)] hover:text-[var(--color-theater)] transition-colors inline-flex items-center gap-1 max-w-full"
             >
-              {item.user.name}
-              {item.user.isVerified && <VerifiedBadge size={14} />}
+              <span className="truncate">{item.user.name}</span>
+              {item.user.isVerified && <VerifiedBadge size={14} className="shrink-0" />}
             </Link>
-            <p className="text-[11px] text-[var(--color-text-muted)]">
+            <p className="text-[11px] text-[var(--color-text-muted)] truncate">
               @{item.user.username} · {item.time}
               {item.editCount > 0 && (
                 <span className="text-[var(--color-text-muted)]"> · Edited</span>
@@ -103,12 +103,13 @@ export default function FeedPostCard({
           </div>
         </div>
         {isOwner && (
-          <div className="relative">
+          <div className="relative shrink-0">
             <button
               onClick={() => onToggleMenu(openMenuId === item.id ? null : item.id)}
-              className="p-1.5 rounded-lg hover:bg-[var(--color-surface-subtle)] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
+              className="tap-target p-2.5 rounded-lg hover:bg-[var(--color-surface-subtle)] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors flex items-center justify-center"
+              aria-label="Post options"
             >
-              <FaEllipsisH className="text-xs" />
+              <FaEllipsisH className="text-sm" />
             </button>
             {openMenuId === item.id && (
               <>
@@ -372,7 +373,7 @@ export default function FeedPostCard({
           />
           <button
             onClick={() => onSave(item.id)}
-            className={`p-2 rounded-lg hover:bg-[var(--color-surface-subtle)] transition-colors shrink-0 ${item.isSaved ? 'text-[var(--color-theater)]' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}`}
+            className={`tap-target p-2.5 rounded-lg hover:bg-[var(--color-surface-subtle)] transition-colors shrink-0 flex items-center justify-center ${item.isSaved ? 'text-[var(--color-theater)]' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}`}
             aria-label="Save"
           >
             {item.isSaved ? <FaBookmark className="text-sm" /> : <FaRegBookmark className="text-sm" />}
