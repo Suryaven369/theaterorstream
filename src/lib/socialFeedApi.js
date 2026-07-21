@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { publicUrlForStorageObject, toPublicStorageUrl } from './storagePublicUrl.js';
 import { getPlainTextLength } from './movieMentions.js';
+import { resolveApiBase } from './apiBase';
 
 /** Explicit columns — avoid select('*') so we don't pull unused / future fat fields. */
 const FEED_POST_SELECT = [
@@ -36,12 +37,6 @@ function hasPostContent(content) {
 async function getAccessToken() {
     const { data: { session } } = await supabase.auth.getSession();
     return session?.access_token || null;
-}
-
-function resolveApiBase() {
-    const configured = import.meta.env.VITE_API_BASE_URL;
-    if (configured) return configured.replace(/\/$/, '');
-    return '';
 }
 
 async function getFeed(path, params = {}) {

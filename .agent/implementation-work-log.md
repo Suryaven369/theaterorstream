@@ -2,7 +2,27 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 2026 · HEAD `7b15a47` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 2026 · HEAD `PENDING` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Jul 22, 2026 — Watch recommendations empty on live
+
+### Fix live Watch rails (apex auth + LLM + empty cache) ✅
+
+**Problem:** Recommendation movies showed on localhost but not on the live site (empty For You / Tonight / etc.).
+
+**Root cause:** Apex `theaterorstream.com` 308 → `www` can drop `Authorization` when `VITE_API_BASE_URL` pointed at apex; failures were treated as empty arrays and session-cached. Prod LLM polish also made cold rails slower than local.
+
+**Files changed:**
+- `src/lib/apiBase.js` — shared resolve: same-origin / force www on live hosts
+- `src/lib/recommendationApi.js`, `tasteProfileApi.js`, `socialFeedApi.js` — use shared base
+- `api/_lib/recommendation-server.js` — For You / Tonight / Perfect default `useLlm: false`; LLM polish budgeted if opted in
+- `src/views/WatchPage.jsx` — Retry banner on rail errors; do not cache failed empties; require non-empty cache hit
+
+**Behavior:** Live Watch calls same-origin `www` APIs with auth intact. Failed loads show Retry instead of a silent empty state. Deterministic rails stay fast on Vercel.
+
+**Next recommended:** Confirm Vercel env has `VITE_API_BASE_URL` unset or set to `https://www.theaterorstream.com` (not apex). Wire reco engine to honour Taste Map `discovery_level` + `content_boundaries` if not already.
 
 ---
 
@@ -1322,6 +1342,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `PENDING` | Jul 2026 | Fix live Watch recommendations (API base + empty cache) |
 | `7b15a47` | Jul 2026 | Taste Map page, reco chat, mobile settings polish |
 | `437cd65` | Jul 2026 | Search write-through, acronym match, list feed cards |
 | `ca11cc0` | Jul 2026 | Category browse filters + detail write-through |

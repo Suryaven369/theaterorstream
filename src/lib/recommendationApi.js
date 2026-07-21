@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { resolveApiBase } from './apiBase';
 
 async function getAccessToken() {
     const { data: { session } } = await supabase.auth.getSession();
@@ -7,12 +8,6 @@ async function getAccessToken() {
     // Session can lag AuthContext briefly after refresh / tab focus.
     const { data: refreshed } = await supabase.auth.refreshSession();
     return refreshed?.session?.access_token || null;
-}
-
-function resolveApiBase() {
-    const configured = import.meta.env.VITE_API_BASE_URL;
-    if (configured) return configured.replace(/\/$/, '');
-    return '';
 }
 
 function buildQuery(params) {
@@ -65,12 +60,13 @@ async function fetchRecommendations(path, options = {}) {
             meta: payload.meta || {},
             generatedAt: payload.generatedAt,
             fromCache: payload.fromCache,
+            ok: true,
         };
     } catch (error) {
         if (import.meta.env.DEV) {
             console.warn('[recommendationApi]', path, error.message);
         }
-        return { data: [], meta: {}, error: error.message };
+        return { data: [], meta: {}, error: error.message, ok: false };
     }
 }
 

@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { resolveApiBase } from './apiBase';
 
 async function getAccessToken() {
     const { data: { session } } = await supabase.auth.getSession();
@@ -73,11 +74,7 @@ export async function updateTasteMapControls(userId, patch = {}) {
     return { ok: true, data: step };
 }
 
-function resolveApiBase() {
-    const configured = import.meta.env.VITE_API_BASE_URL;
-    if (configured) return configured.replace(/\/$/, '');
-    return '';
-}
+import { resolveApiBase } from './apiBase';
 
 /**
  * Fire-and-forget taste profile rebuild after ratings or onboarding.

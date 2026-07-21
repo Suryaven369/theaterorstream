@@ -67,6 +67,8 @@ export default function WatchPage({ embedded = false }) {
     const [family, setFamily] = useState(() => cached?.family || initialRow);
     const [dashboard, setDashboard] = useState(() => cached?.dashboard ?? null);
     const [dashLoading, setDashLoading] = useState(() => !cached?.dashboard);
+    const [railError, setRailError] = useState(null);
+    const [reloadKey, setReloadKey] = useState(0);
 
     const [perfect, setPerfect] = useState(() => cached?.perfect || { movie: null, loading: true });
     const [becauseLoved, setBecauseLoved] = useState(() => cached?.becauseLoved || initialRow);
@@ -113,10 +115,12 @@ export default function WatchPage({ embedded = false }) {
 
         // Tab switch: reuse session cache — no re-analysis.
         // Require core rows to be ready so a mid-fetch tab-away doesn't freeze empties.
-        const hit = getWatchSessionCache(userId);
+        // Skip cache when forcing a reload after an API failure.
+        const hit = reloadKey === 0 ? getWatchSessionCache(userId) : null;
         const cacheReady = hit?.forYou && !hit.forYou.loading
             && hit?.tonight && !hit.tonight.loading
-            && hit?.trending && !hit.trending.loading;
+            && hit?.trending && !hit.trending.loading
+            && (hit.forYou.items?.length > 0 || hit.tonight.items?.length > 0 || hit.trending.items?.length > 0);
         if (cacheReady) {
             setForYou(hit.forYou);
             setTonight(hit.tonight);
@@ -137,6 +141,10 @@ export default function WatchPage({ embedded = false }) {
 
         let alive = true;
         const payload = {};
+        setRailError(null);
+        setForYou(initialRow);
+        setTonight(initialRow);
+        setTrending(initialRow);
 
         const save = () => {
             if (!alive) return;
@@ -153,26 +161,47 @@ export default function WatchPage({ embedded = false }) {
             });
         };
 
+        const noteError = (err) => {
+            if (!alive || !err) return;
+            setRailError(err);
+        };
+
         getForYouRecommendations({ limit: 12 }).then((r) => {
             if (!alive) return;
+            if (r.error) {
+                noteError(r.error);
+                setForYou(readyRow([], { error: r.error }));
+                return;
+            }
             payload.forYou = readyRow(r.data || [], r.meta || {});
             setForYou(payload.forYou);
             save();
         });
         getTonightRecommendations({ limit: 6 }).then((r) => {
             if (!alive) return;
+            if (r.error) {
+                noteError(r.error);
+                setTonight(readyRow([], { error: r.error }));
+                return;
+            }
             payload.tonight = readyRow(r.data || []);
             setTonight(payload.tonight);
             save();
         });
         getTrendingPersonalized({ limit: 6 }).then((r) => {
             if (!alive) return;
+            if (r.error) {
+                noteError(r.error);
+                setTrending(readyRow([], { error: r.error }));
+                return;
+            }
             payload.trending = readyRow(r.data || []);
             setTrending(payload.trending);
             save();
         });
         getFamilyRecommendations({ limit: 6 }).then((r) => {
             if (!alive) return;
+            if (r.error) return;
             payload.family = readyRow(r.data || []);
             setFamily(payload.family);
             save();
@@ -210,7 +239,7 @@ export default function WatchPage({ embedded = false }) {
         });
 
         return () => { alive = false; };
-    }, [isAuthenticated, userId]);
+    }, [isAuthenticated, userId, reloadKey]);
 
     const handleDismiss = useCallback((movie) => {
         const id = movie?.tmdb_id ?? movie?.id;
@@ -376,6 +405,24 @@ export default function WatchPage({ embedded = false }) {
                 <FollowingFeed />
             </div>
 
+            {railError && (
+                <div className="mx-4 mt-4 flex flex-col gap-2 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3.5 py-3 sm:mx-6 sm:flex-row sm:items-center sm:justify-between sm:px-4">
+                    <p className="text-[13px] text-amber-100/90 sm:text-sm">
+                        Recommendations couldn&apos;t load
+                        {railError === 'not_signed_in'
+                            ? ' — sign in again, then retry.'
+                            : '. Check your connection and try again.'}
+                    </p>
+                    <button
+                        type="button"
+                        className="min-h-[40px] shrink-0 rounded-full border border-amber-400/40 bg-amber-500/20 px-4 text-sm font-medium text-amber-50 hover:bg-amber-500/30"
+                        onClick={() => setReloadKey((k) => k + 1)}
+                    >
+                        Retry
+                    </button>
+                </div>
+            )}
+
             {/* Mood — left-aligned like native section headers */}
             <div className="mb-4 mt-4 px-4 sm:mb-6 sm:mt-7 sm:px-6">
                 <div className={WATCH_RAIL}>
@@ -406,7 +453,7 @@ export default function WatchPage({ embedded = false }) {
                 </div>
             </div>
 
-            {!showHero && !forYou.loading && !forYouRest.length && (
+            {!showHero && !forYou.loading && !forYouRest.length && !railError && (
                 <div className="mx-4 mb-5 overflow-hidden rounded-xl border border-white/8 bg-gradient-to-br from-[var(--bg-elevated)] to-[var(--bg-card)] p-3.5 sm:mx-6 sm:mb-8 sm:rounded-2xl sm:p-6">
                     <h2 className="text-base font-bold text-white sm:text-2xl">
                         Let&apos;s find your <span className="text-gradient">next favorite</span>

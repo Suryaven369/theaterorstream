@@ -1119,23 +1119,31 @@ export async function getRecommendations(userId, cacheKey, options = {}) {
         skipDiversity: !!seedTmdbId,
     });
 
-    // Optional LLM polish (re-rank + richer reasons). Cached below like any result.
-    // Skip for seed-similar rows — LLM can reintroduce off-genre popular titles.
+    // Optional LLM polish — never block Watch rails. Hard budget so Vercel
+    // cold starts + Mistral/Gemini latency cannot empty the page.
     let personalMessage = null;
-    if (useLlm && !seedTmdbId) {
-        items = await applyLlmRerank(context.profile, items);
-
-        // Warm, personalised intro to the user's picks. Best-effort + cached.
+    if (useLlm && !seedTmdbId && isLlmEnabled()) {
+        const LLM_BUDGET_MS = 3500;
         try {
-            personalMessage = await generateRecoMessage({
-                name: context.userName,
-                tasteSummary: context.profile.taste_summary,
-                topGenres: topGenreIds(context.profile.genre_weights, 3)
-                    .map((id) => GENRE_NAMES[id]).filter(Boolean),
-                sampleTitles: items.slice(0, 3).map((m) => m.title || m.name).filter(Boolean),
-            });
+            await Promise.race([
+                (async () => {
+                    items = await applyLlmRerank(context.profile, items);
+                    try {
+                        personalMessage = await generateRecoMessage({
+                            name: context.userName,
+                            tasteSummary: context.profile.taste_summary,
+                            topGenres: topGenreIds(context.profile.genre_weights, 3)
+                                .map((id) => GENRE_NAMES[id]).filter(Boolean),
+                            sampleTitles: items.slice(0, 3).map((m) => m.title || m.name).filter(Boolean),
+                        });
+                    } catch (err) {
+                        console.warn('[reco] personal message failed:', err.message);
+                    }
+                })(),
+                new Promise((resolve) => setTimeout(resolve, LLM_BUDGET_MS)),
+            ]);
         } catch (err) {
-            console.warn('[reco] personal message failed:', err.message);
+            console.warn('[reco] llm polish skipped:', err.message);
         }
     }
 
@@ -1170,11 +1178,12 @@ export async function getOnePerfectMovie(userId, options = {}) {
     const result = await getRecommendations(userId, `perfect_${day}`, {
         requireOtt: false,
         excludeRated: true,
-        useLlm: true,
         limit: 1,
         candidateLimit: 150,
         ttlHours: 24,
         ...options,
+        // Deterministic by default — LLM polish is opt-in (same as For You / Tonight).
+        useLlm: options?.useLlm === true,
     });
     return {
         day,
@@ -1289,24 +1298,25 @@ export async function getOutsideComfortZone(userId, options = {}) {
     });
 }
 
-export async function getForYouRecommendations(userId, options) {
+export async function getForYouRecommendations(userId, options = {}) {
     return getRecommendations(userId, 'for_you_v2', {
         requireOtt: options?.ottMode !== false,
         // seenIds always excludes watched/logged/liked/rated; excludeRated is redundant.
         excludeRated: true,
-        useLlm: true,
         ...options,
+        // Watch list rails stay deterministic on Vercel (LLM optional opt-in only).
+        useLlm: options?.useLlm === true,
     });
 }
 
-export async function getTonightRecommendations(userId, options) {
+export async function getTonightRecommendations(userId, options = {}) {
     return getRecommendations(userId, 'tonight', {
         requireOtt: true,
         excludeRated: true,
         maxRuntime: 120,
         mediaType: options?.mediaType || 'movie',
-        useLlm: true,
         ...options,
+        useLlm: options?.useLlm === true,
     });
 }
 
