@@ -5,7 +5,6 @@ import {
     getMoviesLibrary,
     getMovieFromLibrary,
     saveMovieToLibrary,
-    bulkSaveMoviesToLibrary,
     updateMovieInLibrary,
     deleteMovieFromLibrary,
     toggleMovieFeatured,
@@ -365,7 +364,6 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
     const [savingIds, setSavingIds] = useState(new Set());
 
     // Bulk state
-    const [bulkSaving, setBulkSaving] = useState(false);
     const [bulkResult, setBulkResult] = useState(null);
     const [bulkFullSaving, setBulkFullSaving] = useState(false);
     const [bulkFullProgress, setBulkFullProgress] = useState({ current: 0, total: 0 });
@@ -1199,32 +1197,6 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
         }
     };
 
-    const handleBulkSave = async () => {
-        setBulkSaving(true);
-        setBulkResult(null);
-        const result = await bulkSaveMoviesToLibrary(tmdbMovies, tmdbMediaType);
-        const statsAfter = result.success ? await getLibraryStats() : null;
-        if (result.success) {
-            const dupNote = result.duplicatesSkipped > 0
-                ? ` (${result.duplicatesSkipped} duplicate IDs skipped)`
-                : '';
-            setBulkResult({
-                success: true,
-                savedCount: result.savedCount,
-                message: `✓ Saved ${result.savedCount} title(s). Library now has ${statsAfter?.total ?? '?'} total.${dupNote}`,
-            });
-            await loadData();
-        } else {
-            const partial = result.partial ? ` (${result.savedCount} saved before error)` : '';
-            setBulkResult({
-                success: false,
-                message: `✗ ${result.error?.message || 'Bulk save failed'}${partial}`,
-            });
-            if (result.partial) await loadData();
-        }
-        setBulkSaving(false);
-    };
-
     const handleToggleFeatured = async (id) => { await toggleMovieFeatured(id); await loadData(); };
     const handleToggleActive = async (id) => { await toggleMovieActive(id); await loadData(); };
     const handleDelete = async (id) => { if (confirm('Delete?')) { await deleteMovieFromLibrary(id); await loadData(); } };
@@ -1956,15 +1928,8 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                             return tmdbMovies.length > 0 && (
                                 <div className="flex items-center justify-end gap-2 mb-3">
                                     <button
-                                        onClick={handleBulkSave}
-                                        disabled={bulkSaving || bulkFullSaving || unsavedCount === 0}
-                                        className="px-3 py-2 text-xs bg-white/10 text-white rounded disabled:opacity-50 hover:bg-white/20"
-                                    >
-                                        {bulkSaving ? 'Saving...' : 'Quick Save All'}
-                                    </button>
-                                    <button
                                         onClick={handleBulkSaveFull}
-                                        disabled={bulkSaving || bulkFullSaving || unsavedCount === 0}
+                                        disabled={bulkFullSaving || unsavedCount === 0}
                                         className="px-3 py-2 text-xs bg-orange-500 text-white rounded disabled:opacity-50 hover:bg-orange-600 flex items-center gap-2"
                                     >
                                         {bulkFullSaving && (
@@ -2372,10 +2337,7 @@ const AdminPanel = ({ initialTab = 'dashboard' }) => {
                                                 </p>
                                             </div>
                                             <div className="flex gap-2">
-                                                <button onClick={handleBulkSave} disabled={bulkSaving || bulkFullSaving || unsavedCount === 0} className="px-3 py-2 text-xs bg-white/10 text-white rounded disabled:opacity-50 hover:bg-white/20">
-                                                    {bulkSaving ? 'Saving...' : `Quick Save`}
-                                                </button>
-                                                <button onClick={handleBulkSaveFull} disabled={bulkSaving || bulkFullSaving || unsavedCount === 0} className="px-3 py-2 text-xs bg-orange-500 text-white rounded disabled:opacity-50 hover:bg-orange-600 flex items-center gap-2">
+                                                <button onClick={handleBulkSaveFull} disabled={bulkFullSaving || unsavedCount === 0} className="px-3 py-2 text-xs bg-orange-500 text-white rounded disabled:opacity-50 hover:bg-orange-600 flex items-center gap-2">
                                                     {bulkFullSaving && (
                                                         <svg className="animate-spin h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>

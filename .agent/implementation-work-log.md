@@ -2,7 +2,23 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 28, 2026 · HEAD `45ab106` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 28, 2026 · HEAD `1ea07b3` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Jul 28, 2026 — Admin Browse TMDB + trailer cleanup SQL
+
+### Remove Quick Save from Browse TMDB ✅
+
+**Problem:** Browse TMDB had redundant "Quick Save All" alongside "Save Full Data"; quick save only stored minimal library rows.
+
+**Files changed:** `src/views/AdminPanel.jsx` — removed Quick Save buttons (Browse + Bulk Import), `handleBulkSave`, `bulkSaveMoviesToLibrary` import
+
+**Behavior:** Bulk save on Browse/Bulk tabs is **Save Full Data** only.
+
+### SQL script: delete old trailer posts ✅
+
+**Files changed:** `supabase/scripts/delete_old_trailer_posts.sql` — preview + delete for pre-current-year `trailer_posts`, related `feed_articles`, likes, comments, showcase rows
 
 ---
 
