@@ -5,6 +5,7 @@ import { generateJson, isLlmEnabled } from './llm-server.js';
 import { getSupabaseAdmin } from './supabase-admin.js';
 import { mapFullTmdbToLibraryRecord } from './movie-library-server.js';
 import { upsertMoviesLibrary } from '../../src/lib/libraryDedupe.js';
+import { isEligibleTrailerRelease } from './rss-server.js';
 
 export const LIBRARY_CARD_SELECT =
     'tmdb_id, title, poster_path, backdrop_path, media_type, release_date, first_air_date, vote_average, popularity, overview, genres, runtime, number_of_seasons, number_of_episodes';
@@ -1451,7 +1452,12 @@ export async function fetchRssTrailers({ limit = 15, daysBack = 21 } = {}) {
 
     if (error || !data?.length) return { data: [], total: 0 };
 
-    const items = data.map((p) => {
+    const eligible = data.filter((p) => isEligibleTrailerRelease(
+        { release_date: p.release_date, first_air_date: p.release_date },
+        p.trailer_name,
+    ));
+
+    const items = eligible.map((p) => {
         const tmdbThumb = p.backdrop_path ? `https://image.tmdb.org/t/p/w780${p.backdrop_path}` : null;
         const feedAt = p.updated_at || p.created_at || p.published_at;
         return {

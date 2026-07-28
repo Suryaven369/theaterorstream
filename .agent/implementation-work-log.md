@@ -2,7 +2,21 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 22, 2026 · HEAD `a332f85` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 28, 2026 · HEAD `a332f85` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Jul 28, 2026 — Auto trailer year filter
+
+### Only current/future release trailers on Home ✅
+
+**Problem:** Auto trailer posts included old/classic uploads (e.g. 1981 classic trailers, retrospectives) alongside new launches.
+
+**Files changed:**
+- `api/_lib/rss-server.js` — `isEligibleTrailerRelease()`, `extractTrailerTitleYear()`; filter RSS poll + WebSub ingestion
+- `api/_lib/content-server.js` — same filter on `fetchRssTrailers()` for Home feed
+
+**Behavior:** Trailers only created/shown when TMDB release year is current year or later, or YouTube title tags a current/future year; skips retrospective/classic/re-release titles.
 
 ---
 

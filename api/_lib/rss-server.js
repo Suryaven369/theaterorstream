@@ -605,6 +605,41 @@ async function matchTmdbTitle(rawTitle) {
     return null;
 }
 
+/** Pull a 20xx year from a YouTube trailer title (e.g. "Official Trailer (2026)"). */
+export function extractTrailerTitleYear(rawTitle) {
+    if (!rawTitle) return null;
+    const s = String(rawTitle);
+    const paren = s.match(/\(\s*(20\d{2})\s*\)/);
+    if (paren) return parseInt(paren[1], 10);
+    const years = [...s.matchAll(/\b(20\d{2})\b/g)].map((m) => parseInt(m[1], 10));
+    return years.length ? Math.max(...years) : null;
+}
+
+/**
+ * Only accept trailers for current-year+ releases — skip classics, retrospectives,
+ * and TMDB matches whose release/first-air year is in the past.
+ */
+export function isEligibleTrailerRelease(match, rawTitle) {
+    if (!match) return false;
+    const currentYear = new Date().getFullYear();
+    const title = String(rawTitle || '');
+
+    if (/\b(retrospective|classic trailer|restored|4k restoration|re-release|reissue|anniversary edition|look back|flashback)\b/i.test(title)) {
+        return false;
+    }
+
+    const titleYear = extractTrailerTitleYear(title);
+    const releaseDate = match.release_date || match.first_air_date || null;
+    const releaseYear = releaseDate ? parseInt(String(releaseDate).slice(0, 4), 10) : null;
+
+    // Studio titles often tag the launch year even when TMDB first_air_date is old (revivals).
+    if (titleYear && titleYear >= currentYear) return true;
+
+    if (releaseYear && releaseYear >= currentYear) return true;
+
+    return false;
+}
+
 export async function fetchAndStoreSource(source, globalFilters = null) {
     const supabase = getSupabaseAdmin();
     const result = { sourceId: source.id, name: source.name, fetched: 0, added: 0, candidates: [], error: null };
@@ -670,7 +705,7 @@ export async function fetchAndStoreSource(source, globalFilters = null) {
             const postRows = [];
             await mapWithConcurrency(toVerify, 5, async (a) => {
                 const match = await matchTmdbTitle(a.title);
-                if (match) {
+                if (match && isEligibleTrailerRelease(match, a.title)) {
                     a.tmdbId = String(match.id);
                     a.mediaType = match.media_type;
                     // Prefer the TMDB poster when the feed gave us no thumbnail.
@@ -890,6 +925,7 @@ export async function ingestYouTubeVideo({ videoId, title, publishedAt, channelI
 
     const match = await matchTmdbTitle(title);
     if (!match) return { ...out, skipped: 'no-tmdb-match' };
+    if (!isEligibleTrailerRelease(match, title)) return { ...out, skipped: 'old-release' };
 
     const link = `https://www.youtube.com/watch?v=${videoId}`;
     const article = { title, link, publishedAt: publishedAt || new Date().toISOString(), tmdbId: String(match.id), mediaType: match.media_type };
