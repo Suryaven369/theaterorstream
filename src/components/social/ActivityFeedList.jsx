@@ -91,8 +91,9 @@ export default function ActivityFeedList({ items = [], showUser = false }) {
                                     </span>
                                 ) : item.event_type === 'list_created' ? (
                                     <Link
-                                        to={`/collection/${createListSlug(item.payload?.name)}`}
+                                        to={`/collection/${createListSlug(item.payload?.name)}${username ? `?u=${encodeURIComponent(username)}` : ''}`}
                                         state={{
+                                            ownerUsername: username || undefined,
                                             from: {
                                                 path: '/',
                                                 label: 'Home',

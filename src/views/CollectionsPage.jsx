@@ -8,6 +8,7 @@ import {
     createUserCollection,
     deleteUserCollection,
     getCollectionBySlug,
+    collectionPublicPath,
 } from '../lib/supabase';
 import {
     ensureWatchedInTheaterCollection,
@@ -36,8 +37,8 @@ const createSlug = (text) => {
     return slug || 'collection';
 };
 
-const collectionPath = (collection) =>
-    `/collection/${collection.slug || createSlug(collection.name) || collection.id}`;
+const collectionPath = (collection, ownerUsername = null) =>
+    collectionPublicPath(collection, ownerUsername);
 
 const sortCollections = (list) =>
     [...(list || [])].sort((a, b) => {
@@ -104,12 +105,12 @@ const MiniPosterCollage = ({ movies, imageURL, coverImage }) => {
 };
 
 /** Overflow menu on every list card (Share / Edit / Add / Delete). */
-const CollectionCardMenu = ({ collection, onDelete, onShareCopied }) => {
+const CollectionCardMenu = ({ collection, ownerUsername, onDelete, onShareCopied }) => {
     const navigate = useNavigate();
     const [open, setOpen] = useState(false);
     const menuRef = useRef(null);
     const isTheater = isTheaterSystemCollection(collection);
-    const path = collectionPath(collection);
+    const path = collectionPath(collection, ownerUsername);
     const shareUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}${path}`;
 
     useEffect(() => {
@@ -128,9 +129,14 @@ const CollectionCardMenu = ({ collection, onDelete, onShareCopied }) => {
         };
     }, [open]);
 
-    const go = (state) => {
+    const go = (state = {}) => {
         setOpen(false);
-        navigate(path, { state });
+        navigate(path, {
+            state: {
+                ...state,
+                ownerUsername: ownerUsername || undefined,
+            },
+        });
     };
 
     const handleShare = async (e) => {
@@ -314,9 +320,13 @@ const CollectionsPage = () => {
 
     const prefetchCollection = (collection) => {
         const slug = collection.slug || createSlug(collection.name) || collection.id;
+        const owner = viewedProfile?.username || null;
         if (!slug) return;
-        prefetchCollectionPage(slug, user?.id || null, () =>
-            getCollectionBySlug(slug, user?.id || null),
+        prefetchCollectionPage(
+            slug,
+            user?.id || null,
+            () => getCollectionBySlug(slug, user?.id || null, { ownerUsername: owner }),
+            owner,
         );
     };
 
@@ -529,6 +539,7 @@ const CollectionsPage = () => {
                                 {isOwnProfile && (
                                     <CollectionCardMenu
                                         collection={collection}
+                                        ownerUsername={viewedProfile?.username}
                                         onDelete={setToDelete}
                                         onShareCopied={() => {
                                             setSuccess('Link copied');
@@ -537,8 +548,9 @@ const CollectionsPage = () => {
                                     />
                                 )}
                                 <Link
-                                    to={`/collection/${collection.slug || createSlug(collection.name) || collection.id}`}
+                                    to={collectionPath(collection, viewedProfile?.username)}
                                     state={viewedProfile?.username ? {
+                                        ownerUsername: viewedProfile.username,
                                         from: {
                                             path: `/${viewedProfile.username}/collections`,
                                             label: 'Collections',

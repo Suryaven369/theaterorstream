@@ -2,7 +2,28 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 31, 2026 · HEAD `85c39dc` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 31, 2026 · HEAD `PENDING` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Jul 31, 2026 — Public list slug collision (wrong avatar/movies)
+
+### Other users’ public lists showed viewer’s data ✅
+
+**Problem:** Viewing another profile’s list (e.g. `@shreyashhh` → Watched in Theaters) showed the logged-in viewer’s avatar and movies (e.g. Now You See Me, Disclosure Day). Owner saw correct data when logged in as themselves.
+
+**Root cause:** Shared system slugs (`watched-in-theaters`); `getCollectionBySlug` preferred the viewer’s matching collection; session cache keyed only by slug + viewer.
+
+**Files changed:**
+- `src/lib/db/collections.js` — `getCollectionBySlug(..., { ownerUsername })`, `collectionPublicPath`
+- `src/lib/pageSessionCache.js` — owner segment in cache key
+- `src/views/CollectionDetails.jsx`, `CollectionsPage.jsx`, `ProfilePage.jsx`, `Search.jsx`
+- `src/components/home/ExplorePanels.jsx`, `FeedPostCard.jsx`, `ActivityFeedList.jsx`
+- `src/views/admin/AdminFranchiseListsPage.jsx`, `src/lib/supabase.js`
+
+**Behavior:** List URLs include `?u=owner`; resolve by owner; ambiguous public slug without owner → no match (not viewer’s list). Hard-refresh after deploy clears old session cache.
+
+**Next recommended:** Smoke-test logged-in user A opens user B’s theater list; then `ai-agents-stack` (Task #14).
 
 ---
 
@@ -1488,6 +1509,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `PENDING` | Jul 2026 | Fix public list slug collision (viewer avatar/movies on others’ lists) |
 | `85c39dc` | Jul 2026 | Edge-safe trailer-eligibility (fix Vercel node:http deploy) |
 | `a332f85` | Jul 2026 | Mobile UX: safe-area, tap targets, Explore poster density |
 | `fb5b105` | Jul 2026 | Collections cache, feed log titles, mobile perf, franchise SQL |

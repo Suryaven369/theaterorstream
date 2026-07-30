@@ -18,6 +18,7 @@ import {
     normalizeUsername,
     getUsernameValidationError,
     getCollectionBySlug,
+    collectionPublicPath,
 } from '../lib/supabase';
 import {
     uploadAvatarImage,
@@ -642,8 +643,9 @@ const ProfilePage = () => {
                         {pageSlice(allCollections).map((c) => (
                             <Link
                                 key={c.id}
-                                to={`/collection/${slugifyName(c.name)}`}
+                                to={collectionPublicPath(c, viewedProfile?.username)}
                                 state={viewedProfile?.username ? {
+                                    ownerUsername: viewedProfile.username,
                                     from: {
                                         path: `/${viewedProfile.username}/profile?tab=lists`,
                                         label: 'Profile',
@@ -655,14 +657,22 @@ const ProfilePage = () => {
                                 } : undefined}
                                 onMouseEnter={() => {
                                     const slug = slugifyName(c.name);
-                                    prefetchCollectionPage(slug, user?.id || null, () =>
-                                        getCollectionBySlug(slug, user?.id || null),
+                                    const owner = viewedProfile?.username || null;
+                                    prefetchCollectionPage(
+                                        slug,
+                                        user?.id || null,
+                                        () => getCollectionBySlug(slug, user?.id || null, { ownerUsername: owner }),
+                                        owner,
                                     );
                                 }}
                                 onFocus={() => {
                                     const slug = slugifyName(c.name);
-                                    prefetchCollectionPage(slug, user?.id || null, () =>
-                                        getCollectionBySlug(slug, user?.id || null),
+                                    const owner = viewedProfile?.username || null;
+                                    prefetchCollectionPage(
+                                        slug,
+                                        user?.id || null,
+                                        () => getCollectionBySlug(slug, user?.id || null, { ownerUsername: owner }),
+                                        owner,
                                     );
                                 }}
                                 className="flex items-center gap-3 p-3 rounded-xl bg-[#1a1d1f] border border-white/5 hover:border-white/15 transition-colors"

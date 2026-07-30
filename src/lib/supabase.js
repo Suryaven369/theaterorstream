@@ -137,6 +137,7 @@ export {
     getUserCollections,
     createUserCollection,
     getCollectionBySlug,
+    collectionPublicPath,
     updateUserCollection,
     addToCollection,
     removeFromCollection,

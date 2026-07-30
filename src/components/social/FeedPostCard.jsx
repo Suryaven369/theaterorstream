@@ -153,8 +153,11 @@ export default function FeedPostCard({
 
       {item.postType === 'list' ? (
         <Link
-          to={`/collection/${createSlug(item.listTitle || item.movieTitle || '')}`}
-          state={{ from: listReferrer }}
+          to={`/collection/${createSlug(item.listTitle || item.movieTitle || '')}${item.user?.username ? `?u=${encodeURIComponent(item.user.username)}` : ''}`}
+          state={{
+            from: listReferrer,
+            ownerUsername: item.user?.username || undefined,
+          }}
           className="block px-3 sm:px-4 pb-2"
           data-no-thread
           onClick={(e) => e.stopPropagation()}

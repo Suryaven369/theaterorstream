@@ -3,7 +3,7 @@ import { useLocation, useNavigate, Link } from "react-router-dom";
 import { IoSearchOutline, IoClose } from "react-icons/io5";
 import { FaFolderOpen, FaFilm } from "react-icons/fa";
 import Card from "../components/Card";
-import { searchProfiles, searchPublicCollections, searchPublicBoards } from "../lib/supabase";
+import { searchProfiles, searchPublicCollections, searchPublicBoards, collectionPublicPath } from "../lib/supabase";
 import {
   searchContentFromEdge,
   searchPeopleFromEdge,
@@ -38,15 +38,6 @@ const AVATARS = {
   avatar_6: { emoji: "🦋", bg: "from-pink-400 to-purple-500" },
 };
 
-function collectionSlug(name) {
-  return (name || "")
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .trim();
-}
-
 function ProfileRow({ profile }) {
   const avatar = AVATARS[profile.avatar_id] || AVATARS.avatar_1;
   return (
@@ -68,11 +59,12 @@ function ProfileRow({ profile }) {
 }
 
 function CollectionRow({ collection }) {
-  const slug = collectionSlug(collection.name);
+  const owner = collection.owner?.username || null;
   return (
     <Link
-      to={`/collection/${slug}`}
+      to={collectionPublicPath(collection, owner)}
       state={{
+        ownerUsername: owner || undefined,
         from: {
           path: '/search',
           label: 'Search',

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, Link, useParams, useLocation } from 'react-router-dom';
+import { useNavigate, Link, useParams, useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSelector } from 'react-redux';
 import {
@@ -9,6 +9,7 @@ import {
     updateUserCollection,
     saveFullMovieToLibrary,
     deleteUserCollection,
+    collectionPublicPath,
 } from '../lib/supabase';
 import { FaTrash, FaLock, FaGlobe, FaFolderOpen, FaArrowLeft, FaPlus, FaSearch, FaCheck, FaTimes, FaEdit, FaSave, FaShare, FaLink, FaTwitter, FaEllipsisH, FaImage } from 'react-icons/fa';
 import ConfirmationModal from '../components/ConfirmationModal';
@@ -314,9 +315,16 @@ const ShareModal = ({ collection, movies, imageURL, shareUrl, onClose }) => {
 const CollectionDetails = () => {
     const navigate = useNavigate();
     const location = useLocation();
+    const [searchParams] = useSearchParams();
     const { slug } = useParams();
     const { user, profile, loading: authLoading } = useAuth();
     const imageURL = useSelector((state) => state.movieData.imageURL);
+
+    const ownerFromQuery = (searchParams.get('u') || '').trim().replace(/^@/, '') || null;
+    const ownerFromState = location.state?.ownerUsername
+        ? String(location.state.ownerUsername).trim().replace(/^@/, '')
+        : null;
+    const ownerUsername = ownerFromQuery || ownerFromState || null;
 
     const [collection, setCollection] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -354,7 +362,7 @@ const CollectionDetails = () => {
         if (slug) {
             loadCollection();
         }
-    }, [slug, user?.id]);
+    }, [slug, user?.id, ownerUsername]);
 
     useEffect(() => {
         if (!actionsMenuOpen) return undefined;
@@ -387,8 +395,10 @@ const CollectionDetails = () => {
         setCoverError('');
     };
 
+    const cacheOwnerKey = ownerUsername || null;
+
     const loadCollection = async () => {
-        const key = collectionPageKey(slug, user?.id || null);
+        const key = collectionPageKey(slug, user?.id || null, cacheOwnerKey);
         const existing = getPageCache(key);
         let showedCache = Boolean(existing);
         if (existing) {
@@ -403,7 +413,9 @@ const CollectionDetails = () => {
         try {
             await loadWithPageCache({
                 key,
-                fetcher: () => getCollectionBySlug(slug, user?.id || null),
+                fetcher: () => getCollectionBySlug(slug, user?.id || null, {
+                    ownerUsername: cacheOwnerKey,
+                }),
                 onCached: (data) => {
                     showedCache = true;
                     setCollection(data);
@@ -414,6 +426,13 @@ const CollectionDetails = () => {
                     setCollection(data);
                     applyCollectionToForm(data);
                     setLoading(false);
+                    // Ensure shareable URL includes owner when we resolved without ?u=
+                    const resolvedOwner = data?.user_profiles?.username;
+                    if (data && resolvedOwner && !ownerFromQuery) {
+                        const next = new URLSearchParams(searchParams);
+                        next.set('u', resolvedOwner);
+                        navigate(`${location.pathname}?${next.toString()}`, { replace: true, state: location.state });
+                    }
                 },
             });
         } catch (error) {
@@ -425,7 +444,8 @@ const CollectionDetails = () => {
 
     const bumpCollectionCache = (next) => {
         setCollection(next);
-        if (next && slug) setPageCache(collectionPageKey(slug, user?.id || null), next);
+        const ownerKey = ownerUsername || next?.user_profiles?.username || null;
+        if (next && slug) setPageCache(collectionPageKey(slug, user?.id || null, ownerKey), next);
         if (next?.user_id) {
             invalidatePageCache(collectionsListKey(next.user_id, true));
             invalidatePageCache(collectionsListKey(next.user_id, false));
@@ -471,7 +491,7 @@ const CollectionDetails = () => {
         setDeletingCollection(false);
         setDeleteCollectionOpen(false);
         if (result.success) {
-            invalidatePageCache(collectionPageKey(slug, user?.id || null));
+            invalidatePageCache(collectionPageKey(slug, user?.id || null, ownerUsername));
             if (collection.user_id) {
                 invalidatePageCache(collectionsListKey(collection.user_id, true));
                 invalidatePageCache(collectionsListKey(collection.user_id, false));
@@ -551,7 +571,7 @@ const CollectionDetails = () => {
             const result = await addMoviesToCollection(collection.id, processedMovies);
 
             if (result.success) {
-                invalidatePageCache(collectionPageKey(slug, user?.id || null));
+                invalidatePageCache(collectionPageKey(slug, user?.id || null, ownerUsername));
                 if (collection.user_id) {
                     invalidatePageCache(collectionsListKey(collection.user_id, true));
                     invalidatePageCache(collectionsListKey(collection.user_id, false));
@@ -619,7 +639,7 @@ const CollectionDetails = () => {
         });
 
         if (result.success) {
-            invalidatePageCache(collectionPageKey(slug, user?.id || null));
+            invalidatePageCache(collectionPageKey(slug, user?.id || null, ownerUsername));
             if (collection.user_id) {
                 invalidatePageCache(collectionsListKey(collection.user_id, true));
                 invalidatePageCache(collectionsListKey(collection.user_id, false));
@@ -627,8 +647,9 @@ const CollectionDetails = () => {
             if (!isTheaterCollection) {
                 const newSlug = createSlug(editName.trim());
                 if (newSlug !== slug) {
-                    invalidatePageCache(collectionPageKey(newSlug, user?.id || null));
-                    navigate(`/collection/${newSlug}`, { replace: true });
+                    const ownerKey = ownerUsername || collection.user_profiles?.username || profile?.username || null;
+                    invalidatePageCache(collectionPageKey(newSlug, user?.id || null, ownerKey));
+                    navigate(collectionPublicPath({ slug: newSlug, name: editName.trim() }, ownerKey), { replace: true });
                     setIsEditing(false);
                     setSaving(false);
                     return;
@@ -680,10 +701,13 @@ const CollectionDetails = () => {
     }
 
     const movies = collection.collection_movies || [];
-    const shareUrl = `${window.location.origin}/collection/${slug}`;
+    const listOwnerUsername = collection.user_profiles?.username || null;
+    const shareUrl = `${window.location.origin}${collectionPublicPath(
+        collection,
+        ownerUsername || listOwnerUsername,
+    )}`;
     const from = location.state?.from;
-    const ownerUsername = collection.user_profiles?.username;
-    const ownerCollectionsPath = ownerUsername ? `/${ownerUsername}/collections` : '/';
+    const ownerCollectionsPath = listOwnerUsername ? `/${listOwnerUsername}/collections` : '/';
     // Prefer explicit referrer, otherwise Home — never force owner's collections list
     // (that made Home → list → Back land on Collections instead of Home).
     const fallbackPath = from?.path || '/';
@@ -692,9 +716,9 @@ const CollectionDetails = () => {
         : 'Back';
     const trailCrumbs = from?.crumbs?.length
         ? from.crumbs
-        : ownerUsername
+        : listOwnerUsername
             ? [
-                { path: `/${ownerUsername}/profile`, label: `@${ownerUsername}` },
+                { path: `/${listOwnerUsername}/profile`, label: `@${listOwnerUsername}` },
                 { path: ownerCollectionsPath, label: 'Collections' },
             ]
             : [];

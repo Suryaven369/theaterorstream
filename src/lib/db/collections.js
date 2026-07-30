@@ -113,6 +113,18 @@ const createSlug = (text) =>
         .replace(/-+/g, '-')
         .trim();
 
+/** Public URL for a list — always include ?u=owner when known (slug collisions). */
+export function collectionPublicPath(collection, ownerUsername = null) {
+    const slug = collection?.slug || createSlug(collection?.name) || collection?.id;
+    if (!slug) return '/';
+    const u = ownerUsername
+        || collection?.user_profiles?.username
+        || collection?.owner?.username
+        || collection?.owner_username
+        || null;
+    if (u) return `/collection/${slug}?u=${encodeURIComponent(String(u).replace(/^@/, ''))}`;
+    return `/collection/${slug}`;
+}
 const normalizeTags = (tags) =>
     [...new Set((Array.isArray(tags) ? tags : [])
         .map((t) => String(t || '').toLowerCase().trim())
@@ -358,8 +370,24 @@ export const createUserCollection = async (userId, name, description = '', isPub
     return { success: !error && !!hydrated, data: hydrated, error };
 };
 
-export const getCollectionBySlug = async (slug, viewerUserId = null) => {
+export const getCollectionBySlug = async (slug, viewerUserId = null, options = {}) => {
     if (!slug) return null;
+
+    const ownerUsername = options.ownerUsername
+        ? String(options.ownerUsername).trim().replace(/^@/, '')
+        : null;
+    let ownerUserId = options.ownerUserId || null;
+
+    if (!ownerUserId && ownerUsername) {
+        const { data: ownerProfile } = await supabase
+            .from('user_profiles')
+            .select('id')
+            .ilike('username', ownerUsername)
+            .maybeSingle();
+        ownerUserId = ownerProfile?.id || null;
+        // Unknown owner username → no match (avoid falling back to viewer’s list)
+        if (!ownerUserId) return null;
+    }
 
     // 1) Load collection rows (no nested movies — avoids PostgREST embed truncation)
     let query = supabase
@@ -367,7 +395,10 @@ export const getCollectionBySlug = async (slug, viewerUserId = null) => {
         .select('*')
         .order('created_at', { ascending: false });
 
-    if (viewerUserId) {
+    if (ownerUserId) {
+        // Exact owner — do not prefer the logged-in viewer when slugs collide
+        query = query.eq('user_id', ownerUserId);
+    } else if (viewerUserId) {
         query = query.or(`is_public.eq.true,user_id.eq.${viewerUserId}`);
     } else {
         query = query.eq('is_public', true);
@@ -379,13 +410,41 @@ export const getCollectionBySlug = async (slug, viewerUserId = null) => {
         return null;
     }
 
-    // Prefer the viewer's own list when slug collides across users
-    const matches = (collections || []).filter((c) => createSlug(c.name) === slug);
+    const matches = (collections || []).filter((c) =>
+        c.id === slug
+        || (c.slug && String(c.slug) === slug)
+        || createSlug(c.name) === slug,
+    );
     if (!matches.length) return null;
-    const collection =
-        (viewerUserId && matches.find((c) => c.user_id === viewerUserId)) ||
-        matches.find((c) => c.is_public) ||
-        matches[0];
+
+    let collection;
+    if (ownerUserId) {
+        collection = matches.find((c) => c.user_id === ownerUserId) || matches[0];
+    } else if (matches.length === 1) {
+        collection = matches[0];
+    } else {
+        // Slug collisions (e.g. every user has "Watched in Theaters"): never
+        // auto-pick the viewer's list — that leaked avatars/movies onto other
+        // profiles' public views. Prefer a single public match; if many publics
+        // share the slug, require ?u=owner (callers should pass ownerUsername).
+        const publicMatches = matches.filter((c) => c.is_public);
+        const own = viewerUserId
+            ? matches.find((c) => c.user_id === viewerUserId)
+            : null;
+        if (publicMatches.length === 1) {
+            collection = publicMatches[0];
+        } else if (publicMatches.length > 1) {
+            // Ambiguous without owner — do not guess (especially not "own")
+            return null;
+        } else {
+            collection = own || null;
+        }
+    }
+
+    // Private list: only owner (or collaborator path later) may view
+    if (collection && !collection.is_public && collection.user_id !== viewerUserId) {
+        return null;
+    }
 
     // 2) Load items for this collection only
     const { data: movies, error: moviesError } = await supabase

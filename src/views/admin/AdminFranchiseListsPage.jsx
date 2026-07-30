@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import {
     getFranchiseModerationQueue,
     setCollectionModerationStatus,
+    collectionPublicPath,
 } from "../../lib/supabase";
 
 const STATUS_TABS = [
@@ -138,7 +139,10 @@ const AdminFranchiseListsPage = () => {
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2 shrink-0">
                                     <Link
-                                        to={`/collection/${list.slug || slugify(list.name)}`}
+                                        to={collectionPublicPath(
+                                            { slug: list.slug || slugify(list.name), name: list.name },
+                                            list.owner?.username,
+                                        )}
                                         className="text-xs px-3 py-2 rounded-md bg-white/5 text-white/60 hover:text-white min-h-[36px] inline-flex items-center"
                                     >
                                         View

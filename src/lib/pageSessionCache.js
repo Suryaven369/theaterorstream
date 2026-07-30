@@ -98,9 +98,10 @@ export async function loadWithPageCache({
   }
 }
 
-/** Collection detail cache key */
-export function collectionPageKey(slug, viewerUserId = null) {
-  return `collection:${slug || ''}:${viewerUserId || 'anon'}`;
+/** Collection detail cache key — include owner so slug collisions stay separate */
+export function collectionPageKey(slug, viewerUserId = null, ownerKey = null) {
+  const owner = ownerKey ? String(ownerKey).toLowerCase().replace(/^@/, '') : 'any';
+  return `collection:${slug || ''}:${viewerUserId || 'anon'}:${owner}`;
 }
 
 /** User collections list cache key */
@@ -109,8 +110,8 @@ export function collectionsListKey(profileId, own = false) {
 }
 
 /** Prefetch a collection page into cache (e.g. link hover). */
-export function prefetchCollectionPage(slug, viewerUserId, fetcher) {
-  const key = collectionPageKey(slug, viewerUserId);
+export function prefetchCollectionPage(slug, viewerUserId, fetcher, ownerKey = null) {
+  const key = collectionPageKey(slug, viewerUserId, ownerKey);
   if (!slug || isPageCacheFresh(key) || inflight.has(key)) return;
   loadWithPageCache({
     key,

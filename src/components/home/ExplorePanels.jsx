@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { FaFolderOpen, FaBookOpen } from 'react-icons/fa';
-import { getRecentPublicCollections, exploreBoards, boardPath, itemImageUrl, getCollectionBySlug } from '../../lib/supabase';
+import { getRecentPublicCollections, exploreBoards, boardPath, itemImageUrl, getCollectionBySlug, collectionPublicPath } from '../../lib/supabase';
 import { getRecentPublicBlogs } from '../../lib/blogs';
 import { useAuth } from '../../context/AuthContext';
 import { prefetchCollectionPage } from '../../lib/pageSessionCache';
@@ -130,9 +130,13 @@ export function ExploreCollectionsPanel() {
 
   const prefetchRow = (c) => {
     const slug = c.slug || collectionSlug(c.name);
+    const owner = c.owner?.username || null;
     if (!slug) return;
-    prefetchCollectionPage(slug, user?.id || null, () =>
-      getCollectionBySlug(slug, user?.id || null),
+    prefetchCollectionPage(
+      slug,
+      user?.id || null,
+      () => getCollectionBySlug(slug, user?.id || null, { ownerUsername: owner }),
+      owner,
     );
   };
 
@@ -174,8 +178,9 @@ export function ExploreCollectionsPanel() {
           {rows.map((c) => (
             <Link
               key={c.id}
-              to={`/collection/${c.slug || collectionSlug(c.name)}`}
+              to={collectionPublicPath(c, c.owner?.username)}
               state={{
+                ownerUsername: c.owner?.username || undefined,
                 from: {
                   path: '/?tab=explore&view=collections',
                   label: 'Collections',
