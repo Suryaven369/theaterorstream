@@ -4,6 +4,9 @@ import http from 'node:http';
 import { getSupabaseAdmin } from './supabase-admin.js';
 import { fetchTmdbApi } from './tmdb-server.js';
 import { analyzeArticle as analyzeArticleKeywords } from './news-keywords.js';
+import { extractTrailerTitleYear, isEligibleTrailerRelease } from './trailer-eligibility.js';
+
+export { extractTrailerTitleYear, isEligibleTrailerRelease };
 
 const FETCH_TIMEOUT_MS = 15000;
 const DEFAULT_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -603,41 +606,6 @@ async function matchTmdbTitle(rawTitle) {
         } catch { /* try next candidate */ }
     }
     return null;
-}
-
-/** Pull a 20xx year from a YouTube trailer title (e.g. "Official Trailer (2026)"). */
-export function extractTrailerTitleYear(rawTitle) {
-    if (!rawTitle) return null;
-    const s = String(rawTitle);
-    const paren = s.match(/\(\s*(20\d{2})\s*\)/);
-    if (paren) return parseInt(paren[1], 10);
-    const years = [...s.matchAll(/\b(20\d{2})\b/g)].map((m) => parseInt(m[1], 10));
-    return years.length ? Math.max(...years) : null;
-}
-
-/**
- * Only accept trailers for current-year+ releases — skip classics, retrospectives,
- * and TMDB matches whose release/first-air year is in the past.
- */
-export function isEligibleTrailerRelease(match, rawTitle) {
-    if (!match) return false;
-    const currentYear = new Date().getFullYear();
-    const title = String(rawTitle || '');
-
-    if (/\b(retrospective|classic trailer|restored|4k restoration|re-release|reissue|anniversary edition|look back|flashback)\b/i.test(title)) {
-        return false;
-    }
-
-    const titleYear = extractTrailerTitleYear(title);
-    const releaseDate = match.release_date || match.first_air_date || null;
-    const releaseYear = releaseDate ? parseInt(String(releaseDate).slice(0, 4), 10) : null;
-
-    // Studio titles often tag the launch year even when TMDB first_air_date is old (revivals).
-    if (titleYear && titleYear >= currentYear) return true;
-
-    if (releaseYear && releaseYear >= currentYear) return true;
-
-    return false;
 }
 
 export async function fetchAndStoreSource(source, globalFilters = null) {

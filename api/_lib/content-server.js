@@ -5,7 +5,7 @@ import { generateJson, isLlmEnabled } from './llm-server.js';
 import { getSupabaseAdmin } from './supabase-admin.js';
 import { mapFullTmdbToLibraryRecord } from './movie-library-server.js';
 import { upsertMoviesLibrary } from '../../src/lib/libraryDedupe.js';
-import { isEligibleTrailerRelease } from './rss-server.js';
+import { isEligibleTrailerRelease } from './trailer-eligibility.js';
 
 export const LIBRARY_CARD_SELECT =
     'tmdb_id, title, poster_path, backdrop_path, media_type, release_date, first_air_date, vote_average, popularity, overview, genres, runtime, number_of_seasons, number_of_episodes';
