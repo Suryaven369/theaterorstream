@@ -2,7 +2,7 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 31, 2026 · HEAD `PENDING` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 31, 2026 · HEAD `5b68339` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
 
 ---
 
@@ -1553,7 +1553,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
-| `PENDING` | Jul 2026 | Collection edit sort (release / added / title) + items_sort migration |
+| `5b68339` | Jul 2026 | Collection edit sort (release / added / title) + items_sort migration |
 | `1316019` | Jul 2026 | Remove floating RecoChatBubble from app shell |
 | `76503f9` | Jul 2026 | Allow manual Add titles on Watched in Theaters list |
 | `b2de275` | Jul 2026 | Fix public list slug collision (viewer avatar/movies on others’ lists) |
