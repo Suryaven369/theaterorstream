@@ -10,6 +10,9 @@ import {
     saveFullMovieToLibrary,
     deleteUserCollection,
     collectionPublicPath,
+    COLLECTION_SORT_OPTIONS,
+    normalizeCollectionItemsSort,
+    sortCollectionMovies,
 } from '../lib/supabase';
 import { FaTrash, FaLock, FaGlobe, FaFolderOpen, FaArrowLeft, FaPlus, FaSearch, FaCheck, FaTimes, FaEdit, FaSave, FaShare, FaLink, FaTwitter, FaEllipsisH, FaImage } from 'react-icons/fa';
 import ConfirmationModal from '../components/ConfirmationModal';
@@ -340,6 +343,7 @@ const CollectionDetails = () => {
     const [editIsPublic, setEditIsPublic] = useState(false);
     const [editFranchise, setEditFranchise] = useState(false);
     const [editCoverImage, setEditCoverImage] = useState(null);
+    const [editItemsSort, setEditItemsSort] = useState('added_desc');
     const [coverUploading, setCoverUploading] = useState(false);
     const [coverError, setCoverError] = useState('');
     const [saving, setSaving] = useState(false);
@@ -392,6 +396,7 @@ const CollectionDetails = () => {
             || (Array.isArray(data.tags) && data.tags.includes('franchise')),
         );
         setEditCoverImage(toPublicStorageUrl(data.cover_image) || data.cover_image || null);
+        setEditItemsSort(normalizeCollectionItemsSort(data.items_sort, data));
         setCoverError('');
     };
 
@@ -607,8 +612,25 @@ const CollectionDetails = () => {
             || (Array.isArray(collection?.tags) && collection.tags.includes('franchise')),
         );
         setEditCoverImage(toPublicStorageUrl(collection?.cover_image) || collection?.cover_image || null);
+        setEditItemsSort(normalizeCollectionItemsSort(collection?.items_sort, collection));
         setCoverError('');
         setIsEditing(true);
+    };
+
+    const applyEditSortPreview = (mode) => {
+        const next = normalizeCollectionItemsSort(mode, collection);
+        setEditItemsSort(next);
+        if (!collection) return;
+        bumpCollectionCache({
+            ...collection,
+            items_sort: next,
+            collection_movies: sortCollectionMovies(collection.collection_movies, next),
+        });
+    };
+
+    const cancelEditing = () => {
+        setIsEditing(false);
+        loadCollection();
     };
 
     const handleCoverUpload = async (e) => {
@@ -636,6 +658,7 @@ const CollectionDetails = () => {
             is_public: editIsPublic,
             franchise: isTheaterCollection ? false : editFranchise,
             cover_image: editCoverImage || null,
+            items_sort: editItemsSort,
         });
 
         if (result.success) {
@@ -905,6 +928,26 @@ const CollectionDetails = () => {
                                             </p>
                                         </div>
                                     )}
+                                    <div>
+                                        <label className="text-xs text-white/50 mb-2 block" htmlFor="collection-items-sort">
+                                            Sort titles
+                                        </label>
+                                        <select
+                                            id="collection-items-sort"
+                                            value={editItemsSort}
+                                            onChange={(e) => applyEditSortPreview(e.target.value)}
+                                            className="w-full sm:max-w-xs bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-purple-500/50 min-h-[44px]"
+                                        >
+                                            {COLLECTION_SORT_OPTIONS.map((opt) => (
+                                                <option key={opt.id} value={opt.id} className="bg-[#1a1a1a] text-white">
+                                                    {opt.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <p className="text-[11px] text-white/35 mt-1.5">
+                                            Preview updates below. Save to keep this order for everyone.
+                                        </p>
+                                    </div>
                                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                         <button
                                             type="button"
@@ -922,7 +965,7 @@ const CollectionDetails = () => {
                                         <div className="flex gap-3 justify-end">
                                             <button
                                                 type="button"
-                                                onClick={() => setIsEditing(false)}
+                                                onClick={cancelEditing}
                                                 className="px-4 py-2 text-white/50 hover:text-white"
                                             >
                                                 Cancel

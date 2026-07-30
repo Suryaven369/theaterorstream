@@ -64,24 +64,66 @@ export const updateCollection = async (slug, updates) => updateCollectionAdmin(s
 // USER LISTS (user_collections) — NOT Boards
 // =============================================
 
-function sortCollectionMoviesNewestFirst(movies) {
-    if (!Array.isArray(movies) || movies.length < 2) return movies || [];
-    return [...movies].sort((a, b) => {
-        const aTime = new Date(a.added_at || a.created_at || 0).getTime();
-        const bTime = new Date(b.added_at || b.created_at || 0).getTime();
-        return bTime - aTime;
-    });
+export const COLLECTION_SORT_OPTIONS = [
+    { id: 'added_desc', label: 'Date added · newest' },
+    { id: 'added_asc', label: 'Date added · oldest' },
+    { id: 'release_desc', label: 'Release date · newest' },
+    { id: 'release_asc', label: 'Release date · oldest' },
+    { id: 'title_asc', label: 'Title · A–Z' },
+    { id: 'title_desc', label: 'Title · Z–A' },
+];
+
+const COLLECTION_SORT_IDS = new Set(COLLECTION_SORT_OPTIONS.map((o) => o.id));
+
+export function normalizeCollectionItemsSort(value, collection = null) {
+    if (value && COLLECTION_SORT_IDS.has(value)) return value;
+    const isFranchise = collection?.category === 'franchise'
+        || (Array.isArray(collection?.tags) && collection.tags.includes('franchise'))
+        || /marvel cinematic universe/i.test(collection?.name || '');
+    return isFranchise ? 'release_asc' : 'added_desc';
 }
 
-/** Chronological by release (MCU / franchise lists). Falls back to added_at. */
-function sortCollectionMoviesByRelease(movies) {
+/** Sort list items by saved preference (or franchise default). */
+export function sortCollectionMovies(movies, mode = 'added_desc') {
     if (!Array.isArray(movies) || movies.length < 2) return movies || [];
-    return [...movies].sort((a, b) => {
-        const aKey = String(a.release_date || a.first_air_date || a.added_at || '');
-        const bKey = String(b.release_date || b.first_air_date || b.added_at || '');
-        if (aKey && bKey && aKey !== bKey) return aKey.localeCompare(bKey);
-        return String(a.movie_title || a.title || '').localeCompare(String(b.movie_title || b.title || ''));
-    });
+    const list = [...movies];
+    const titleOf = (m) => String(m.movie_title || m.title || '').toLowerCase();
+    const releaseOf = (m) => String(m.release_date || m.first_air_date || '');
+    const addedOf = (m) => new Date(m.added_at || m.created_at || 0).getTime() || 0;
+
+    switch (mode) {
+        case 'added_asc':
+            return list.sort((a, b) => addedOf(a) - addedOf(b) || titleOf(a).localeCompare(titleOf(b)));
+        case 'release_asc':
+            return list.sort((a, b) => {
+                const ar = releaseOf(a);
+                const br = releaseOf(b);
+                if (ar && br && ar !== br) return ar.localeCompare(br);
+                if (ar && !br) return -1;
+                if (!ar && br) return 1;
+                return titleOf(a).localeCompare(titleOf(b));
+            });
+        case 'release_desc':
+            return list.sort((a, b) => {
+                const ar = releaseOf(a);
+                const br = releaseOf(b);
+                if (ar && br && ar !== br) return br.localeCompare(ar);
+                if (ar && !br) return -1;
+                if (!ar && br) return 1;
+                return titleOf(a).localeCompare(titleOf(b));
+            });
+        case 'title_asc':
+            return list.sort((a, b) => titleOf(a).localeCompare(titleOf(b)));
+        case 'title_desc':
+            return list.sort((a, b) => titleOf(b).localeCompare(titleOf(a)));
+        case 'added_desc':
+        default:
+            return list.sort((a, b) => addedOf(b) - addedOf(a) || titleOf(a).localeCompare(titleOf(b)));
+    }
+}
+
+function sortCollectionMoviesNewestFirst(movies) {
+    return sortCollectionMovies(movies, 'added_desc');
 }
 
 export const getUserCollections = async (userId) => {
@@ -524,12 +566,9 @@ export const getCollectionBySlug = async (slug, viewerUserId = null, options = {
                 };
             });
         }
-        const isFranchise = collection.category === 'franchise'
-            || (Array.isArray(collection.tags) && collection.tags.includes('franchise'))
-            || /marvel cinematic universe/i.test(collection.name || '');
-        collection.collection_movies = isFranchise
-            ? sortCollectionMoviesByRelease(collection.collection_movies)
-            : sortCollectionMoviesNewestFirst(collection.collection_movies);
+        const sortMode = normalizeCollectionItemsSort(collection.items_sort, collection);
+        collection.items_sort = sortMode;
+        collection.collection_movies = sortCollectionMovies(collection.collection_movies, sortMode);
     }
 
     // Persist any library-filled posters so list cards / feed covers stay populated
@@ -550,6 +589,12 @@ export const updateUserCollection = async (collectionId, updates) => {
 
     if (updates.cover_image !== undefined) patch.cover_image = updates.cover_image;
     if (updates.banner_image !== undefined) patch.banner_image = updates.banner_image;
+    if (updates.items_sort !== undefined) {
+        const mode = updates.items_sort && COLLECTION_SORT_IDS.has(updates.items_sort)
+            ? updates.items_sort
+            : null;
+        patch.items_sort = mode;
+    }
 
     if (!existing?.is_system && updates.tags !== undefined) {
         const tags = normalizeTags(updates.tags);
@@ -575,12 +620,26 @@ export const updateUserCollection = async (collectionId, updates) => {
         if (!isFranchise) patch.moderation_status = 'none';
     }
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
         .from('user_collections')
         .update(patch)
         .eq('id', collectionId)
         .select()
         .single();
+
+    // Pre-migration DBs may not have items_sort yet
+    if (error && /items_sort/i.test(error.message || '') && 'items_sort' in patch) {
+        const { items_sort: _ignored, ...withoutSort } = patch;
+        ({ data, error } = await supabase
+            .from('user_collections')
+            .update(withoutSort)
+            .eq('id', collectionId)
+            .select()
+            .single());
+        if (!error && updates.items_sort) {
+            console.warn('items_sort column missing — run 20260731000000_collection_items_sort.sql');
+        }
+    }
 
     if (error) console.error('Error updating collection:', error);
     // Uploaded cover changed, or cleared → refresh feed thumb from posters

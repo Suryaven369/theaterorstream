@@ -2,7 +2,23 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 31, 2026 · HEAD `1316019` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 31, 2026 · HEAD `PENDING` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Jul 31, 2026 — Collection edit sort options
+
+### Sort titles in list edit mode ✅
+
+**Problem:** No way to reorder collection movies by release date / title / date added while editing.
+
+**Files changed:** `CollectionDetails.jsx`, `collections.js`, `supabase.js`, migration `20260731000000_collection_items_sort.sql`
+
+**Behavior:** Edit mode → Sort titles dropdown (preview live) → Save stores `items_sort` on the list. Franchise default remains release oldest→newest when unset.
+
+**Off-git:** Run `20260731000000_collection_items_sort.sql` in Supabase for persistence (app falls back gracefully if column missing).
+
+**Next recommended:** Confirm migration applied; then `ai-agents-stack` (Task #14)
 
 ---
 
@@ -1537,6 +1553,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `PENDING` | Jul 2026 | Collection edit sort (release / added / title) + items_sort migration |
 | `1316019` | Jul 2026 | Remove floating RecoChatBubble from app shell |
 | `76503f9` | Jul 2026 | Allow manual Add titles on Watched in Theaters list |
 | `b2de275` | Jul 2026 | Fix public list slug collision (viewer avatar/movies on others’ lists) |
