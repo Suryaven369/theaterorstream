@@ -2,7 +2,21 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 31, 2026 · HEAD `b2de275` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 31, 2026 · HEAD `PENDING` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Jul 31, 2026 — Manual add on Watched in Theaters
+
+### Add titles enabled for theater system list ✅
+
+**Problem:** Watched in Theaters only auto-filled from diary “In theater” logs; ⋯ → Add titles was hidden.
+
+**Files changed:** `CollectionDetails.jsx`, `CollectionsPage.jsx`, `theaterWatch.js` (copy)
+
+**Behavior:** Owners can manually Add titles; diary sync still works; list still cannot be deleted.
+
+**Next recommended:** `ai-agents-stack` (Task #14)
 
 ---
 
@@ -1509,6 +1523,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `PENDING` | Jul 2026 | Allow manual Add titles on Watched in Theaters list |
 | `b2de275` | Jul 2026 | Fix public list slug collision (viewer avatar/movies on others’ lists) |
 | `85c39dc` | Jul 2026 | Edge-safe trailer-eligibility (fix Vercel node:http deploy) |
 | `a332f85` | Jul 2026 | Mobile UX: safe-area, tap targets, Explore poster density |

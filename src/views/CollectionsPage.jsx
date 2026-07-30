@@ -195,20 +195,18 @@ const CollectionCardMenu = ({ collection, ownerUsername, onDelete, onShareCopied
                     >
                         <FaEdit className="text-[11px] opacity-70" /> Edit
                     </button>
-                    {!isTheater && (
-                        <button
-                            type="button"
-                            role="menuitem"
-                            onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                go({ openAdd: true });
-                            }}
-                            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-white/75 hover:bg-white/10 hover:text-white transition-colors"
-                        >
-                            <FaPlus className="text-[11px] opacity-70" /> Add titles
-                        </button>
-                    )}
+                    <button
+                        type="button"
+                        role="menuitem"
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            go({ openAdd: true });
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-white/75 hover:bg-white/10 hover:text-white transition-colors"
+                    >
+                        <FaPlus className="text-[11px] opacity-70" /> Add titles
+                    </button>
                     {!isTheater && (
                         <>
                             <div className="my-1 border-t border-white/10" />
@@ -582,7 +580,7 @@ const CollectionsPage = () => {
                                         </h3>
                                         {isOwnProfile && isTheaterSystemCollection(collection) && (
                                             <p className="text-[11px] text-amber-400/80 mb-1 line-clamp-1">
-                                                Auto-updated when you log &quot;In theater&quot;
+                                                Diary &quot;In theater&quot; or Add titles
                                             </p>
                                         )}
                                         <div className="flex items-center gap-2 sm:gap-3 text-xs text-white/40 flex-wrap">

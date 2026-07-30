@@ -463,7 +463,7 @@ const CollectionDetails = () => {
         const openAdd = location.state?.openAdd;
         if (!openEdit && !openAdd) return;
         if (openEdit && isOwnCollection) setIsEditing(true);
-        if (openAdd && isOwnCollection && !isTheaterCollection) setShowAddModal(true);
+        if (openAdd && isOwnCollection) setShowAddModal(true);
         navigate(location.pathname, { replace: true, state: { from: location.state?.from } });
     }, [collection, loading, location.state, location.pathname, isOwnCollection, isTheaterCollection, navigate]);
 
@@ -1017,19 +1017,17 @@ const CollectionDetails = () => {
                                                                     >
                                                                         <FaEdit className="text-[11px] opacity-70" /> Edit
                                                                     </button>
-                                                                    {!isTheaterCollection && (
-                                                                        <button
-                                                                            type="button"
-                                                                            role="menuitem"
-                                                                            onClick={() => {
-                                                                                setActionsMenuOpen(false);
-                                                                                setShowAddModal(true);
-                                                                            }}
-                                                                            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-white/75 hover:bg-white/10 hover:text-white transition-colors"
-                                                                        >
-                                                                            <FaPlus className="text-[11px] opacity-70" /> Add titles
-                                                                        </button>
-                                                                    )}
+                                                                    <button
+                                                                        type="button"
+                                                                        role="menuitem"
+                                                                        onClick={() => {
+                                                                            setActionsMenuOpen(false);
+                                                                            setShowAddModal(true);
+                                                                        }}
+                                                                        className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-white/75 hover:bg-white/10 hover:text-white transition-colors"
+                                                                    >
+                                                                        <FaPlus className="text-[11px] opacity-70" /> Add titles
+                                                                    </button>
                                                                     {!isTheaterCollection && (
                                                                         <>
                                                                             <div className="my-1 border-t border-white/10" />
@@ -1059,7 +1057,7 @@ const CollectionDetails = () => {
                                         </p>
                                         {isOwnCollection && isTheaterCollection && (
                                             <p className="text-xs text-amber-400/90 mb-2">
-                                                🍿 Titles appear here when you log a movie with &quot;In theater&quot; on your diary.
+                                                🍿 Auto-fills when you log with &quot;In theater&quot; — or use Add titles to add movies manually.
                                             </p>
                                         )}
                                         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs sm:text-sm text-white/40">

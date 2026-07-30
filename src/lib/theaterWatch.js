@@ -3,7 +3,7 @@ import { supabase, addToCollection } from './supabase';
 export const THEATER_WATCH_KIND = 'watched_in_theater';
 export const THEATER_COLLECTION_NAME = 'Watched in Theaters';
 export const THEATER_COLLECTION_DESCRIPTION =
-    'Movies you logged as watched in the theater — updated automatically from your diary.';
+    'Movies watched in the theater — auto from diary "In theater" logs, or add titles yourself.';
 
 export function watchedInTheaterFromContext(watchedWith = []) {
     return Array.isArray(watchedWith) && watchedWith.includes('theater');
