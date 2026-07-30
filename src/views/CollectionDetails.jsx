@@ -13,6 +13,7 @@ import {
     COLLECTION_SORT_OPTIONS,
     normalizeCollectionItemsSort,
     sortCollectionMovies,
+    reorderCollectionMovies,
 } from '../lib/supabase';
 import { FaTrash, FaLock, FaGlobe, FaFolderOpen, FaArrowLeft, FaPlus, FaSearch, FaCheck, FaTimes, FaEdit, FaSave, FaShare, FaLink, FaTwitter, FaEllipsisH, FaImage } from 'react-icons/fa';
 import ConfirmationModal from '../components/ConfirmationModal';
@@ -344,6 +345,8 @@ const CollectionDetails = () => {
     const [editFranchise, setEditFranchise] = useState(false);
     const [editCoverImage, setEditCoverImage] = useState(null);
     const [editItemsSort, setEditItemsSort] = useState('added_desc');
+    const [orderDirty, setOrderDirty] = useState(false);
+    const [dragMovieId, setDragMovieId] = useState(null);
     const [coverUploading, setCoverUploading] = useState(false);
     const [coverError, setCoverError] = useState('');
     const [saving, setSaving] = useState(false);
@@ -613,6 +616,8 @@ const CollectionDetails = () => {
         );
         setEditCoverImage(toPublicStorageUrl(collection?.cover_image) || collection?.cover_image || null);
         setEditItemsSort(normalizeCollectionItemsSort(collection?.items_sort, collection));
+        setOrderDirty(false);
+        setDragMovieId(null);
         setCoverError('');
         setIsEditing(true);
     };
@@ -620,6 +625,7 @@ const CollectionDetails = () => {
     const applyEditSortPreview = (mode) => {
         const next = normalizeCollectionItemsSort(mode, collection);
         setEditItemsSort(next);
+        setOrderDirty(false);
         if (!collection) return;
         bumpCollectionCache({
             ...collection,
@@ -630,7 +636,39 @@ const CollectionDetails = () => {
 
     const cancelEditing = () => {
         setIsEditing(false);
+        setOrderDirty(false);
+        setDragMovieId(null);
         loadCollection();
+    };
+
+    const onMovieDragStart = (movieId) => {
+        if (!isEditing || !isOwnCollection) return;
+        setDragMovieId(String(movieId));
+    };
+
+    const onMovieDragOver = (e, overMovieId) => {
+        e.preventDefault();
+        if (!isEditing || !isOwnCollection || !dragMovieId) return;
+        const overId = String(overMovieId);
+        if (dragMovieId === overId || !collection) return;
+        const items = [...(collection.collection_movies || [])];
+        const from = items.findIndex((m) => String(m.movie_id) === dragMovieId);
+        const to = items.findIndex((m) => String(m.movie_id) === overId);
+        if (from < 0 || to < 0 || from === to) return;
+        const [moved] = items.splice(from, 1);
+        items.splice(to, 0, moved);
+        const withOrder = items.map((m, i) => ({ ...m, sort_order: i }));
+        setEditItemsSort('custom');
+        setOrderDirty(true);
+        bumpCollectionCache({
+            ...collection,
+            items_sort: 'custom',
+            collection_movies: withOrder,
+        });
+    };
+
+    const onMovieDragEnd = () => {
+        setDragMovieId(null);
     };
 
     const handleCoverUpload = async (e) => {
@@ -652,6 +690,16 @@ const CollectionDetails = () => {
         if (!isTheaterCollection && !editName.trim()) return;
 
         setSaving(true);
+        if (editItemsSort === 'custom' || orderDirty) {
+            const orderedIds = (collection.collection_movies || []).map((m) => m.movie_id).filter(Boolean);
+            const reorderResult = await reorderCollectionMovies(collection.id, orderedIds);
+            if (!reorderResult.success) {
+                setSaving(false);
+                alert(reorderResult.error?.message || 'Could not save custom order. Run the sort_order migration in Supabase.');
+                return;
+            }
+        }
+
         const result = await updateUserCollection(collection.id, {
             name: isTheaterCollection ? collection.name : editName.trim(),
             description: editDescription.trim(),
@@ -662,6 +710,7 @@ const CollectionDetails = () => {
         });
 
         if (result.success) {
+            setOrderDirty(false);
             invalidatePageCache(collectionPageKey(slug, user?.id || null, ownerUsername));
             if (collection.user_id) {
                 invalidatePageCache(collectionsListKey(collection.user_id, true));
@@ -945,7 +994,7 @@ const CollectionDetails = () => {
                                             ))}
                                         </select>
                                         <p className="text-[11px] text-white/35 mt-1.5">
-                                            Preview updates below. Save to keep this order for everyone.
+                                            Preview updates below. Drag posters to make a custom order, then Save.
                                         </p>
                                     </div>
                                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -1119,24 +1168,42 @@ const CollectionDetails = () => {
 
                     {isEditing && isOwnCollection && movies.length > 0 && (
                         <p className="text-xs text-white/40 mb-3 -mt-2 sm:-mt-3">
-                            Tap the <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-black/60 border border-white/20 text-[9px] mx-0.5 align-middle"><FaTimes /></span> on a poster to remove it from this list.
+                            Drag posters to reorder · tap <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-black/60 border border-white/20 text-[9px] mx-0.5 align-middle"><FaTimes /></span> to remove · then Save.
                         </p>
                     )}
 
                     {/* Movies Grid — 3 across on phones */}
                     {movies.length > 0 ? (
                         <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1.5 sm:gap-3 md:gap-4">
-                            {movies.map((movie) => (
+                            {movies.map((movie, idx) => (
                                 <div
                                     key={movie.id || movie.movie_id}
-                                    className="group relative rounded-lg sm:rounded-xl overflow-hidden bg-[#1a1a1a] transition-all min-w-0"
+                                    draggable={isEditing && isOwnCollection}
+                                    onDragStart={() => onMovieDragStart(movie.movie_id)}
+                                    onDragOver={(e) => onMovieDragOver(e, movie.movie_id)}
+                                    onDragEnd={onMovieDragEnd}
+                                    className={`group relative rounded-lg sm:rounded-xl overflow-hidden bg-[#1a1a1a] transition-all min-w-0 ${
+                                        isEditing && isOwnCollection
+                                            ? 'cursor-grab active:cursor-grabbing'
+                                            : ''
+                                    } ${
+                                        dragMovieId && String(dragMovieId) === String(movie.movie_id)
+                                            ? 'opacity-40 scale-[0.97] ring-2 ring-purple-400/50'
+                                            : ''
+                                    }`}
                                 >
                                     <div className="aspect-[2/3] relative">
+                                        {isEditing && isOwnCollection && (
+                                            <div className="absolute top-1.5 left-1.5 z-10 w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 text-white text-[10px] font-bold flex items-center justify-center shadow-lg border border-black/40 pointer-events-none">
+                                                {idx + 1}
+                                            </div>
+                                        )}
                                         <Link
                                             to={`/${movie.media_type || 'movie'}/${movie.movie_id}`}
                                             className="absolute inset-0 block"
                                             tabIndex={isEditing ? -1 : undefined}
                                             onClick={isEditing ? (e) => e.preventDefault() : undefined}
+                                            draggable={false}
                                         >
                                             {(() => {
                                                 const posterSrc = resolveTmdbImageUrl(movie.poster_path, {
@@ -1148,6 +1215,7 @@ const CollectionDetails = () => {
                                                     <img
                                                         src={posterSrc}
                                                         alt={movie.movie_title || movie.title}
+                                                        draggable={false}
                                                         className={`w-full h-full object-cover transition-transform duration-300 ${
                                                             isEditing ? '' : 'group-hover:scale-105'
                                                         }`}
@@ -1174,6 +1242,7 @@ const CollectionDetails = () => {
                                                     e.stopPropagation();
                                                     setItemToDelete(movie);
                                                 }}
+                                                onDragStart={(e) => e.stopPropagation()}
                                                 className="absolute top-1.5 right-1.5 z-10 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/75 text-white/90 hover:bg-red-500 hover:text-white flex items-center justify-center shadow-lg transition-colors disabled:opacity-50"
                                             >
                                                 {removing === movie.movie_id ? (

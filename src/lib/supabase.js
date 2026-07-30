@@ -147,6 +147,7 @@ export {
     getCollection,
     getCollectionByName,
     addMoviesToCollection,
+    reorderCollectionMovies,
     deleteUserCollection,
     getFranchiseModerationQueue,
     setCollectionModerationStatus,

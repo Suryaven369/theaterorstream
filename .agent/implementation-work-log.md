@@ -2,7 +2,23 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 31, 2026 · HEAD `5b68339` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 31, 2026 · HEAD `PENDING` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Jul 31, 2026 — Collection drag reorder
+
+### Drag posters to custom order in edit mode ✅
+
+**Problem:** Sort presets existed, but no manual drag arrangement.
+
+**Files changed:** `CollectionDetails.jsx`, `collections.js` (`reorderCollectionMovies`, `custom` sort), `supabase.js`, migration `20260731100000_collection_movie_sort_order.sql`
+
+**Behavior:** Edit → drag posters → Custom order → Save persists `sort_order` + `items_sort=custom`.
+
+**Off-git:** Run `20260731100000_collection_movie_sort_order.sql` in Supabase (and `items_sort` migration if not already).
+
+**Next recommended:** Confirm both sort migrations applied; then `ai-agents-stack` (Task #14)
 
 ---
 
@@ -1553,6 +1569,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `PENDING` | Jul 2026 | Drag-reorder collection titles in edit mode (custom sort_order) |
 | `5b68339` | Jul 2026 | Collection edit sort (release / added / title) + items_sort migration |
 | `1316019` | Jul 2026 | Remove floating RecoChatBubble from app shell |
 | `76503f9` | Jul 2026 | Allow manual Add titles on Watched in Theaters list |

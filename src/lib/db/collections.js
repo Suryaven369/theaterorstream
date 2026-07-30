@@ -71,6 +71,7 @@ export const COLLECTION_SORT_OPTIONS = [
     { id: 'release_asc', label: 'Release date · oldest' },
     { id: 'title_asc', label: 'Title · A–Z' },
     { id: 'title_desc', label: 'Title · Z–A' },
+    { id: 'custom', label: 'Custom order (drag)' },
 ];
 
 const COLLECTION_SORT_IDS = new Set(COLLECTION_SORT_OPTIONS.map((o) => o.id));
@@ -116,6 +117,13 @@ export function sortCollectionMovies(movies, mode = 'added_desc') {
             return list.sort((a, b) => titleOf(a).localeCompare(titleOf(b)));
         case 'title_desc':
             return list.sort((a, b) => titleOf(b).localeCompare(titleOf(a)));
+        case 'custom':
+            return list.sort((a, b) => {
+                const ao = Number.isFinite(a.sort_order) ? a.sort_order : Number.MAX_SAFE_INTEGER;
+                const bo = Number.isFinite(b.sort_order) ? b.sort_order : Number.MAX_SAFE_INTEGER;
+                if (ao !== bo) return ao - bo;
+                return addedOf(b) - addedOf(a) || titleOf(a).localeCompare(titleOf(b));
+            });
         case 'added_desc':
         default:
             return list.sort((a, b) => addedOf(b) - addedOf(a) || titleOf(a).localeCompare(titleOf(b)));
@@ -489,11 +497,28 @@ export const getCollectionBySlug = async (slug, viewerUserId = null, options = {
     }
 
     // 2) Load items for this collection only
-    const { data: movies, error: moviesError } = await supabase
-        .from('collection_movies')
-        .select('*')
-        .eq('collection_id', collection.id)
-        .order('added_at', { ascending: false });
+    let movies = null;
+    let moviesError = null;
+    {
+        const ordered = await supabase
+            .from('collection_movies')
+            .select('*')
+            .eq('collection_id', collection.id)
+            .order('sort_order', { ascending: true, nullsFirst: false })
+            .order('added_at', { ascending: false });
+        if (ordered.error && /sort_order/i.test(ordered.error.message || '')) {
+            const fallback = await supabase
+                .from('collection_movies')
+                .select('*')
+                .eq('collection_id', collection.id)
+                .order('added_at', { ascending: false });
+            movies = fallback.data;
+            moviesError = fallback.error;
+        } else {
+            movies = ordered.data;
+            moviesError = ordered.error;
+        }
+    }
 
     if (moviesError) {
         console.error('Error fetching collection movies:', moviesError);
@@ -760,14 +785,66 @@ export const addMoviesToCollection = async (collectionId, movies) => {
     const records = Array.from(byMovieId.values());
     if (!records.length) return { success: false, error: new Error('No movies to add') };
 
-    const { data, error } = await supabase
+    // Append after current max sort_order when using custom order
+    const { data: existingRows } = await supabase
         .from('collection_movies')
-        .upsert(records, { onConflict: 'collection_id,movie_id' })
+        .select('sort_order')
+        .eq('collection_id', collectionId);
+    let nextOrder = 0;
+    for (const row of existingRows || []) {
+        if (Number.isFinite(row.sort_order) && row.sort_order >= nextOrder) {
+            nextOrder = row.sort_order + 1;
+        }
+    }
+    const recordsWithOrder = records.map((r, i) => ({ ...r, sort_order: nextOrder + i }));
+
+    let { data, error } = await supabase
+        .from('collection_movies')
+        .upsert(recordsWithOrder, { onConflict: 'collection_id,movie_id' })
         .select();
+
+    if (error && /sort_order/i.test(error.message || '')) {
+        ({ data, error } = await supabase
+            .from('collection_movies')
+            .upsert(records, { onConflict: 'collection_id,movie_id' })
+            .select());
+    }
 
     if (error) console.error('Error adding movies:', error);
     if (!error) syncListPostCover(collectionId).catch(() => {});
     return { success: !error, error, data };
+};
+
+/** Persist manual drag order (0-based). Also sets items_sort = custom when possible. */
+export const reorderCollectionMovies = async (collectionId, orderedMovieIds = []) => {
+    if (!collectionId || !orderedMovieIds.length) {
+        return { success: false, error: new Error('Nothing to reorder') };
+    }
+
+    const results = await Promise.all(
+        orderedMovieIds.map((movieId, index) =>
+            supabase
+                .from('collection_movies')
+                .update({ sort_order: index })
+                .eq('collection_id', collectionId)
+                .eq('movie_id', String(movieId)),
+        ),
+    );
+    const failed = results.find((r) => r.error);
+    if (failed?.error) {
+        console.error('reorderCollectionMovies:', failed.error);
+        return { success: false, error: failed.error };
+    }
+
+    const { error: sortErr } = await supabase
+        .from('user_collections')
+        .update({ items_sort: 'custom' })
+        .eq('id', collectionId);
+    if (sortErr && !/items_sort/i.test(sortErr.message || '')) {
+        console.warn('reorderCollectionMovies items_sort:', sortErr.message);
+    }
+
+    return { success: true, error: null };
 };
 
 /** Delete a user list. System lists (e.g. Watched in Theaters) cannot be deleted. */
