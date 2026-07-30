@@ -2,7 +2,19 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 28, 2026 · HEAD `1be8b6d` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 31, 2026 · HEAD `85c39dc` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Jul 31, 2026 — Fix Vercel Edge deploy (rss-server)
+
+### Edge content API no longer pulls node:http ✅
+
+**Problem:** Deploy failed: Edge Function referencing `api/_lib/rss-server.js` (`node:https`, `node:http`) after content-server imported trailer eligibility from that file.
+
+**Files changed:** `api/_lib/trailer-eligibility.js` (new, Edge-safe), `content-server.js` + `rss-server.js` import/re-export.
+
+**Behavior:** `api/content` Edge bundle no longer includes Node HTTP clients. Node 24.x vs Project 20.x message remains a warning only — set Vercel Node to 24.x to silence.
 
 ---
 
@@ -1476,6 +1488,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `85c39dc` | Jul 2026 | Edge-safe trailer-eligibility (fix Vercel node:http deploy) |
 | `a332f85` | Jul 2026 | Mobile UX: safe-area, tap targets, Explore poster density |
 | `fb5b105` | Jul 2026 | Collections cache, feed log titles, mobile perf, franchise SQL |
 | `38a84a5` | Jul 2026 | Health probe movies_library; dashboard dislikes catalog fix |
