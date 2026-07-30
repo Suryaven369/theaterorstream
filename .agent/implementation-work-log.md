@@ -2,7 +2,21 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 31, 2026 · HEAD `76503f9` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Jul 31, 2026 · HEAD `PENDING` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Jul 31, 2026 — Remove floating reco chat bubble
+
+### Chat hover FAB removed from app shell ✅
+
+**Problem:** Floating watch-buddy chat bubble hovered over the UI on every page.
+
+**Files changed:** `src/App.jsx` (unmount), deleted `src/components/RecoChatBubble.jsx`
+
+**Behavior:** No floating chat button/panel site-wide. Watch recommendations UI elsewhere unchanged.
+
+**Next recommended:** `ai-agents-stack` (Task #14)
 
 ---
 
@@ -1523,6 +1537,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `PENDING` | Jul 2026 | Remove floating RecoChatBubble from app shell |
 | `76503f9` | Jul 2026 | Allow manual Add titles on Watched in Theaters list |
 | `b2de275` | Jul 2026 | Fix public list slug collision (viewer avatar/movies on others’ lists) |
 | `85c39dc` | Jul 2026 | Edge-safe trailer-eligibility (fix Vercel node:http deploy) |

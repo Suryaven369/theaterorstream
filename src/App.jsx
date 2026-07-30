@@ -1,5 +1,5 @@
 import { Outlet, useLocation } from "react-router-dom";
-import { useEffect, useState, lazy, Suspense } from "react";
+import { useEffect } from "react";
 import { useDispatch } from "react-redux";
 import { setImageURL, invalidateHomepageSections, invalidateMovieDetails } from "./store/movieSlice";
 import { supabase } from "./lib/supabase";
@@ -10,28 +10,13 @@ import Header from "./components/Header";
 import Footer from "./components/Footer";
 import MobileNavigation from "./components/MobileNavigation";
 
-const RecoChatBubble = lazy(() => import("./components/RecoChatBubble"));
-
 function App() {
   const dispatch = useDispatch();
   const location = useLocation();
-  const [showReco, setShowReco] = useState(false);
 
   useEffect(() => {
     dispatch(setImageURL(`${TMDB_IMAGE_BASE}w342`));
   }, [dispatch]);
-
-  // Defer chat bubble until after first paint (mobile TTI)
-  useEffect(() => {
-    const idle = window.requestIdleCallback
-      ? window.requestIdleCallback(() => setShowReco(true), { timeout: 2500 })
-      : null;
-    const t = idle == null ? setTimeout(() => setShowReco(true), 1200) : null;
-    return () => {
-      if (idle != null && window.cancelIdleCallback) window.cancelIdleCallback(idle);
-      if (t) clearTimeout(t);
-    };
-  }, []);
 
   // Supabase Realtime: auto-invalidate cache when DB content changes
   useEffect(() => {
@@ -81,11 +66,6 @@ function App() {
       </main>
       {!isSearchPage && <Footer />}
       {!isSearchPage && <MobileNavigation />}
-      {showReco && (
-        <Suspense fallback={null}>
-          <RecoChatBubble />
-        </Suspense>
-      )}
     </div>
   );
 }
