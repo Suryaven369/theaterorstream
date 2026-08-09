@@ -70,9 +70,9 @@ export default function SocialFeedPanel() {
                 ) : tab === 'diary' ? (
                     <DiaryFeedTab />
                 ) : loading ? (
-                    <div className="space-y-4">
+                    <div className="space-y-2">
                         {[1, 2, 3].map((i) => (
-                            <div key={i} className="h-32 rounded-xl bg-white/5 animate-pulse" />
+                            <div key={i} className="h-14 w-72 rounded-md bg-white/5 animate-pulse" />
                         ))}
                     </div>
                 ) : (

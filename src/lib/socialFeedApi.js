@@ -237,6 +237,10 @@ export async function addComment(postId, userId, content, parentId = null) {
         });
     } catch { /* non-fatal */ }
 
+    import('./activityFeed.js').then(({ recordPostCommentActivity }) => {
+        recordPostCommentActivity(userId, postId, data.content).catch(() => {});
+    });
+
     return { ok: true, comment: data };
 }
 

@@ -2,7 +2,21 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Jul 31, 2026 · HEAD `bccc214` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Aug 10, 2026 · HEAD `7b7322b` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Aug 10, 2026 — Review share card + social/profile UX
+
+### Review share card & cinema social polish ✅
+
+**Problem:** Users needed Letterboxd-style review sharing (avatar + quote + personal TOS average), share from review ⋮ menu, fixed clipped/shrunk avatars on export; broader feed/profile activity and movie log UX from prior session work.
+
+**Files changed:** `ReviewLuxuryShareCard.jsx` (new), `ShareMovie.jsx`, `UserRatingSystem.jsx`, `Details.jsx`, `ReviewCard.jsx`, `MovieActionButtons.jsx`, `QuickLogModal.jsx`, `ProfilePage.jsx`, `ActivityFeedRow.jsx` (new), `activityFeed.js` / `activity-feed-server.js` (new), feed/social components and APIs (`SocialFeedPanel`, diary/following lists, `movieDiary.js`, likes/activity hooks).
+
+**Behavior:** Review share modal renders cinematic card with centered quote, stacked profile, user overall TOS top-right; html2canvas uses off-screen full card + rasterized avatar; ⋮ → Share review card on own reviews; Details share uses user rating row for score; profile/feed compact rows and expanded activity types; movie Log/Watched action grid fixes.
+
+**Next recommended:** Smoke-test share card download on mobile; confirm activity feed types in prod; `ai-agents-stack` (Task #14).
 
 ---
 
@@ -1569,6 +1583,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `7b7322b` | Aug 2026 | Review share card, ⋮ share, activity feed + profile/log UX |
 | `bccc214` | Jul 2026 | Drag-reorder collection titles in edit mode (custom sort_order) |
 | `5b68339` | Jul 2026 | Collection edit sort (release / added / title) + items_sort migration |
 | `1316019` | Jul 2026 | Remove floating RecoChatBubble from app shell |

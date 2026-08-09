@@ -167,7 +167,7 @@ export default function FollowersFollowingPanel() {
                     )}
                 </div>
             ) : (
-                <ul className="space-y-1">
+                <ul className="flex flex-col items-start gap-0.5">
                     {people.map((p) => {
                         const avatar = avatarFor(p.avatar_id);
                         const isSelf = user.id === p.id;
@@ -175,7 +175,7 @@ export default function FollowersFollowingPanel() {
                         return (
                             <li
                                 key={p.id}
-                                className="flex items-center gap-3 px-3 py-3 rounded-xl bg-[#1a1d1f] border border-white/5 hover:border-white/10 transition-colors"
+                                className="inline-flex items-center gap-3 py-2 px-1 rounded-md max-w-full hover:bg-white/[0.04] transition-colors w-full"
                             >
                                 <Link
                                     to={`/${p.username}/profile`}

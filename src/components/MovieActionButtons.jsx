@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { FaBookmark, FaHeart, FaEye, FaFolder } from "react-icons/fa";
+import { FaBookmark, FaHeart, FaEye, FaFolder, FaPen } from "react-icons/fa";
 import { useAuth } from "../context/AuthContext";
 import {
     getUserMovieStatus,
@@ -11,6 +11,7 @@ import {
 import QuickLogModal from "./social/QuickLogModal";
 import CollectionsModal from "./CollectionsModal";
 import { trackEvent, EVENT_TYPES } from "../lib/eventTracking";
+import { getUserMovieLogCount } from "../lib/movieDiary";
 
 // Animated Action Button
 const ActionButton = ({ icon: Icon, activeIcon: ActiveIcon, label, isActive, onClick, activeColor = "text-red-500", inactiveColor = "text-white/50" }) => {
@@ -25,36 +26,45 @@ const ActionButton = ({ icon: Icon, activeIcon: ActiveIcon, label, isActive, onC
 
     return (
         <button
+            type="button"
             onClick={handleClick}
-            className={`group flex flex-col items-center gap-1 p-3 rounded-xl transition-all duration-200 hover:bg-white/5 ${animating ? 'scale-110' : 'scale-100'}`}
+            className={`group flex flex-col items-center justify-center gap-1 p-2 sm:p-2.5 rounded-xl transition-all duration-200 hover:bg-white/5 w-full min-h-[3.25rem] ${animating ? 'scale-110' : 'scale-100'}`}
             title={label}
         >
             <div className={`relative transition-all duration-200 ${animating ? 'animate-bounce' : ''}`}>
                 {isActive && ActiveIcon ? (
-                    <ActiveIcon className={`text-xl ${activeColor} drop-shadow-[0_0_6px_currentColor]`} />
+                    <ActiveIcon className={`text-lg sm:text-xl ${activeColor} drop-shadow-[0_0_6px_currentColor]`} />
                 ) : (
-                    <Icon className={`text-xl ${isActive ? `${activeColor} drop-shadow-[0_0_6px_currentColor]` : inactiveColor} group-hover:text-white transition-colors`} />
+                    <Icon className={`text-lg sm:text-xl ${isActive ? `${activeColor} drop-shadow-[0_0_6px_currentColor]` : inactiveColor} group-hover:text-white transition-colors`} />
                 )}
-                {/* Micro animation pulse */}
                 {animating && (
                     <span className={`absolute inset-0 rounded-full ${activeBg}/30 animate-ping`} />
                 )}
             </div>
-            <span className={`text-[10px] font-medium transition-colors ${isActive ? activeColor : 'text-white/40 group-hover:text-white/70'}`}>
+            <span className={`text-[10px] sm:text-[11px] font-medium leading-tight text-center whitespace-nowrap ${isActive ? activeColor : 'text-white/40 group-hover:text-white/70'}`}>
                 {label}
             </span>
         </button>
     );
 };
 
-// Main MovieActionButtons Component
-const MovieActionButtons = ({ movieId, movieTitle, posterPath, mediaType = 'movie' }) => {
+const MovieActionButtons = ({
+    movieId,
+    movieTitle,
+    posterPath,
+    mediaType = 'movie',
+    releaseYear = null,
+    onDiaryLogged = null,
+}) => {
     const navigate = useNavigate();
     const { user, isAuthenticated } = useAuth();
     const [status, setStatus] = useState({ inWatchlist: false, isLiked: false, isWatched: false });
     const [showCollections, setShowCollections] = useState(false);
     const [showLogModal, setShowLogModal] = useState(false);
+    const [hasDiaryLog, setHasDiaryLog] = useState(false);
     const [loading, setLoading] = useState(true);
+
+    const isMovie = mediaType === 'movie';
 
     useEffect(() => {
         if (user?.id && movieId) {
@@ -62,11 +72,17 @@ const MovieActionButtons = ({ movieId, movieTitle, posterPath, mediaType = 'movi
         } else {
             setLoading(false);
         }
-    }, [user?.id, movieId]);
+    }, [user?.id, movieId, mediaType]);
 
     const loadStatus = async () => {
         const movieStatus = await getUserMovieStatus(user.id, movieId);
         setStatus(movieStatus);
+        if (isMovie) {
+            const logCount = await getUserMovieLogCount(user.id, movieId, 'movie');
+            setHasDiaryLog(logCount > 0);
+        } else {
+            setHasDiaryLog(false);
+        }
         setLoading(false);
     };
 
@@ -77,7 +93,6 @@ const MovieActionButtons = ({ movieId, movieTitle, posterPath, mediaType = 'movi
 
     const handleWatchlist = async () => {
         if (!isAuthenticated) return handleAuthRequired();
-        // Optimistic: light up instantly, revert if the save fails.
         const next = !status.inWatchlist;
         setStatus(prev => ({ ...prev, inWatchlist: next }));
         const result = await toggleWatchlist(user.id, movieId, movieTitle, posterPath, mediaType);
@@ -99,7 +114,6 @@ const MovieActionButtons = ({ movieId, movieTitle, posterPath, mediaType = 'movi
         setStatus((prev) => ({
             ...prev,
             isLiked: next,
-            // Like implies watched (unlike does not unwatch).
             isWatched: next ? true : prev.isWatched,
         }));
         const result = await toggleLikedMovie(user.id, movieId, movieTitle, posterPath, mediaType);
@@ -112,7 +126,6 @@ const MovieActionButtons = ({ movieId, movieTitle, posterPath, mediaType = 'movi
             isLiked: result.added,
             isWatched: result.added ? true : prev.isWatched,
         }));
-        // Unlike is not a dislike — only an explicit dislike should train negative taste.
         if (result.added) {
             trackEvent(EVENT_TYPES.MOVIE_LIKED, { tmdbId: movieId, mediaType });
             if (!wasWatched) {
@@ -123,13 +136,22 @@ const MovieActionButtons = ({ movieId, movieTitle, posterPath, mediaType = 'movi
 
     const handleWatched = async () => {
         if (!isAuthenticated) return handleAuthRequired();
-        if (status.isWatched) {
-            const result = await toggleWatchedMovie(user.id, movieId, movieTitle, posterPath, mediaType);
-            if (result.success) {
-                setStatus((prev) => ({ ...prev, isWatched: false }));
-            }
+        const next = !status.isWatched;
+        setStatus((prev) => ({ ...prev, isWatched: next }));
+        const result = await toggleWatchedMovie(user.id, movieId, movieTitle, posterPath, mediaType);
+        if (!result.success) {
+            setStatus((prev) => ({ ...prev, isWatched: !next }));
             return;
         }
+        setStatus((prev) => ({ ...prev, isWatched: result.added }));
+        if (result.added) {
+            trackEvent(EVENT_TYPES.MOVIE_WATCHED, { tmdbId: movieId, mediaType });
+        }
+    };
+
+    const handleLog = () => {
+        if (!isAuthenticated) return handleAuthRequired();
+        if (!isMovie) return;
         setShowLogModal(true);
     };
 
@@ -140,45 +162,65 @@ const MovieActionButtons = ({ movieId, movieTitle, posterPath, mediaType = 'movi
 
     if (loading) {
         return (
-            <div className="flex justify-center gap-2 mt-4">
-                {[...Array(4)].map((_, i) => (
-                    <div key={i} className="w-14 h-14 rounded-xl bg-white/5 animate-pulse" />
-                ))}
+            <div className="mt-4 space-y-1 rounded-2xl border border-white/10 bg-white/5 p-1.5">
+                <div className="grid grid-cols-2 gap-1">
+                    <div className="h-14 rounded-xl bg-white/5 animate-pulse" />
+                    <div className="h-14 rounded-xl bg-white/5 animate-pulse" />
+                </div>
+                <div className={`grid gap-1 ${isMovie ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                    {[...Array(isMovie ? 3 : 2)].map((_, i) => (
+                        <div key={i} className="h-14 rounded-xl bg-white/5 animate-pulse" />
+                    ))}
+                </div>
             </div>
         );
     }
 
     return (
         <>
-            <div className="flex justify-center gap-1 mt-4 bg-white/5 rounded-2xl p-1 border border-white/10">
-                <ActionButton
-                    icon={FaBookmark}
-                    label="Watchlist"
-                    isActive={status.inWatchlist}
-                    onClick={handleWatchlist}
-                    activeColor="text-yellow-400"
-                />
-                <ActionButton
-                    icon={FaEye}
-                    label="Watched"
-                    isActive={status.isWatched}
-                    onClick={handleWatched}
-                    activeColor="text-green-400"
-                />
-                <ActionButton
-                    icon={FaHeart}
-                    label="Like"
-                    isActive={status.isLiked}
-                    onClick={handleLike}
-                    activeColor="text-red-500"
-                />
-                <ActionButton
-                    icon={FaFolder}
-                    label="Save"
-                    isActive={false}
-                    onClick={handleSave}
-                    activeColor="text-purple-400"
-                />
+            <div className="mt-4 space-y-1 rounded-2xl border border-white/10 bg-white/5 p-1.5">
+                <div className="grid grid-cols-2 gap-1">
+                    <ActionButton
+                        icon={FaBookmark}
+                        label="Watchlist"
+                        isActive={status.inWatchlist}
+                        onClick={handleWatchlist}
+                        activeColor="text-yellow-400"
+                    />
+                    <ActionButton
+                        icon={FaEye}
+                        label="Watched"
+                        isActive={status.isWatched}
+                        onClick={handleWatched}
+                        activeColor="text-green-400"
+                    />
+                </div>
+                <div className={`grid gap-1 ${isMovie ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                    <ActionButton
+                        icon={FaHeart}
+                        label="Like"
+                        isActive={status.isLiked}
+                        onClick={handleLike}
+                        activeColor="text-red-500"
+                    />
+                    {isMovie && (
+                        <ActionButton
+                            icon={FaPen}
+                            label="Log"
+                            isActive={hasDiaryLog}
+                            onClick={handleLog}
+                            activeColor="text-[var(--accent-green)]"
+                            inactiveColor="text-white/55"
+                        />
+                    )}
+                    <ActionButton
+                        icon={FaFolder}
+                        label="Save"
+                        isActive={false}
+                        onClick={handleSave}
+                        activeColor="text-purple-400"
+                    />
+                </div>
             </div>
 
             <CollectionsModal
@@ -191,22 +233,26 @@ const MovieActionButtons = ({ movieId, movieTitle, posterPath, mediaType = 'movi
                 userId={user?.id}
             />
 
-            <QuickLogModal
-                isOpen={showLogModal}
-                onClose={() => setShowLogModal(false)}
-                userId={user?.id}
-                movie={{
-                    tmdb_id: movieId,
-                    title: movieTitle,
-                    poster_path: posterPath,
-                    media_type: mediaType,
-                }}
-                onLogged={() => {
-                    setStatus((prev) => ({ ...prev, isWatched: true }));
-                    // Seen ≠ loved: busts reco cache; does not train taste genres.
-                    trackEvent(EVENT_TYPES.MOVIE_WATCHED, { tmdbId: movieId, mediaType });
-                }}
-            />
+            {isMovie && (
+                <QuickLogModal
+                    isOpen={showLogModal}
+                    onClose={() => setShowLogModal(false)}
+                    userId={user?.id}
+                    releaseYear={releaseYear}
+                    movie={{
+                        tmdb_id: movieId,
+                        title: movieTitle,
+                        poster_path: posterPath,
+                        media_type: 'movie',
+                    }}
+                    onLogged={() => {
+                        setHasDiaryLog(true);
+                        setStatus((prev) => ({ ...prev, isWatched: true }));
+                        trackEvent(EVENT_TYPES.MOVIE_WATCHED, { tmdbId: movieId, mediaType: 'movie' });
+                        onDiaryLogged?.();
+                    }}
+                />
+            )}
         </>
     );
 };

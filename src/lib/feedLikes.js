@@ -124,6 +124,16 @@ async function getAccessToken() {
     return session?.access_token || null;
 }
 
+function recordLikeActivity(userId, subject, item) {
+    import('./activityFeed.js').then(({ recordFeedItemLikeActivity, recordPostLikeActivity }) => {
+        if (subject.kind === 'post') {
+            recordPostLikeActivity(userId, subject.id).catch(() => {});
+        } else {
+            recordFeedItemLikeActivity(userId, item);
+        }
+    });
+}
+
 /**
  * Toggle upvote and persist (localStorage first, then server).
  */
@@ -170,6 +180,7 @@ export async function toggleFeedUpvote(item, userId) {
         if (response.status === 404) {
             const direct = await toggleFeedUpvoteDirect(userId, subject, currentlyLiked);
             setLocalFeedLike(userId, subject, direct.liked);
+            if (direct.liked) recordLikeActivity(userId, subject, item);
             return direct;
         }
 
@@ -185,6 +196,7 @@ export async function toggleFeedUpvote(item, userId) {
         try {
             const direct = await toggleFeedUpvoteDirect(userId, subject, currentlyLiked);
             setLocalFeedLike(userId, subject, direct.liked);
+            if (direct.liked) recordLikeActivity(userId, subject, item);
             return direct;
         } catch (directErr) {
             console.error('[toggleFeedUpvote] direct write failed; kept local vote', directErr);

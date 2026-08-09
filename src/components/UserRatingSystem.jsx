@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDispatch } from "react-redux";
-import { FaArrowUp, FaArrowDown, FaStar, FaUser, FaClock, FaReply, FaTimes, FaTrash } from "react-icons/fa";
+import { FaArrowUp, FaArrowDown, FaStar, FaUser, FaClock, FaReply, FaTimes, FaTrash, FaShare } from "react-icons/fa";
+import ShareMovieModal from "./ShareMovie";
 import {
     getMovieReviews,
     getMovieRatings,
@@ -506,8 +507,34 @@ const buildThreads = (reviews) => {
     return rootReviews;
 };
 
+function reviewItemToSharePayload(item, profile) {
+    const text = String(item?.review_text || "").trim();
+    if (!text) return null;
+    const authorUsername = item.username || profile?.username || null;
+    return {
+        text,
+        headline: null,
+        authorDisplayName:
+            profile?.display_name || authorUsername || item.username || "Anonymous",
+        authorUsername,
+        avatarUrl: getAvatarUrl(item.avatar_url || profile?.avatar_url, 256),
+    };
+}
+
 // Reviews List Component with threaded replies
-export const ReviewsList = ({ movieId, movieTitle, onRateClick, hasUserRated }) => {
+export const ReviewsList = ({
+    movieId,
+    movieTitle,
+    onRateClick,
+    hasUserRated,
+    movieYear,
+    posterUrl,
+    imageURL,
+    posterBase64,
+    genres,
+    mediaType,
+    shareRatings = null,
+}) => {
     const navigate = useNavigate();
     const toast = useToast();
     const { isAuthenticated, profile, user } = useAuth();
@@ -527,6 +554,7 @@ export const ReviewsList = ({ movieId, movieTitle, onRateClick, hasUserRated }) 
     const [menuOpenId, setMenuOpenId] = useState(null);
     const [deleteConfirmId, setDeleteConfirmId] = useState(null);
     const [deleting, setDeleting] = useState(false);
+    const [shareReviewItem, setShareReviewItem] = useState(null);
 
     const handleAuthRequired = () => {
         sessionStorage.setItem('authMessage', 'Please sign up or login to rate and review movies');
@@ -699,46 +727,65 @@ export const ReviewsList = ({ movieId, movieTitle, onRateClick, hasUserRated }) 
 
     const isOwnReview = (item) => user?.id && String(item?.user_id) === String(user.id);
 
-    const ReviewMenu = ({ itemId }) => (
-        <div className="relative ml-auto">
-            <button
-                type="button"
-                onClick={(e) => {
-                    e.stopPropagation();
-                    setMenuOpenId(menuOpenId === itemId ? null : itemId);
-                }}
-                className="p-1 text-white/50 hover:text-white transition-colors"
-                aria-label="More options"
-                aria-expanded={menuOpenId === itemId}
-            >
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                    <circle cx="5" cy="12" r="1.75" />
-                    <circle cx="12" cy="12" r="1.75" />
-                    <circle cx="19" cy="12" r="1.75" />
-                </svg>
-            </button>
-            {menuOpenId === itemId && (
-                <>
-                    <button
-                        type="button"
-                        className="fixed inset-0 z-10 cursor-default"
-                        aria-label="Close menu"
-                        onClick={() => setMenuOpenId(null)}
-                    />
-                    <div className="absolute right-0 top-full mt-1 z-20 min-w-[140px] rounded-lg border border-white/10 bg-[#161616] py-1 shadow-xl">
+    const openShareReviewCard = (item) => {
+        if (!reviewItemToSharePayload(item, profile)) return;
+        setMenuOpenId(null);
+        setShareReviewItem(item);
+    };
+
+    const ReviewMenu = ({ itemId, item }) => {
+        const canShare = Boolean(String(item?.review_text || "").trim());
+        return (
+            <div className="relative ml-auto shrink-0">
+                <button
+                    type="button"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setMenuOpenId(menuOpenId === itemId ? null : itemId);
+                    }}
+                    className="p-1 text-white/50 hover:text-white transition-colors"
+                    aria-label="More options"
+                    aria-expanded={menuOpenId === itemId}
+                >
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                        <circle cx="5" cy="12" r="1.75" />
+                        <circle cx="12" cy="12" r="1.75" />
+                        <circle cx="19" cy="12" r="1.75" />
+                    </svg>
+                </button>
+                {menuOpenId === itemId && (
+                    <>
                         <button
                             type="button"
-                            onClick={() => requestDeleteReview(itemId)}
-                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/5 transition-colors"
-                        >
-                            <FaTrash className="w-3.5 h-3.5" />
-                            Delete
-                        </button>
-                    </div>
-                </>
-            )}
-        </div>
-    );
+                            className="fixed inset-0 z-10 cursor-default"
+                            aria-label="Close menu"
+                            onClick={() => setMenuOpenId(null)}
+                        />
+                        <div className="absolute right-0 top-full mt-1 z-20 min-w-[180px] rounded-lg border border-white/10 bg-[#161616] py-1 shadow-xl">
+                            {canShare && (
+                                <button
+                                    type="button"
+                                    onClick={() => openShareReviewCard(item)}
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-amber-400/90 hover:bg-white/5 transition-colors"
+                                >
+                                    <FaShare className="w-3.5 h-3.5" />
+                                    Share review card
+                                </button>
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => requestDeleteReview(itemId)}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/5 transition-colors"
+                            >
+                                <FaTrash className="w-3.5 h-3.5" />
+                                Delete
+                            </button>
+                        </div>
+                    </>
+                )}
+            </div>
+        );
+    };
 
     const getDisplayName = () => {
         return profile?.username || profile?.display_name || 'Anonymous';
@@ -879,7 +926,9 @@ export const ReviewsList = ({ movieId, movieTitle, onRateClick, hasUserRated }) 
                                     <span className="text-sm">{review.replies?.length || 0}</span>
                                 </button>
 
-                                {isOwnReview(review) && <ReviewMenu itemId={review.id} />}
+                                {isOwnReview(review) && (
+                                    <ReviewMenu itemId={review.id} item={review} />
+                                )}
                             </div>
 
                             {/* Reply Input */}
@@ -933,7 +982,9 @@ export const ReviewsList = ({ movieId, movieTitle, onRateClick, hasUserRated }) 
                                                 />
                                                 <span className="text-sm font-semibold text-white">{reply.username || 'Anonymous'}</span>
                                                 <span className="text-xs text-white/45">{getTimeAgo(reply.created_at)}</span>
-                                                {isOwnReview(reply) && <ReviewMenu itemId={reply.id} />}
+                                                {isOwnReview(reply) && (
+                                                    <ReviewMenu itemId={reply.id} item={reply} />
+                                                )}
                                             </div>
                                             <p className="text-sm text-white/80 leading-relaxed whitespace-pre-wrap">{reply.review_text}</p>
                                         </div>
@@ -949,6 +1000,22 @@ export const ReviewsList = ({ movieId, movieTitle, onRateClick, hasUserRated }) 
                 </div>
             )}
         </div>
+
+        {shareReviewItem && (
+            <ShareMovieModal
+                isOpen
+                onClose={() => setShareReviewItem(null)}
+                movieTitle={movieTitle}
+                movieYear={movieYear}
+                posterUrl={posterUrl}
+                imageURL={imageURL}
+                posterBase64={posterBase64}
+                genres={genres}
+                mediaType={mediaType}
+                ratings={shareRatings}
+                reviewShare={reviewItemToSharePayload(shareReviewItem, profile)}
+            />
+        )}
 
         {deleteConfirmId && (
             <div
@@ -1001,6 +1068,12 @@ const UserRatingSystem = ({
     existingRating,
     userId,
     onRatingSubmitted,
+    movieYear,
+    posterUrl,
+    imageURL,
+    posterBase64,
+    genres,
+    mediaType,
 }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
@@ -1018,6 +1091,13 @@ const UserRatingSystem = ({
                 movieTitle={movieTitle}
                 onRateClick={() => setIsModalOpen(true)}
                 hasUserRated={hasUserRated}
+                movieYear={movieYear}
+                posterUrl={posterUrl}
+                imageURL={imageURL}
+                posterBase64={posterBase64}
+                genres={genres}
+                mediaType={mediaType}
+                shareRatings={existingRating}
             />
             <RatingModal
                 isOpen={isModalOpen}

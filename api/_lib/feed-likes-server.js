@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from './supabase-admin.js';
+import { recordPostLikeActivityServer } from './activity-feed-server.js';
 
 function trailerSubjectIdVariants(tmdbId) {
     const id = String(tmdbId);
@@ -33,6 +34,7 @@ export async function toggleFeedLikeForUser(userId, { kind, id, currentlyLiked }
         if (error && error.code !== '23505') {
             throw new Error(error.message || 'Failed to save post upvote');
         }
+        await recordPostLikeActivityServer(supabase, userId, subjectId);
         return { liked: true };
     }
 
@@ -87,6 +89,14 @@ export async function toggleFeedLikeForUser(userId, { kind, id, currentlyLiked }
             .maybeSingle();
         if (readErr) throw readErr;
         if (!row) throw new Error('Upvote did not persist');
+
+        const { error: actErr } = await supabase.from('activity_feed').insert({
+            user_id: userId,
+            event_type: 'feed_like',
+            payload: { feed_kind: kind, subject_id: subjectId },
+            visibility: 'public',
+        });
+        if (actErr) console.warn('feed_like -> activity_feed:', actErr.message);
 
         return { liked: true };
     }

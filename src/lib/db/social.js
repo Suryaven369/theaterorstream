@@ -32,6 +32,11 @@ export const toggleFollow = async (followerId, followingId) => {
         .from('user_follows')
         .insert({ follower_id: followerId, following_id: followingId });
     if (error) console.error('[follow] follow failed:', error.message);
+    if (!error) {
+        import('../activityFeed.js').then(({ recordFollowActivity }) => {
+            recordFollowActivity(followerId, followingId).catch(() => {});
+        });
+    }
     return { success: !error, following: true, error: error?.message };
 };
 

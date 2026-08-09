@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, Link, useParams, useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -33,6 +33,7 @@ import { getUserBadges, getUserActivityFeed, getUserMovieLogs } from '../lib/mov
 import { prefetchCollectionPage } from '../lib/pageSessionCache';
 import { getUserBlogPosts } from '../lib/blogs';
 import FollowListModal from '../components/social/FollowListModal';
+import ActivityFeedRow from '../components/social/ActivityFeedRow';
 import { generateTasteSummary } from '../lib/tasteSummary';
 import { getSocialReviewsForUser } from '../lib/socialReviews';
 import { getFeedPostsByAuthor } from '../lib/socialFeedApi';
@@ -64,12 +65,6 @@ const AVATARS = {
 
 const slugifyName = (s) => String(s || '').toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-');
 
-const activityVerb = (type) => ({
-    log: 'Watched', watched: 'Watched', review: 'Reviewed', rating: 'Rated',
-    rated: 'Rated', list_created: 'Created a list', watchlist: 'Added to watchlist',
-    liked: 'Liked', follow: 'Followed',
-}[type] || (type ? type.replace(/_/g, ' ') : 'Activity'));
-
 const timeAgoShort = (dateStr) => {
     if (!dateStr) return '';
     const days = Math.floor((Date.now() - new Date(dateStr).getTime()) / 86_400_000);
@@ -84,7 +79,6 @@ const timeAgoShort = (dateStr) => {
 const PROFILE_TABS = [
     { id: 'profile', label: 'Profile', path: '' },
     { id: 'activity', label: 'Activity', path: '/activity' },
-    { id: 'films', label: 'Films', path: '/watched' },
     { id: 'diary', label: 'Diary', path: '/diary' },
     { id: 'watchlist', label: 'Watchlist', path: '/watchlist' },
     { id: 'lists', label: 'Lists', path: '/collections' },
@@ -101,11 +95,25 @@ const ProfilePage = () => {
     const [viewedProfile, setViewedProfile] = useState(null);
     const [loadingProfile, setLoadingProfile] = useState(true);
 
-    // Check if viewing own profile (case-insensitive username match)
-    const isOwnProfile = !username || (
-        !!currentUserProfile?.username
-        && currentUserProfile.username.toLowerCase() === String(username).toLowerCase()
-    );
+    // The viewed user's id + full data for the tabs (lazy-loaded).
+    const [viewedUserId, setViewedUserId] = useState(null);
+    const [allWatchlist, setAllWatchlist] = useState([]);
+    const [allCollections, setAllCollections] = useState([]);
+    const [tabData, setTabData] = useState({ activity: null, diary: null, blogs: null });
+    const [tabLoading, setTabLoading] = useState(false);
+    const [tabPage, setTabPage] = useState(1);
+
+    // Own profile: /profile, URL username match, or auth user id matches loaded profile.
+    const isOwnProfile = useMemo(() => {
+        if (!user?.id) return !username;
+        if (!username) return true;
+        const urlName = String(username).toLowerCase();
+        if (currentUserProfile?.username?.toLowerCase() === urlName) return true;
+        if (currentUserProfile?.id && user.id === currentUserProfile.id) return true;
+        if (viewedProfile?.id && user.id === viewedProfile.id) return true;
+        if (viewedUserId && user.id === viewedUserId) return true;
+        return false;
+    }, [user?.id, username, currentUserProfile?.id, currentUserProfile?.username, viewedProfile?.id, viewedUserId]);
 
     // Follow state
     const [followers, setFollowers] = useState([]);
@@ -192,15 +200,6 @@ const ProfilePage = () => {
     const activeTab = PROFILE_TABS.some((t) => t.id === searchParams.get('tab')) ? searchParams.get('tab') : 'profile';
     const setActiveTab = (id) => setSearchParams(id === 'profile' ? {} : { tab: id }, { replace: false });
 
-    // The viewed user's id + full data for the tabs (lazy-loaded).
-    const [viewedUserId, setViewedUserId] = useState(null);
-    const [allWatched, setAllWatched] = useState([]);
-    const [allWatchlist, setAllWatchlist] = useState([]);
-    const [allCollections, setAllCollections] = useState([]);
-    const [tabData, setTabData] = useState({ activity: null, diary: null, blogs: null });
-    const [tabLoading, setTabLoading] = useState(false);
-    const [tabPage, setTabPage] = useState(1);
-
     // Reset to page 1 whenever the active tab changes.
     useEffect(() => { setTabPage(1); }, [activeTab]);
 
@@ -279,7 +278,6 @@ const ProfilePage = () => {
                 setWatchlistCount(watchlist.length);
                 setWatchlistItems(watchlist.slice(0, 5));
                 setAllWatchlist(watchlist);
-                setAllWatched(watchedMovies);
                 setRatingsCount(ratingsCount);
                 setLikedCount(likedMoviesData.length);
                 setLikedMovies(likedMoviesData);
@@ -589,7 +587,7 @@ const ProfilePage = () => {
         </div>
     );
 
-    const TAB_PAGE_SIZE = { films: 24, watchlist: 24, lists: 12, activity: 15, diary: 15, blogs: 10 };
+    const TAB_PAGE_SIZE = { watchlist: 24, lists: 12, activity: 15, diary: 15, blogs: 10 };
     const pageSlice = (arr) => {
         const size = TAB_PAGE_SIZE[activeTab] || 20;
         return arr.slice((tabPage - 1) * size, tabPage * size);
@@ -622,13 +620,6 @@ const ProfilePage = () => {
             return <div className="py-16 flex justify-center"><div className="animate-spin w-7 h-7 border-2 border-[var(--accent-green)] border-t-transparent rounded-full" /></div>;
         }
         switch (activeTab) {
-            case 'films':
-                return allWatched.length ? (
-                    <>
-                        {posterGrid(pageSlice(allWatched), { to: (m) => `/movies/${generateSlugWithId(m.movie_title, m.movie_id)}`, img: (m) => m.poster_path ? `https://image.tmdb.org/t/p/w185${m.poster_path}` : null, title: (m) => m.movie_title })}
-                        <Pager total={allWatched.length} />
-                    </>
-                ) : emptyTab('No films logged yet.');
             case 'watchlist':
                 return allWatchlist.length ? (
                     <>
@@ -697,19 +688,17 @@ const ProfilePage = () => {
                 ) : emptyTab('No lists yet.');
             case 'activity': {
                 const items = tabData.activity || [];
+                const activityUser = viewedProfile?.username || profileUsername;
                 return items.length ? (
                   <>
-                    <div className="space-y-2">
+                    <div className="flex flex-col items-start gap-1">
                         {pageSlice(items).map((a) => (
-                            <div key={a.id} className="flex items-center gap-3 p-3 rounded-xl bg-[#1a1d1f] border border-white/5">
-                                {a.target_poster_path
-                                    ? <img src={`https://image.tmdb.org/t/p/w92${a.target_poster_path}`} alt="" className="w-10 h-14 rounded object-cover shrink-0" />
-                                    : <div className="w-10 h-14 rounded bg-white/5 flex items-center justify-center text-white/20 shrink-0">🎬</div>}
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-sm text-white/85"><span className="text-white/45">{activityVerb(a.event_type)}</span> {a.target_movie_title || ''}</p>
-                                    <p className="text-[11px] text-white/35">{timeAgoShort(a.created_at)}</p>
-                                </div>
-                            </div>
+                            <ActivityFeedRow
+                                key={a.id}
+                                activity={a}
+                                profileUsername={activityUser}
+                                timeLabel={timeAgoShort(a.created_at)}
+                            />
                         ))}
                     </div>
                     <Pager total={items.length} />
@@ -718,18 +707,22 @@ const ProfilePage = () => {
             }
             case 'diary': {
                 const logs = tabData.diary || [];
+                const diaryRowClass = 'inline-flex items-start gap-2.5 py-1.5 rounded-md max-w-full hover:bg-white/[0.04] transition-colors';
                 return logs.length ? (
                   <>
-                    <div className="space-y-2">
+                    <div className="flex flex-col items-start gap-1">
                         {pageSlice(logs).map((log) => (
-                            <Link key={log.id} to={`/movies/${generateSlugWithId(log.movie_title, log.tmdb_id)}`} className="flex gap-3 p-3 rounded-xl bg-[#1a1d1f] border border-white/5 hover:border-white/15 transition-colors">
+                            <Link key={log.id} to={`/movies/${generateSlugWithId(log.movie_title, log.tmdb_id)}`} className={diaryRowClass}>
                                 {log.poster_path
-                                    ? <img src={log.poster_path.startsWith('http') ? log.poster_path : `https://image.tmdb.org/t/p/w92${log.poster_path}`} alt="" className="w-10 h-14 rounded object-cover shrink-0" />
-                                    : <div className="w-10 h-14 rounded bg-white/5 flex items-center justify-center text-white/20 shrink-0">🎬</div>}
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium text-white truncate">{log.movie_title}{log.rating != null && <span className="text-yellow-400 text-xs ml-2">★ {log.rating}/10</span>}</p>
-                                    <p className="text-[11px] text-white/35">{timeAgoShort(log.watched_date || log.created_at)}</p>
-                                    {log.review_text && <p className="text-xs text-white/55 mt-1 line-clamp-2">{log.review_text}</p>}
+                                    ? <img src={log.poster_path.startsWith('http') ? log.poster_path : `https://image.tmdb.org/t/p/w92${log.poster_path}`} alt="" className="w-9 h-[52px] rounded object-cover shrink-0 border border-white/10" />
+                                    : <div className="w-9 h-[52px] rounded bg-white/5 flex items-center justify-center text-white/20 shrink-0 border border-white/5 text-sm">🎬</div>}
+                                <div className="min-w-0 pr-1">
+                                    <p className="text-sm font-medium text-white leading-snug">
+                                        {log.movie_title}
+                                        {log.rating != null && <span className="text-yellow-400 text-xs ml-2 font-normal">★ {log.rating}/10</span>}
+                                    </p>
+                                    <p className="text-[11px] text-white/35 mt-0.5">{timeAgoShort(log.watched_date || log.created_at)}</p>
+                                    {log.review_text && <p className="text-xs text-white/55 mt-1 line-clamp-2 max-w-xl">{log.review_text}</p>}
                                 </div>
                             </Link>
                         ))}
@@ -773,7 +766,7 @@ const ProfilePage = () => {
         }
     };
 
-    const displayProfile = isOwnProfile ? currentUserProfile : viewedProfile;
+    const displayProfile = isOwnProfile ? (currentUserProfile || viewedProfile) : viewedProfile;
     const profileUsername = displayProfile?.username || username;
     const profileShareUrl = profileUsername
         ? `${window.location.origin}/${profileUsername}/profile`
@@ -972,10 +965,10 @@ const ProfilePage = () => {
 
                         {/* Stats Row - Letterboxd Style */}
                         <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-4 gap-y-2 sm:gap-x-6 text-center">
-                            <button type="button" onClick={() => setActiveTab('films')} className="group text-center">
-                                <p className="text-xl sm:text-2xl font-bold text-white group-hover:text-[var(--accent-green)] transition-colors">{watchedCount}</p>
+                            <div className="text-center">
+                                <p className="text-xl sm:text-2xl font-bold text-white">{watchedCount}</p>
                                 <p className="text-[10px] sm:text-xs uppercase tracking-wider text-white/40">Films</p>
-                            </button>
+                            </div>
                             <div>
                                 <p className="text-xl sm:text-2xl font-bold text-white">{watchedThisYear}</p>
                                 <p className="text-[10px] sm:text-xs uppercase tracking-wider text-white/40">This Year</p>
@@ -1362,7 +1355,7 @@ const ProfilePage = () => {
                         </div>
                     </div>
                 ) : activeTab !== 'profile' ? (
-                    /* In-page tab content (Activity / Films / Diary / Watchlist / Lists / Blogs) */
+                    /* In-page tab content (Activity / Diary / Watchlist / Lists / Blogs) */
                     <div>{renderTabContent()}</div>
                 ) : (
                     /* Profile Content */

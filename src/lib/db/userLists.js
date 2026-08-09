@@ -54,6 +54,11 @@ export const toggleWatchlist = async (userId, movieId, movieTitle, posterPath, m
         .from('user_watchlist')
         .insert({ user_id: userId, movie_id: id, movie_title: movieTitle, poster_path: posterPath, media_type: mediaType });
     if (error) console.error('[watchlist] add failed:', error.message);
+    if (!error) {
+        import('../activityFeed.js').then(({ recordWatchlistActivity }) => {
+            recordWatchlistActivity(userId, id, movieTitle, posterPath, mediaType).catch(() => {});
+        });
+    }
     return { success: !error, added: true, error: error?.message };
 };
 

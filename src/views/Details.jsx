@@ -20,6 +20,8 @@ import { ShareButton } from "../components/ShareMovie";
 import ParentGuide from "../components/ParentGuide";
 import VibeChart from "../components/VibeChart";
 import { useAuth } from "../context/AuthContext";
+import { getLatestUserShareReview } from "../lib/movieDiary";
+import { getAvatarUrl } from "../lib/storagePublicUrl";
 import { useNavigate } from "react-router-dom";
 import MovieActionButtons from "../components/MovieActionButtons";
 import TVSeasonsList from "../components/TVSeasonsList";
@@ -122,7 +124,7 @@ const Details = () => {
   const params = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, profile } = useAuth();
   const dispatch = useDispatch();
   const movieDetailsCache = useSelector((state) => state.movieData.movieDetailsCache);
 
@@ -270,6 +272,7 @@ const Details = () => {
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [logPrefillRating, setLogPrefillRating] = useState(null);
   const [ratingsKey, setRatingsKey] = useState(0);
+  const [userShareReview, setUserShareReview] = useState(null);
 
   const { analysis, loading: analysisLoading } = useReviewAnalysis(movieId);
 
@@ -380,6 +383,20 @@ const Details = () => {
 
     fetchUserRating();
   }, [movieId, user?.id, ratingsKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (!user?.id || !movieId) {
+        if (!cancelled) setUserShareReview(null);
+        return;
+      }
+      const latest = await getLatestUserShareReview(user.id, movieId, mediaType);
+      if (!cancelled) setUserShareReview(latest);
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [user?.id, movieId, mediaType, ratingsKey, logModalOpen]);
 
   // Handle rate button click
   const handleRateClick = () => {
@@ -567,6 +584,8 @@ const Details = () => {
                 movieTitle={data?.title || data?.name}
                 posterPath={data?.poster_path}
                 mediaType={mediaType}
+                releaseYear={data?.release_date?.slice(0, 4) || data?.first_air_date?.slice(0, 4) || null}
+                onDiaryLogged={() => setRatingsKey((k) => k + 1)}
               />
             )}
             {data && isAuthenticated && (
@@ -579,8 +598,8 @@ const Details = () => {
               </button>
             )}
 
-            {/* Share Button */}
-            {displayRatings?.ratings && (
+            {/* Share — review card when user has review text; otherwise rating card */}
+            {data && (userShareReview?.text || displayRatings?.ratings) && (
               <div className="mt-3">
                 <ShareButton
                   movieTitle={data?.title || data?.name}
@@ -589,10 +608,17 @@ const Details = () => {
                   backdropUrl={data?.backdrop_path}
                   posterBase64={data?.images?.poster_base64}
                   backdropBase64={data?.images?.backdrop_base64}
-                  ratings={displayRatings.ratings}
+                  ratings={userShareReview?.text && userRating ? userRating : displayRatings?.ratings}
                   imageURL={imageURL}
                   genres={data?.genres}
                   mediaType={data?.media_type || (data?.first_air_date ? 'tv' : 'movie')}
+                  reviewShare={userShareReview?.text ? {
+                    text: userShareReview.text,
+                    headline: userShareReview.headline,
+                    authorDisplayName: profile?.display_name || profile?.username,
+                    authorUsername: profile?.username,
+                    avatarUrl: getAvatarUrl(profile?.avatar_url, 256),
+                  } : null}
                 />
               </div>
             )}
@@ -869,6 +895,12 @@ const Details = () => {
               existingRating={userRating}
               userId={user?.id}
               onRatingSubmitted={handleRatingSubmitSuccess}
+              movieYear={data?.release_date?.split("-")[0] || data?.first_air_date?.split("-")[0]}
+              posterUrl={data?.poster_path}
+              imageURL={imageURL}
+              posterBase64={data?.images?.poster_base64}
+              genres={data?.genres}
+              mediaType={data?.media_type || (data?.first_air_date ? "tv" : "movie")}
             />
           )}
         </div>
@@ -908,7 +940,10 @@ const Details = () => {
             media_type: mediaType,
           }}
           onClose={() => setReviewModalOpen(false)}
-          onSuccess={() => setReviewModalOpen(false)}
+          onSuccess={() => {
+            setReviewModalOpen(false);
+            setRatingsKey((k) => k + 1);
+          }}
         />
       )}
 
@@ -928,7 +963,10 @@ const Details = () => {
         }}
         prefillRating={logPrefillRating}
         subtitle="Rating saved — add how you watched (optional)"
-        onLogged={() => setLogPrefillRating(null)}
+        onLogged={() => {
+          setLogPrefillRating(null);
+          setRatingsKey((k) => k + 1);
+        }}
       />
     </div>
   );

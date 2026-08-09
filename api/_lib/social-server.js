@@ -335,5 +335,7 @@ export async function toggleCollectionLike(userId, collectionId) {
     }
 
     await supabase.from('collection_likes').insert({ user_id: userId, collection_id: collectionId });
+    const { recordCollectionLikeActivity } = await import('./activity-feed-server.js');
+    await recordCollectionLikeActivity(supabase, userId, collectionId);
     return { liked: true };
 }

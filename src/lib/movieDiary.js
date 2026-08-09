@@ -248,6 +248,74 @@ export async function getUserMovieLogs(userId, { limit = 50, offset = 0 } = {}) 
     return data || [];
 }
 
+/** How many diary rows the user has for this title (any watch date). */
+export async function getUserMovieLogCount(userId, tmdbId, mediaType = 'movie') {
+    if (!userId || tmdbId == null) return 0;
+
+    const { count, error } = await supabase
+        .from('movie_logs')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('tmdb_id', String(tmdbId))
+        .eq('media_type', mediaType || 'movie');
+
+    if (error) {
+        console.warn('getUserMovieLogCount:', error.message);
+        return 0;
+    }
+    return count || 0;
+}
+
+/** Latest diary or social review text for share cards. */
+export async function getLatestUserShareReview(userId, tmdbId, mediaType = 'movie') {
+    if (!userId || tmdbId == null) return null;
+
+    const id = String(tmdbId);
+
+    const [{ data: logRows }, socialResult] = await Promise.all([
+        supabase
+            .from('movie_logs')
+            .select('review_text, created_at, rating')
+            .eq('user_id', userId)
+            .eq('tmdb_id', id)
+            .eq('media_type', mediaType || 'movie')
+            .not('review_text', 'is', null)
+            .order('created_at', { ascending: false })
+            .limit(1),
+        supabase
+            .from('social_reviews')
+            .select('title, content, created_at')
+            .eq('user_id', userId)
+            .eq('tmdb_id', id)
+            .eq('media_type', mediaType || 'movie')
+            .order('created_at', { ascending: false })
+            .limit(1),
+    ]);
+
+    const log = logRows?.[0];
+    const social = socialResult.error ? null : socialResult.data?.[0];
+
+    const candidates = [];
+    if (log?.review_text?.trim()) {
+        candidates.push({
+            text: log.review_text.trim(),
+            headline: null,
+            created_at: log.created_at,
+        });
+    }
+    if (social?.content?.trim()) {
+        candidates.push({
+            text: social.content.trim(),
+            headline: social.title || null,
+            created_at: social.created_at,
+        });
+    }
+
+    if (!candidates.length) return null;
+    candidates.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    return candidates[0];
+}
+
 export async function deleteMovieLog(userId, logId) {
     const { error } = await supabase
         .from('movie_logs')

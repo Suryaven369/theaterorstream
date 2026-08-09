@@ -33,6 +33,7 @@ import {
     CARD_FONT,
 } from "./share/CinematicShareCardLayers";
 import LuxuryShareCard from "./share/LuxuryShareCard";
+import ReviewLuxuryShareCard from "./share/ReviewLuxuryShareCard";
 
 const TOS_LOGO_URL =
     "https://res.cloudinary.com/ddhhlkyut/image/upload/v1768226006/a78a29523128c4555fdd178b6c612ac6_dbtyqp.jpg";
@@ -46,6 +47,68 @@ const toW500PosterUrl = (posterUrl, imageURL) => {
             .replace("/w780/", "/w500/");
     }
     return `https://image.tmdb.org/t/p/w500${posterUrl.startsWith("/") ? posterUrl : `/${posterUrl}`}`;
+};
+
+const blobToDataURL = (blob) =>
+    new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+
+const fetchUrlAsDataUrl = async (url) => {
+    if (!url) return null;
+    if (url.startsWith("data:")) return url;
+
+    try {
+        const response = await fetch(url, { mode: "cors", credentials: "omit" });
+        if (response.ok) {
+            return await blobToDataURL(await response.blob());
+        }
+    } catch {
+        // try proxy
+    }
+
+    try {
+        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+        const response = await fetch(proxyUrl);
+        return await blobToDataURL(await response.blob());
+    } catch (error) {
+        console.error("Error converting to base64:", error);
+        return null;
+    }
+};
+
+/** Cover-crop to square PNG so html2canvas draws avatars at full circle size */
+const rasterizeAvatarForShare = async (url, size = 160) => {
+    const src = await fetchUrlAsDataUrl(url);
+    if (!src) return null;
+
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement("canvas");
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext("2d");
+            if (!ctx) {
+                resolve(src);
+                return;
+            }
+            const iw = img.naturalWidth || img.width || 1;
+            const ih = img.naturalHeight || img.height || 1;
+            const scale = Math.max(size / iw, size / ih);
+            const sw = size / scale;
+            const sh = size / scale;
+            const sx = (iw - sw) / 2;
+            const sy = (ih - sh) / 2;
+            ctx.drawImage(img, sx, sy, sw, sh, 0, 0, size, size);
+            resolve(canvas.toDataURL("image/png"));
+        };
+        img.onerror = () => resolve(src);
+        img.src = src;
+    });
 };
 
 const waitForImages = (container) => {
@@ -91,6 +154,7 @@ const ShareMovieModal = ({
     posterBase64: initialPosterBase64,
     genres,
     mediaType,
+    reviewShare = null,
 }) => {
     const cardRef = useRef(null);
     const [generating, setGenerating] = useState(false);
@@ -100,9 +164,23 @@ const ShareMovieModal = ({
     const [statusMessage, setStatusMessage] = useState("");
     const [cardImages, setCardImages] = useState(null);
 
+    const isReviewMode = Boolean(reviewShare?.text?.trim());
     const overallScore = useMemo(() => calculateShareOverallScore(ratings), [ratings]);
+    const reviewOverallScore = useMemo(() => {
+        if (!isReviewMode) return overallScore;
+        if (reviewShare?.overallScore != null) {
+            const n = Number(reviewShare.overallScore);
+            if (Number.isFinite(n) && n > 0) return n;
+        }
+        return overallScore;
+    }, [isReviewMode, reviewShare?.overallScore, overallScore]);
     const shareUrl = window.location.href;
-    const shareText = `🎬 ${movieTitle} — TOS Rating: ${overallScore.toFixed(1)}/10`;
+    const reviewSnippet = isReviewMode
+        ? String(reviewShare.text).trim().slice(0, 120)
+        : '';
+    const shareText = isReviewMode
+        ? `🎬 ${movieTitle} — ${reviewSnippet}${reviewSnippet.length >= 120 ? '…' : ''}`
+        : `🎬 ${movieTitle} — TOS Rating: ${overallScore.toFixed(1)}/10`;
 
     const fullPosterUrl = toW500PosterUrl(posterUrl, imageURL);
 
@@ -111,36 +189,7 @@ const ShareMovieModal = ({
         window.setTimeout(() => setStatusMessage(""), 4000);
     };
 
-    const convertToBase64 = async (url) => {
-        if (!url) return null;
-        if (url.startsWith("data:")) return url;
-
-        const blobToDataURL = (blob) =>
-            new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result);
-                reader.onerror = reject;
-                reader.readAsDataURL(blob);
-            });
-
-        try {
-            const response = await fetch(url, { mode: "cors", credentials: "omit" });
-            if (response.ok) {
-                return await blobToDataURL(await response.blob());
-            }
-        } catch {
-            // try proxy
-        }
-
-        try {
-            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-            const response = await fetch(proxyUrl);
-            return await blobToDataURL(await response.blob());
-        } catch (error) {
-            console.error("Error converting to base64:", error);
-            return null;
-        }
-    };
+    const convertToBase64 = (url) => fetchUrlAsDataUrl(url);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -154,13 +203,16 @@ const ShareMovieModal = ({
             setStatusMessage("");
             setCardImages(null);
 
-            const [poster, logo] = await Promise.all([
+            const [poster, logo, avatar] = await Promise.all([
                 initialPosterBase64 || (fullPosterUrl ? convertToBase64(fullPosterUrl) : null),
                 convertToBase64(TOS_LOGO_URL),
+                isReviewMode && reviewShare.avatarUrl
+                    ? rasterizeAvatarForShare(reviewShare.avatarUrl, 160)
+                    : Promise.resolve(null),
             ]);
 
             if (!cancelled) {
-                setCardImages({ poster, logo });
+                setCardImages({ poster, logo, avatar });
             }
         };
 
@@ -168,7 +220,7 @@ const ShareMovieModal = ({
         return () => {
             cancelled = true;
         };
-    }, [isOpen, initialPosterBase64, fullPosterUrl]);
+    }, [isOpen, initialPosterBase64, fullPosterUrl, isReviewMode, reviewShare?.avatarUrl]);
 
     useEffect(() => {
         if (!isOpen || !cardImages || !cardRef.current) return;
@@ -198,6 +250,14 @@ const ShareMovieModal = ({
                         card.style.fontFamily = CARD_FONT;
                         card.style.width = `${CARD_W}px`;
                         card.style.height = `${CARD_H}px`;
+                        clonedDoc.querySelectorAll("[data-share-profile-avatar]").forEach((el) => {
+                            el.style.width = "52px";
+                            el.style.height = "52px";
+                            el.style.borderRadius = "50%";
+                            el.style.backgroundSize = "cover";
+                            el.style.backgroundPosition = "center center";
+                            el.style.backgroundRepeat = "no-repeat";
+                        });
                     },
                 });
 
@@ -266,7 +326,12 @@ const ShareMovieModal = ({
         }
         shareToTelegram({ text: shareText, url: shareUrl });
     };
-    const handleRedditShare = () => shareToReddit({ title: `Review: ${movieTitle} — ${overallScore.toFixed(1)}/10`, url: shareUrl });
+    const handleRedditShare = () => shareToReddit({
+        title: isReviewMode
+            ? `Review: ${movieTitle}`
+            : `Review: ${movieTitle} — ${overallScore.toFixed(1)}/10`,
+        url: shareUrl,
+    });
 
     const copyLink = async () => {
         await navigator.clipboard.writeText(shareUrl);
@@ -285,7 +350,7 @@ const ShareMovieModal = ({
     const downloadImage = async () => {
         const blob = await ensureBlob();
         if (!blob) return;
-        downloadBlob(blob, `${movieTitle?.replace(/[^a-zA-Z0-9]/g, "_") || "movie"}_TOS_Rating.png`);
+        downloadBlob(blob, `${movieTitle?.replace(/[^a-zA-Z0-9]/g, "_") || "movie"}_${isReviewMode ? 'Review' : 'TOS_Rating'}.png`);
     };
 
     if (!isOpen) return null;
@@ -301,8 +366,12 @@ const ShareMovieModal = ({
                             <FaShare className="text-sm text-amber-400/90" />
                         </div>
                         <div>
-                            <h3 className="text-sm font-bold text-white">Share Your Rating</h3>
-                            <p className="text-[11px] text-white/40">Premium story card · 1080×1920</p>
+                            <h3 className="text-sm font-bold text-white">
+                                {isReviewMode ? 'Share Your Review' : 'Share Your Rating'}
+                            </h3>
+                            <p className="text-[11px] text-white/40">
+                                {isReviewMode ? 'Review story card · 1080×1920' : 'Premium story card · 1080×1920'}
+                            </p>
                         </div>
                     </div>
                     <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full text-white/40 hover:bg-white/5 hover:text-white">
@@ -311,23 +380,7 @@ const ShareMovieModal = ({
                 </div>
 
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden sm:flex-row">
-                    <div className="flex shrink-0 items-center justify-center bg-[#030303] px-5 py-4 sm:w-[260px] sm:border-r sm:border-white/5">
-                        <div className="absolute left-0 top-0 -z-10 opacity-0 pointer-events-none" aria-hidden="true">
-                            {cardImages && (
-                                <LuxuryShareCard
-                                    ref={cardRef}
-                                    movieTitle={movieTitle}
-                                    movieYear={movieYear}
-                                    posterSrc={cardImages.poster}
-                                    logoSrc={cardImages.logo}
-                                    ratings={ratings}
-                                    overallScore={overallScore}
-                                    genres={genres}
-                                    mediaType={mediaType}
-                                />
-                            )}
-                        </div>
-
+                    <div className="relative flex shrink-0 items-center justify-center bg-[#030303] px-5 py-4 sm:w-[260px] sm:border-r sm:border-white/5">
                         {generating || !shareImage ? (
                             <div
                                 className="flex flex-col items-center justify-center rounded-lg border border-dashed border-white/10 bg-white/[0.02]"
@@ -340,7 +393,7 @@ const ShareMovieModal = ({
                             <img
                                 src={shareImage}
                                 alt="Share preview"
-                                className="rounded-lg border border-white/10 object-cover shadow-2xl shadow-black/70"
+                                className="rounded-lg border border-white/10 object-contain shadow-2xl shadow-black/70"
                                 style={{ width: 214, height: 380 }}
                             />
                         )}
@@ -392,22 +445,87 @@ const ShareMovieModal = ({
                     </div>
                 </div>
             </div>
+
+            {/* Off-screen full-size card for html2canvas — avoids modal overflow clipping */}
+            {cardImages && (
+                <div
+                    aria-hidden
+                    className="pointer-events-none"
+                    style={{
+                        position: 'fixed',
+                        left: 0,
+                        top: 0,
+                        width: CARD_W,
+                        height: CARD_H,
+                        opacity: 0,
+                        overflow: 'visible',
+                        zIndex: 0,
+                    }}
+                >
+                    {isReviewMode ? (
+                        <ReviewLuxuryShareCard
+                            ref={cardRef}
+                            movieTitle={movieTitle}
+                            movieYear={movieYear}
+                            posterSrc={cardImages.poster}
+                            logoSrc={cardImages.logo}
+                            genres={genres}
+                            mediaType={mediaType}
+                            reviewText={reviewShare.text}
+                            reviewHeadline={reviewShare.headline}
+                            authorDisplayName={reviewShare.authorDisplayName}
+                            authorUsername={reviewShare.authorUsername}
+                            avatarSrc={cardImages.avatar}
+                            overallScore={reviewOverallScore}
+                        />
+                    ) : (
+                        <LuxuryShareCard
+                            ref={cardRef}
+                            movieTitle={movieTitle}
+                            movieYear={movieYear}
+                            posterSrc={cardImages.poster}
+                            logoSrc={cardImages.logo}
+                            ratings={ratings}
+                            overallScore={overallScore}
+                            genres={genres}
+                            mediaType={mediaType}
+                        />
+                    )}
+                </div>
+            )}
         </div>
     );
 };
 
-export const ShareButton = ({ movieTitle, movieYear, posterUrl, backdropUrl, ratings, imageURL, posterBase64, backdropBase64, genres, mediaType }) => {
+export const ShareButton = ({
+    movieTitle,
+    movieYear,
+    posterUrl,
+    backdropUrl,
+    ratings,
+    imageURL,
+    posterBase64,
+    backdropBase64,
+    genres,
+    mediaType,
+    reviewShare = null,
+    disabled = false,
+    className = '',
+}) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const isReviewMode = Boolean(reviewShare?.text?.trim());
+
+    if (disabled || (!isReviewMode && !ratings)) return null;
 
     return (
         <>
             <button
                 type="button"
                 onClick={() => setIsModalOpen(true)}
-                className="group flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-6 py-3 font-bold text-white transition hover:border-amber-500/40 hover:bg-amber-500/10"
+                className={`group flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-6 py-3 font-bold text-white transition hover:border-amber-500/40 hover:bg-amber-500/10 ${className}`}
             >
                 <FaShare className="text-amber-500/90" />
-                <span className="text-sm">Share Review Card</span>
+                <span className="text-sm">{isReviewMode ? 'Share Review Card' : 'Share Rating Card'}</span>
             </button>
 
             <ShareMovieModal
@@ -421,6 +539,7 @@ export const ShareButton = ({ movieTitle, movieYear, posterUrl, backdropUrl, rat
                 posterBase64={posterBase64}
                 genres={genres}
                 mediaType={mediaType}
+                reviewShare={isReviewMode ? reviewShare : null}
             />
         </>
     );

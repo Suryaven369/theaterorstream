@@ -5,6 +5,7 @@ import { getUserMovieLogs } from '../../lib/movieDiary';
 import { generateSlugWithId } from '../../lib/slugUtils';
 
 const PAGE_SIZE = 10;
+const rowClass = 'inline-flex items-start gap-2.5 py-1.5 rounded-md max-w-full hover:bg-white/[0.04] transition-colors';
 
 export default function DiaryFeedTab() {
     const { user, isAuthenticated } = useAuth();
@@ -52,9 +53,9 @@ export default function DiaryFeedTab() {
 
     if (loading) {
         return (
-            <div className="space-y-3">
+            <div className="space-y-2">
                 {[1, 2, 3].map((i) => (
-                    <div key={i} className="h-24 rounded-xl bg-white/5 animate-pulse" />
+                    <div key={i} className="h-14 w-64 rounded-md bg-white/5 animate-pulse" />
                 ))}
             </div>
         );
@@ -78,39 +79,37 @@ export default function DiaryFeedTab() {
     }
 
     return (
-        <div className="space-y-3">
+        <div className="flex flex-col items-start gap-1">
             {logs.map((log) => {
                 const slug = generateSlugWithId(log.movie_title, log.tmdb_id, '');
                 const url = log.media_type === 'tv' ? `/tv/${slug}` : `/movies/${slug}`;
+                const posterSrc = log.poster_path
+                    ? (log.poster_path.startsWith('http') ? log.poster_path : `https://image.tmdb.org/t/p/w92${log.poster_path}`)
+                    : null;
                 return (
-                    <div key={log.id} className="flex gap-4 p-4 rounded-xl bg-[#1a1a1a] border border-white/10">
-                        {log.poster_path && (
-                            <Link to={url}>
-                                <img
-                                    src={log.poster_path.startsWith('http') ? log.poster_path : `https://image.tmdb.org/t/p/w92${log.poster_path}`}
-                                    alt=""
-                                    className="w-14 h-20 object-cover rounded-lg"
-                                />
-                            </Link>
+                    <Link key={log.id} to={url} className={rowClass}>
+                        {posterSrc ? (
+                            <img src={posterSrc} alt="" className="w-9 h-[52px] rounded object-cover shrink-0 border border-white/10" />
+                        ) : (
+                            <div className="w-9 h-[52px] rounded bg-white/5 flex items-center justify-center text-white/20 shrink-0 border border-white/5 text-sm">
+                                🎬
+                            </div>
                         )}
-                        <div className="flex-1 min-w-0">
-                            <Link to={url} className="font-semibold text-white hover:text-orange-400">
+                        <div className="min-w-0 pr-1 max-w-xl">
+                            <p className="text-sm font-medium text-white leading-snug">
                                 {log.movie_title}
-                            </Link>
-                            <p className="text-xs text-white/40 mt-1">
-                                Watched {log.watched_on}
-                                {log.rating != null && ` · ${log.rating}/10`}
+                                {log.rating != null && (
+                                    <span className="text-yellow-400 text-xs ml-2 font-normal">★ {log.rating}/10</span>
+                                )}
                             </p>
-                            {log.watched_with?.length > 0 && (
-                                <p className="text-xs text-white/35 mt-1">
-                                    With {log.watched_with.join(', ')}
-                                </p>
-                            )}
+                            <p className="text-[11px] text-white/35 mt-0.5">
+                                Watched {log.watched_on}
+                            </p>
                             {log.review_text && (
-                                <p className="text-sm text-white/55 mt-2 line-clamp-2">{log.review_text}</p>
+                                <p className="text-xs text-white/55 mt-1 line-clamp-2">{log.review_text}</p>
                             )}
                         </div>
-                    </div>
+                    </Link>
                 );
             })}
             {hasMore && (
@@ -118,7 +117,7 @@ export default function DiaryFeedTab() {
                     type="button"
                     onClick={loadMore}
                     disabled={loadingMore}
-                    className="mt-2 w-full py-3 rounded-xl border border-white/10 text-sm text-white/60 hover:text-white hover:border-white/20 transition-colors"
+                    className="mt-3 text-sm text-white/50 hover:text-white transition-colors"
                 >
                     {loadingMore ? 'Loading…' : 'Load more'}
                 </button>
