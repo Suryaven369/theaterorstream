@@ -2,7 +2,7 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Aug 10, 2026 · HEAD `7c10617` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Aug 10, 2026 · HEAD `5c67f40` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
 
 ---
 
@@ -1583,7 +1583,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
-| `7b7322b` | Aug 2026 | Review share card, ⋮ share, activity feed + profile/log UX |
+| `7c10617` | Aug 2026 | Review share card, ⋮ share, activity feed + profile/log UX |
 | `bccc214` | Jul 2026 | Drag-reorder collection titles in edit mode (custom sort_order) |
 | `5b68339` | Jul 2026 | Collection edit sort (release / added / title) + items_sort migration |
 | `1316019` | Jul 2026 | Remove floating RecoChatBubble from app shell |
