@@ -2,7 +2,21 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Aug 10, 2026 · HEAD `0d69831` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Aug 24, 2026 · HEAD `PENDING` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Aug 24, 2026 — Home list posts → Collection not found
+
+### Feed list links resolve by collection id ✅
+
+**Problem:** Clicking a list created/shown on Home opened “Collection not found” — links used title slug + sometimes placeholder `?u=user`, which failed after owner-scoped slug lookup.
+
+**Files changed:** `FeedPostCard.jsx`, `collections.js` (`getCollectionBySlug` UUID fast path, soft-fail bad `?u=`), `CollectionDetails.jsx`, `activityFeed.js`
+
+**Behavior:** Home list cards link to `/collection/{uuid}`; page loads by id. Placeholder username `user` ignored.
+
+**Next recommended:** Hard-refresh Home and open a list post; then `ai-agents-stack` (Task #14)
 
 ---
 
@@ -1583,6 +1597,8 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `PENDING` | Aug 2026 | Fix Home list posts → collection not found (link by UUID) |
+| `0d69831` | Aug 2026 | Work log HEAD sync |
 | `5c67f40` | Aug 2026 | Work log HEAD sync after review share push |
 | `7c10617` | Aug 2026 | Review share card, ⋮ share, activity feed + profile/log UX |
 | `bccc214` | Jul 2026 | Drag-reorder collection titles in edit mode (custom sort_order) |

@@ -14,6 +14,7 @@ import PostMediaCarousel from './PostMediaCarousel';
 import FeedPoll from './FeedPoll';
 import { feedArticleClass } from './feedItemShell';
 import { getAvatarUrl } from '../../lib/storagePublicUrl';
+import { collectionPublicPath } from '../../lib/supabase';
 
 const createSlug = (text) =>
   (text || '')
@@ -22,6 +23,22 @@ const createSlug = (text) =>
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')
     .trim();
+
+function listOwnerUsername(user) {
+  const u = (user?.username || '').trim().replace(/^@/, '');
+  if (!u || u === 'user') return null;
+  return u;
+}
+
+function listPostPath(item) {
+  const owner = listOwnerUsername(item.user);
+  if (item.collectionId) {
+    return collectionPublicPath({ id: item.collectionId, name: item.listTitle || item.movieTitle }, owner);
+  }
+  const slug = createSlug(item.listTitle || item.movieTitle || '');
+  if (!slug) return '/';
+  return owner ? `/collection/${slug}?u=${encodeURIComponent(owner)}` : `/collection/${slug}`;
+}
 
 function referrerFromLocation(location) {
   const path = `${location.pathname}${location.search}`;
@@ -153,10 +170,11 @@ export default function FeedPostCard({
 
       {item.postType === 'list' ? (
         <Link
-          to={`/collection/${createSlug(item.listTitle || item.movieTitle || '')}${item.user?.username ? `?u=${encodeURIComponent(item.user.username)}` : ''}`}
+          to={listPostPath(item)}
           state={{
             from: listReferrer,
-            ownerUsername: item.user?.username || undefined,
+            ownerUsername: listOwnerUsername(item.user) || undefined,
+            ownerUserId: item.user?.id || undefined,
           }}
           className="block px-3 sm:px-4 pb-2"
           data-no-thread

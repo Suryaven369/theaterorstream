@@ -81,7 +81,9 @@ export function resolveActivityDisplay(activity, { profileUsername } = {}) {
             break;
         case 'list_created':
             title = p.name || 'Untitled list';
-            if (p.name) {
+            if (p.collection_id) {
+                href = `/collection/${p.collection_id}${profileUsername ? `?u=${encodeURIComponent(profileUsername)}` : ''}`;
+            } else if (p.name) {
                 href = `/collection/${listSlug(p.name)}${profileUsername ? `?u=${encodeURIComponent(profileUsername)}` : ''}`;
             }
             if (p.description) subline = p.description;

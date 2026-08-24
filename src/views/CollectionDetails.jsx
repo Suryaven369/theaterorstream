@@ -324,11 +324,14 @@ const CollectionDetails = () => {
     const { user, profile, loading: authLoading } = useAuth();
     const imageURL = useSelector((state) => state.movieData.imageURL);
 
-    const ownerFromQuery = (searchParams.get('u') || '').trim().replace(/^@/, '') || null;
+    const ownerFromQueryRaw = (searchParams.get('u') || '').trim().replace(/^@/, '') || null;
+    const ownerFromQuery = ownerFromQueryRaw && ownerFromQueryRaw !== 'user' ? ownerFromQueryRaw : null;
     const ownerFromState = location.state?.ownerUsername
         ? String(location.state.ownerUsername).trim().replace(/^@/, '')
         : null;
-    const ownerUsername = ownerFromQuery || ownerFromState || null;
+    const ownerUsername = ownerFromQuery || (ownerFromState && ownerFromState !== 'user' ? ownerFromState : null)
+        || null;
+    const ownerUserIdFromState = location.state?.ownerUserId || null;
 
     const [collection, setCollection] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -369,7 +372,7 @@ const CollectionDetails = () => {
         if (slug) {
             loadCollection();
         }
-    }, [slug, user?.id, ownerUsername]);
+    }, [slug, user?.id, ownerUsername, ownerUserIdFromState]);
 
     useEffect(() => {
         if (!actionsMenuOpen) return undefined;
@@ -423,6 +426,7 @@ const CollectionDetails = () => {
                 key,
                 fetcher: () => getCollectionBySlug(slug, user?.id || null, {
                     ownerUsername: cacheOwnerKey,
+                    ownerUserId: ownerUserIdFromState || null,
                 }),
                 onCached: (data) => {
                     showedCache = true;
