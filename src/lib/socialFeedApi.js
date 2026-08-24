@@ -435,6 +435,7 @@ function mapFeedPostRow(post, { author, isLiked = false, isSaved = false, userPo
             type: 'post',
             postType: 'list',
             collectionId,
+            watchParty: !!rawMedia?.watchParty,
             movieTitle: title,
             content: excerpt || title,
             listTitle: title,

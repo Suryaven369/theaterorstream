@@ -2,7 +2,23 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Aug 24, 2026 · HEAD `7be1fc4` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Aug 24, 2026 · HEAD `PENDING` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Aug 24, 2026 — Watch Party on collections
+
+### Marathon / Watch Party mode on lists (no new page) ✅
+
+**Problem:** Want shared watch progress on a list — join, mark titles watched, host sees counts — without a separate party page.
+
+**Files changed:** migration `20260824000000_collection_watch_party.sql`; `collections.js` (create/update/join/leave/toggle + hydrate); `CollectionsPage.jsx`, `CollectionDetails.jsx`; `FeedPostCard.jsx` + `socialFeedApi.js`
+
+**Behavior:** Create/edit toggle **Watch Party**; members Join/Leave; per-title Watch + `k/N watched`; public feed chip. Private parties joinable via invite link.
+
+**Off-git:** Run `20260824000000_collection_watch_party.sql` in Supabase.
+
+**Next recommended:** Confirm migration applied; smoke-test join + mark watched with two accounts.
 
 ---
 
@@ -1597,6 +1613,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `PENDING` | Aug 2026 | Watch Party mode on collections (join, mark watched, counts) |
 | `7be1fc4` | Aug 2026 | Fix Home list posts → collection not found (link by UUID) |
 | `0d69831` | Aug 2026 | Work log HEAD sync |
 | `5c67f40` | Aug 2026 | Work log HEAD sync after review share push |

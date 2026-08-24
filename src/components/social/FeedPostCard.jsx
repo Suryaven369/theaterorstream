@@ -202,9 +202,16 @@ export default function FeedPostCard({
               </div>
             ) : null}
             <div className="px-3.5 py-3">
-              <span className="inline-block text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-white/10 text-white/65 mb-1.5">
-                List
-              </span>
+              <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+                <span className="inline-block text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-white/10 text-white/65">
+                  List
+                </span>
+                {item.watchParty && (
+                  <span className="inline-block text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-sky-500/20 text-sky-300">
+                    Watch Party
+                  </span>
+                )}
+              </div>
               <h3 className="text-[15px] sm:text-base font-bold text-white leading-snug">
                 {item.listTitle || item.movieTitle || 'Collection'}
               </h3>

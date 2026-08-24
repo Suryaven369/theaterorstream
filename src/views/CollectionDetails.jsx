@@ -14,8 +14,11 @@ import {
     normalizeCollectionItemsSort,
     sortCollectionMovies,
     reorderCollectionMovies,
+    joinWatchParty,
+    leaveWatchParty,
+    togglePartyMovieWatched,
 } from '../lib/supabase';
-import { FaTrash, FaLock, FaGlobe, FaFolderOpen, FaArrowLeft, FaPlus, FaSearch, FaCheck, FaTimes, FaEdit, FaSave, FaShare, FaLink, FaTwitter, FaEllipsisH, FaImage } from 'react-icons/fa';
+import { FaTrash, FaLock, FaGlobe, FaFolderOpen, FaArrowLeft, FaPlus, FaSearch, FaCheck, FaTimes, FaEdit, FaSave, FaShare, FaLink, FaTwitter, FaEllipsisH, FaImage, FaUsers, FaEye } from 'react-icons/fa';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { searchContentFromEdge, getMovieDetailFromEdge } from '../lib/contentEdgeApi';
 import { isTheaterSystemCollection } from '../lib/theaterWatch';
@@ -42,8 +45,8 @@ const createSlug = (text) => {
     return slug || 'collection';
 };
 
-/** Overlapping owner + collaborator avatars (hover name, click → profile). */
-const CollectionPeopleStack = ({ owner, collaborators = [] }) => {
+/** Overlapping owner + collaborator / party member avatars. */
+const CollectionPeopleStack = ({ owner, collaborators = [], partyMembers = [], extraLabel = null }) => {
     const people = [];
     if (owner?.username || owner?.id) {
         people.push({
@@ -54,29 +57,33 @@ const CollectionPeopleStack = ({ owner, collaborators = [] }) => {
             isVerified: !!owner.is_verified,
         });
     }
-    for (const c of collaborators || []) {
+    const extras = (partyMembers?.length ? partyMembers : collaborators) || [];
+    for (const c of extras) {
         if (!c?.username && !c?.id) continue;
         if (owner?.id && c.id === owner.id) continue;
         if (people.some((p) => p.id === c.id || p.username === c.username)) continue;
         people.push({
             id: c.id,
             username: c.username,
-            displayName: c.display_name || c.username || 'Collaborator',
+            displayName: c.display_name || c.username || 'Member',
             avatarUrl: c.avatar_url,
             isVerified: !!c.is_verified,
         });
     }
     if (!people.length) return null;
 
+    const shown = people.slice(0, 6);
+    const overflow = people.length - shown.length;
+
     return (
         <div className="flex items-center gap-2.5">
             <div className="flex items-center -space-x-2">
-                {people.map((p, i) => (
+                {shown.map((p, i) => (
                     <Link
                         key={p.id || p.username || i}
                         to={p.username ? `/${p.username}/profile` : '#'}
                         className="relative group/avatar block rounded-full ring-2 ring-[#1a1a1a] hover:z-20 focus:z-20 focus:outline-none focus-visible:ring-purple-400/60"
-                        style={{ zIndex: people.length - i }}
+                        style={{ zIndex: shown.length - i }}
                     >
                         <span className="block w-8 h-8 sm:w-9 sm:h-9 rounded-full overflow-hidden bg-gradient-to-br from-purple-500 to-pink-500">
                             {p.avatarUrl ? (
@@ -96,7 +103,13 @@ const CollectionPeopleStack = ({ owner, collaborators = [] }) => {
                         </span>
                     </Link>
                 ))}
+                {overflow > 0 && (
+                    <span className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/10 ring-2 ring-[#1a1a1a] flex items-center justify-center text-[10px] text-white/70 font-semibold">
+                        +{overflow}
+                    </span>
+                )}
             </div>
+            {extraLabel && <span className="text-white/40 text-xs">{extraLabel}</span>}
         </div>
     );
 };
@@ -346,10 +359,13 @@ const CollectionDetails = () => {
     const [editDescription, setEditDescription] = useState('');
     const [editIsPublic, setEditIsPublic] = useState(false);
     const [editFranchise, setEditFranchise] = useState(false);
+    const [editWatchParty, setEditWatchParty] = useState(false);
     const [editCoverImage, setEditCoverImage] = useState(null);
     const [editItemsSort, setEditItemsSort] = useState('added_desc');
     const [orderDirty, setOrderDirty] = useState(false);
     const [dragMovieId, setDragMovieId] = useState(null);
+    const [partyBusy, setPartyBusy] = useState(false);
+    const [partyWatchBusyId, setPartyWatchBusyId] = useState(null);
     const [coverUploading, setCoverUploading] = useState(false);
     const [coverError, setCoverError] = useState('');
     const [saving, setSaving] = useState(false);
@@ -401,6 +417,7 @@ const CollectionDetails = () => {
             data.category === 'franchise'
             || (Array.isArray(data.tags) && data.tags.includes('franchise')),
         );
+        setEditWatchParty(!!data.is_watch_party);
         setEditCoverImage(toPublicStorageUrl(data.cover_image) || data.cover_image || null);
         setEditItemsSort(normalizeCollectionItemsSort(data.items_sort, data));
         setCoverError('');
@@ -467,6 +484,71 @@ const CollectionDetails = () => {
     // Check if viewing own collection
     const isOwnCollection = user?.id && collection?.user_id === user.id;
     const isTheaterCollection = isTheaterSystemCollection(collection);
+    const isWatchParty = !!collection?.is_watch_party;
+    const viewerIsMember = !!(collection?.viewer_is_member || isOwnCollection);
+    const partyMemberCount = collection?.party_member_count || 0;
+
+    const handleJoinParty = async () => {
+        if (!user?.id) {
+            navigate('/auth');
+            return;
+        }
+        if (!collection?.id || partyBusy) return;
+        setPartyBusy(true);
+        const result = await joinWatchParty(collection.id, user.id);
+        setPartyBusy(false);
+        if (result.success) {
+            invalidatePageCache(collectionPageKey(slug, user.id, ownerUsername));
+            await loadCollection();
+        } else {
+            alert(result.error?.message || 'Could not join party');
+        }
+    };
+
+    const handleLeaveParty = async () => {
+        if (!user?.id || !collection?.id || isOwnCollection || partyBusy) return;
+        setPartyBusy(true);
+        const result = await leaveWatchParty(collection.id, user.id);
+        setPartyBusy(false);
+        if (result.success) {
+            invalidatePageCache(collectionPageKey(slug, user.id, ownerUsername));
+            await loadCollection();
+        } else {
+            alert(result.error?.message || 'Could not leave party');
+        }
+    };
+
+    const handleTogglePartyWatched = async (movie) => {
+        if (!user?.id || !collection?.id || !movie?.movie_id || !viewerIsMember) return;
+        const movieId = String(movie.movie_id);
+        setPartyWatchBusyId(movieId);
+        const nextWatched = !movie.viewer_watched;
+        const result = await togglePartyMovieWatched(collection.id, user.id, {
+            movieId,
+            movieTitle: movie.movie_title || movie.title,
+            posterPath: movie.poster_path,
+            mediaType: movie.media_type || 'movie',
+            watched: nextWatched,
+        });
+        setPartyWatchBusyId(null);
+        if (!result.success) {
+            alert(result.error?.message || 'Could not update watched');
+            return;
+        }
+        const delta = result.watched ? 1 : -1;
+        bumpCollectionCache({
+            ...collection,
+            viewer_is_member: true,
+            collection_movies: (collection.collection_movies || []).map((m) => {
+                if (String(m.movie_id) !== movieId) return m;
+                return {
+                    ...m,
+                    viewer_watched: result.watched,
+                    party_watched_count: Math.max(0, (m.party_watched_count || 0) + delta),
+                };
+            }),
+        });
+    };
 
     // Open edit / add from Collections list ⋯ menu (any list, not just franchise)
     useEffect(() => {
@@ -618,6 +700,7 @@ const CollectionDetails = () => {
             collection?.category === 'franchise'
             || (Array.isArray(collection?.tags) && collection.tags.includes('franchise')),
         );
+        setEditWatchParty(!!collection?.is_watch_party);
         setEditCoverImage(toPublicStorageUrl(collection?.cover_image) || collection?.cover_image || null);
         setEditItemsSort(normalizeCollectionItemsSort(collection?.items_sort, collection));
         setOrderDirty(false);
@@ -709,6 +792,7 @@ const CollectionDetails = () => {
             description: editDescription.trim(),
             is_public: editIsPublic,
             franchise: isTheaterCollection ? false : editFranchise,
+            is_watch_party: isTheaterCollection ? false : editWatchParty,
             cover_image: editCoverImage || null,
             items_sort: editItemsSort,
         });
@@ -973,11 +1057,25 @@ const CollectionDetails = () => {
                                                 >
                                                     Franchise
                                                 </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setEditWatchParty((v) => !v)}
+                                                    aria-pressed={editWatchParty}
+                                                    className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-colors min-h-[36px] ${
+                                                        editWatchParty
+                                                            ? 'bg-sky-400 text-[#14181c] border-sky-300'
+                                                            : 'bg-white/5 text-white/55 border-white/15 hover:text-white hover:border-white/25'
+                                                    }`}
+                                                >
+                                                    Watch Party
+                                                </button>
                                             </div>
                                             <p className="text-[11px] text-white/40 mt-2">
-                                                {collection.moderation_status === 'approved' && editFranchise
-                                                    ? 'Live on Explore → Franchise.'
-                                                    : 'Collection stays posted. Franchise page only after admin approval.'}
+                                                {editWatchParty
+                                                    ? 'Friends can join this list and check off titles as they watch.'
+                                                    : collection.moderation_status === 'approved' && editFranchise
+                                                        ? 'Live on Explore → Franchise.'
+                                                        : 'Collection stays posted. Franchise page only after admin approval.'}
                                             </p>
                                         </div>
                                     )}
@@ -1062,6 +1160,11 @@ const CollectionDetails = () => {
                                                         <FaLock className="text-[9px]" /> Private
                                                     </span>
                                                 )}
+                                                {isWatchParty && (
+                                                    <span className="px-2 py-0.5 rounded-md bg-sky-500/15 text-sky-300 text-[11px] sm:text-xs flex items-center gap-1 shrink-0">
+                                                        <FaUsers className="text-[9px]" /> Watch Party
+                                                    </span>
+                                                )}
                                                 {collection.moderation_status === 'approved'
                                                     && (collection.category === 'franchise' || collection.tags?.includes?.('franchise')) && (
                                                     <span className="px-2 py-0.5 rounded-md text-[11px] sm:text-xs bg-amber-500/15 text-amber-300 shrink-0">
@@ -1070,7 +1173,7 @@ const CollectionDetails = () => {
                                                 )}
                                             </div>
 
-                                            {(collection.is_public || isOwnCollection) && (
+                                            {(collection.is_public || isOwnCollection || isWatchParty) && (
                                                 <div className="relative shrink-0 -mt-0.5" ref={actionsMenuRef}>
                                                     <button
                                                         type="button"
@@ -1087,7 +1190,7 @@ const CollectionDetails = () => {
                                                             role="menu"
                                                             className="absolute right-0 top-9 z-30 min-w-[168px] rounded-xl border border-white/10 bg-[#1c1f22] shadow-2xl py-1 overflow-hidden"
                                                         >
-                                                            {collection.is_public && (
+                                                            {(collection.is_public || isWatchParty) && (
                                                                 <button
                                                                     type="button"
                                                                     role="menuitem"
@@ -1156,10 +1259,55 @@ const CollectionDetails = () => {
                                                 🍿 Auto-fills when you log with &quot;In theater&quot; — or use Add titles to add movies manually.
                                             </p>
                                         )}
+                                        {isWatchParty && (
+                                            <div className="flex flex-wrap items-center gap-2 mb-3">
+                                                <span className="inline-flex items-center gap-1.5 text-xs text-sky-300/90 bg-sky-500/10 border border-sky-500/20 px-2.5 py-1 rounded-full">
+                                                    <FaUsers className="text-[10px]" />
+                                                    {partyMemberCount} joined
+                                                </span>
+                                                <span className="text-xs text-white/40">
+                                                    {movies.length} titles
+                                                </span>
+                                                {!isOwnCollection && (
+                                                    user?.id
+                                                        ? (viewerIsMember && !isOwnCollection
+                                                            ? (
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={partyBusy}
+                                                                    onClick={handleLeaveParty}
+                                                                    className="text-xs px-3 py-1.5 rounded-full border border-white/15 text-white/60 hover:text-white hover:bg-white/10 min-h-[36px] disabled:opacity-50"
+                                                                >
+                                                                    {partyBusy ? '…' : 'Leave party'}
+                                                                </button>
+                                                            )
+                                                            : (
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={partyBusy}
+                                                                    onClick={handleJoinParty}
+                                                                    className="text-xs px-3 py-1.5 rounded-full bg-sky-500 text-[#0a0a0a] font-semibold hover:bg-sky-400 min-h-[36px] disabled:opacity-50"
+                                                                >
+                                                                    {partyBusy ? 'Joining…' : 'Join party'}
+                                                                </button>
+                                                            ))
+                                                        : (
+                                                            <Link
+                                                                to="/auth"
+                                                                className="text-xs px-3 py-1.5 rounded-full bg-sky-500/90 text-[#0a0a0a] font-semibold hover:bg-sky-400 min-h-[36px] inline-flex items-center"
+                                                            >
+                                                                Sign in to join
+                                                            </Link>
+                                                        )
+                                                )}
+                                            </div>
+                                        )}
                                         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs sm:text-sm text-white/40">
                                             <CollectionPeopleStack
                                                 owner={collection.user_profiles}
                                                 collaborators={collection.collaborators}
+                                                partyMembers={isWatchParty ? collection.party_members : []}
+                                                extraLabel={isWatchParty && partyMemberCount > 0 ? `${partyMemberCount} in party` : null}
                                             />
                                             <span className="text-white/25">•</span>
                                             <span>{movies.length} items</span>
@@ -1256,6 +1404,26 @@ const CollectionDetails = () => {
                                                 )}
                                             </button>
                                         )}
+                                        {!isEditing && isWatchParty && viewerIsMember && (
+                                            <button
+                                                type="button"
+                                                aria-label={movie.viewer_watched ? 'Unmark watched' : 'Mark watched'}
+                                                disabled={partyWatchBusyId === String(movie.movie_id)}
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    handleTogglePartyWatched(movie);
+                                                }}
+                                                className={`absolute bottom-1.5 right-1.5 z-10 inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] sm:text-[11px] font-semibold shadow-lg border transition-colors disabled:opacity-50 ${
+                                                    movie.viewer_watched
+                                                        ? 'bg-sky-500 text-[#0a0a0a] border-sky-300'
+                                                        : 'bg-black/75 text-white/90 border-white/20 hover:bg-sky-500/90 hover:text-[#0a0a0a]'
+                                                }`}
+                                            >
+                                                <FaEye className="text-[10px]" />
+                                                {movie.viewer_watched ? 'Watched' : 'Watch'}
+                                            </button>
+                                        )}
                                     </div>
                                     <div className="p-1.5 sm:p-3">
                                         <Link
@@ -1283,6 +1451,11 @@ const CollectionDetails = () => {
                                                 })()}
                                             </p>
                                         </Link>
+                                        {isWatchParty && (
+                                            <p className="text-[10px] sm:text-[11px] text-sky-300/80 mt-1">
+                                                {movie.party_watched_count || 0}/{partyMemberCount || 0} watched
+                                            </p>
+                                        )}
                                     </div>
                                 </div>
                             ))}

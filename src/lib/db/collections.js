@@ -1,5 +1,6 @@
 import { LIBRARY_CARD_SELECT } from '../moviesLibrarySelect.js';
 import { supabase } from '../supabaseClient.js';
+import { ensureWatchedMovie } from './userLists.js';
 
 // =============================================
 // ADMIN COLLECTIONS (CMS)
@@ -294,7 +295,7 @@ export async function syncListPostCover(collectionId) {
 
     const { data: collection } = await supabase
         .from('user_collections')
-        .select('id, name, user_id, is_public, cover_image, banner_image, collection_movies(movie_id, poster_path)')
+        .select('id, name, user_id, is_public, cover_image, banner_image, is_watch_party, collection_movies(movie_id, poster_path)')
         .eq('id', collectionId)
         .maybeSingle();
 
@@ -328,6 +329,7 @@ export async function syncListPostCover(collectionId) {
             collectionId: collection.id,
             name: collection.name,
             coverImage: cover,
+            watchParty: !!collection.is_watch_party,
         };
         return supabase
             .from('feed_posts')
@@ -347,6 +349,7 @@ export const createUserCollection = async (userId, name, description = '', isPub
     const cleanDescription = (description || '').trim().slice(0, LIST_DESCRIPTION_MAX);
     const tags = normalizeTags(options.tags);
     const isFranchise = hasFranchiseTag(tags) || options.category === 'franchise';
+    const isWatchParty = !!options.is_watch_party;
 
     const row = {
         user_id: userId,
@@ -356,48 +359,75 @@ export const createUserCollection = async (userId, name, description = '', isPub
         category: isFranchise ? 'franchise' : 'list',
         tags: isFranchise ? [...new Set([...tags, 'franchise'])] : tags,
         moderation_status: isFranchise ? 'pending' : 'none',
+        is_watch_party: isWatchParty,
     };
 
     let { data, error } = await supabase
         .from('user_collections')
         .insert(row)
-        .select('id, user_id, name, description, is_public, category, tags, moderation_status, cover_image, banner_image, created_at, updated_at, is_system, collection_kind')
+        .select('id, user_id, name, description, is_public, category, tags, moderation_status, cover_image, banner_image, created_at, updated_at, is_system, collection_kind, is_watch_party')
         .single();
 
-    // Pre-migration DBs may not have category / moderation_status / tags yet.
-    if (error && /(category|moderation_status|tags)/i.test(error.message || '')) {
-        ({ data, error } = await supabase
-            .from('user_collections')
-            .insert({
-                user_id: userId,
-                name: cleanName,
-                description: cleanDescription,
-                is_public: isPublic,
-            })
-            .select('id, user_id, name, description, is_public, created_at, updated_at')
-            .single());
+    // Pre-migration DBs may not have category / moderation_status / tags / is_watch_party yet.
+    if (error && /(category|moderation_status|tags|is_watch_party)/i.test(error.message || '')) {
+        const fallbackRow = {
+            user_id: userId,
+            name: cleanName,
+            description: cleanDescription,
+            is_public: isPublic,
+        };
+        if (!/is_watch_party/i.test(error.message || '')) {
+            fallbackRow.category = isFranchise ? 'franchise' : 'list';
+            fallbackRow.tags = isFranchise ? [...new Set([...tags, 'franchise'])] : tags;
+            fallbackRow.moderation_status = isFranchise ? 'pending' : 'none';
+        }
+        if (!/(category|moderation_status|tags)/i.test(error.message || '') && isWatchParty) {
+            // only is_watch_party missing — retry without it
+            const { is_watch_party: _wp, ...withoutParty } = row;
+            ({ data, error } = await supabase
+                .from('user_collections')
+                .insert(withoutParty)
+                .select('id, user_id, name, description, is_public, category, tags, moderation_status, cover_image, banner_image, created_at, updated_at, is_system, collection_kind')
+                .single());
+        } else {
+            ({ data, error } = await supabase
+                .from('user_collections')
+                .insert(fallbackRow)
+                .select('id, user_id, name, description, is_public, created_at, updated_at')
+                .single());
+        }
     }
 
     // If RETURNING omitted name (RLS), re-fetch the row we just wrote.
     if (!error && data?.id && !data.name) {
         const { data: refetched } = await supabase
             .from('user_collections')
-            .select('id, user_id, name, description, is_public, category, tags, moderation_status, cover_image, banner_image, created_at, updated_at, is_system, collection_kind')
+            .select('id, user_id, name, description, is_public, category, tags, moderation_status, cover_image, banner_image, created_at, updated_at, is_system, collection_kind, is_watch_party')
             .eq('id', data.id)
             .maybeSingle();
         if (refetched) data = refetched;
+    }
+
+    if (!error && data?.id && (data.is_watch_party || isWatchParty)) {
+        await ensurePartyHostMember(data.id, userId);
     }
 
     if (!error && isPublic) {
         await supabase.from('activity_feed').insert({
             user_id: userId,
             event_type: 'list_created',
-            payload: { collection_id: data.id, name: cleanName, description: cleanDescription },
+            payload: {
+                collection_id: data.id,
+                name: cleanName,
+                description: cleanDescription,
+                watch_party: !!(data.is_watch_party || isWatchParty),
+            },
             visibility: 'public',
             engagement_score: 5,
         });
 
         const cover = resolveCollectionCoverUrl({ ...data, name: cleanName });
+        const watchParty = !!(data.is_watch_party || isWatchParty);
         await supabase.from('feed_posts').insert({
             user_id: userId,
             content: cleanDescription ? `${cleanName}\n${cleanDescription}` : cleanName,
@@ -411,6 +441,7 @@ export const createUserCollection = async (userId, name, description = '', isPub
                 collectionId: data.id,
                 name: cleanName,
                 coverImage: cover,
+                watchParty,
             },
         }).then(({ error: feedErr }) => {
             if (feedErr) console.warn('list -> feed_posts failed:', feedErr.message);
@@ -425,12 +456,26 @@ export const createUserCollection = async (userId, name, description = '', isPub
             name: data.name || cleanName,
             description: data.description ?? cleanDescription,
             is_public: data.is_public ?? isPublic,
+            is_watch_party: data.is_watch_party ?? isWatchParty,
             collection_movies: Array.isArray(data.collection_movies) ? data.collection_movies : [],
         }
         : null;
 
     return { success: !error && !!hydrated, data: hydrated, error };
 };
+
+async function ensurePartyHostMember(collectionId, userId) {
+    if (!collectionId || !userId) return;
+    const { error } = await supabase
+        .from('collection_party_members')
+        .upsert(
+            { collection_id: collectionId, user_id: userId },
+            { onConflict: 'collection_id,user_id' },
+        );
+    if (error && !/collection_party_members|schema cache/i.test(error.message || '')) {
+        console.warn('ensurePartyHostMember:', error.message);
+    }
+}
 
 export const getCollectionBySlug = async (slug, viewerUserId = null, options = {}) => {
     if (!slug) return null;
@@ -525,8 +570,8 @@ export const getCollectionBySlug = async (slug, viewerUserId = null, options = {
 
     if (!collection) return null;
 
-    // Private list: only owner (or collaborator path later) may view
-    if (!collection.is_public && collection.user_id !== viewerUserId) {
+    // Private list: only owner may view — except Watch Parties (invite-link model)
+    if (!collection.is_public && collection.user_id !== viewerUserId && !collection.is_watch_party) {
         return null;
     }
 
@@ -632,13 +677,100 @@ export const getCollectionBySlug = async (slug, viewerUserId = null, options = {
 
     // Persist any library-filled posters so list cards / feed covers stay populated
     const enriched = await fillMissingCollectionPosters(collection);
+    if (enriched?.is_watch_party) {
+        await hydrateWatchParty(enriched, viewerUserId);
+    } else {
+        enriched.party_member_count = 0;
+        enriched.party_members = [];
+        enriched.viewer_is_member = false;
+    }
     return enriched;
 };
+
+async function hydrateWatchParty(collection, viewerUserId = null) {
+    const collectionId = collection.id;
+    if (viewerUserId && collection.user_id === viewerUserId) {
+        await ensurePartyHostMember(collectionId, viewerUserId);
+    }
+    const { data: memberRows, error: memberErr } = await supabase
+        .from('collection_party_members')
+        .select('user_id, joined_at')
+        .eq('collection_id', collectionId)
+        .order('joined_at', { ascending: true });
+
+    if (memberErr) {
+        if (!/collection_party_members|schema cache/i.test(memberErr.message || '')) {
+            console.warn('hydrateWatchParty members:', memberErr.message);
+        }
+        collection.party_member_count = 0;
+        collection.party_members = [];
+        collection.viewer_is_member = false;
+        return collection;
+    }
+
+    const members = memberRows || [];
+    // Ensure host is counted even if upsert failed earlier
+    if (collection.user_id && !members.some((m) => m.user_id === collection.user_id)) {
+        members.unshift({ user_id: collection.user_id, joined_at: collection.created_at });
+    }
+
+    const memberIds = members.map((m) => m.user_id).filter(Boolean);
+    collection.party_member_count = memberIds.length;
+    collection.viewer_is_member = !!(viewerUserId && memberIds.includes(viewerUserId));
+
+    const { data: profiles } = memberIds.length
+        ? await supabase
+            .from('user_profiles')
+            .select('id, username, display_name, avatar_url, avatar_id, is_verified')
+            .in('id', memberIds)
+        : { data: [] };
+    const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
+    collection.party_members = memberIds.slice(0, 12).map((id) => ({
+        ...(profileMap.get(id) || { id }),
+        is_host: id === collection.user_id,
+    }));
+
+    const { data: watchedRows, error: watchedErr } = await supabase
+        .from('collection_party_watched')
+        .select('user_id, movie_id')
+        .eq('collection_id', collectionId);
+
+    if (watchedErr) {
+        if (!/collection_party_watched|schema cache/i.test(watchedErr.message || '')) {
+            console.warn('hydrateWatchParty watched:', watchedErr.message);
+        }
+        collection.collection_movies = (collection.collection_movies || []).map((m) => ({
+            ...m,
+            party_watched_count: 0,
+            viewer_watched: false,
+        }));
+        return collection;
+    }
+
+    const countByMovie = new Map();
+    const viewerWatched = new Set();
+    for (const row of watchedRows || []) {
+        const mid = String(row.movie_id);
+        countByMovie.set(mid, (countByMovie.get(mid) || 0) + 1);
+        if (viewerUserId && row.user_id === viewerUserId) viewerWatched.add(mid);
+    }
+
+    collection.collection_movies = (collection.collection_movies || []).map((m) => {
+        const mid = String(m.movie_id);
+        return {
+            ...m,
+            party_watched_count: countByMovie.get(mid) || 0,
+            viewer_watched: viewerWatched.has(mid),
+        };
+    });
+
+    return collection;
+}
 
 export const updateUserCollection = async (collectionId, updates) => {
     const { data: existing } = await supabase
         .from('user_collections')
-        .select('is_system, collection_kind, tags, category, moderation_status')
+        .select('is_system, collection_kind, tags, category, moderation_status, user_id, is_watch_party')
         .eq('id', collectionId)
         .maybeSingle();
 
@@ -653,6 +785,9 @@ export const updateUserCollection = async (collectionId, updates) => {
             ? updates.items_sort
             : null;
         patch.items_sort = mode;
+    }
+    if (!existing?.is_system && updates.is_watch_party !== undefined) {
+        patch.is_watch_party = !!updates.is_watch_party;
     }
 
     if (!existing?.is_system && updates.tags !== undefined) {
@@ -686,26 +821,203 @@ export const updateUserCollection = async (collectionId, updates) => {
         .select()
         .single();
 
-    // Pre-migration DBs may not have items_sort yet
-    if (error && /items_sort/i.test(error.message || '') && 'items_sort' in patch) {
-        const { items_sort: _ignored, ...withoutSort } = patch;
+    // Pre-migration DBs may not have items_sort / is_watch_party yet
+    if (error && /items_sort|is_watch_party/i.test(error.message || '')) {
+        const retry = { ...patch };
+        if (/items_sort/i.test(error.message || '')) delete retry.items_sort;
+        if (/is_watch_party/i.test(error.message || '')) delete retry.is_watch_party;
         ({ data, error } = await supabase
             .from('user_collections')
-            .update(withoutSort)
+            .update(retry)
             .eq('id', collectionId)
             .select()
             .single());
-        if (!error && updates.items_sort) {
-            console.warn('items_sort column missing — run 20260731000000_collection_items_sort.sql');
+        if (!error && updates.is_watch_party) {
+            console.warn('is_watch_party column missing — run 20260824000000_collection_watch_party.sql');
         }
     }
 
     if (error) console.error('Error updating collection:', error);
-    // Uploaded cover changed, or cleared → refresh feed thumb from posters
     if (!error) {
         syncListPostCover(collectionId).catch(() => {});
+        const partyOn = data?.is_watch_party ?? patch.is_watch_party;
+        if (partyOn && existing?.user_id) {
+            await ensurePartyHostMember(collectionId, existing.user_id);
+        }
+        if (updates.is_watch_party !== undefined) {
+            syncListPostWatchPartyFlag(collectionId, !!updates.is_watch_party).catch(() => {});
+        }
     }
     return { success: !error, data, error };
+};
+
+/** Keep feed list cards' watchParty badge in sync when toggling party mode. */
+async function syncListPostWatchPartyFlag(collectionId, watchParty) {
+    if (!collectionId) return;
+    const { data: collection } = await supabase
+        .from('user_collections')
+        .select('id, name, user_id, is_public')
+        .eq('id', collectionId)
+        .maybeSingle();
+    if (!collection?.is_public || !collection.user_id) return;
+
+    const { data: posts } = await supabase
+        .from('feed_posts')
+        .select('id, media_items')
+        .eq('user_id', collection.user_id)
+        .eq('post_type', 'list')
+        .eq('movie_title', collection.name)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+    const targets = (posts || []).filter((p) => {
+        const mid = p.media_items?.collectionId;
+        return !mid || mid === collection.id;
+    });
+    await Promise.all(targets.map((p) => {
+        const media = {
+            ...(typeof p.media_items === 'object' && p.media_items && !Array.isArray(p.media_items)
+                ? p.media_items
+                : {}),
+            kind: 'list',
+            collectionId: collection.id,
+            name: collection.name,
+            watchParty: !!watchParty,
+        };
+        return supabase.from('feed_posts').update({ media_items: media }).eq('id', p.id);
+    }));
+}
+
+export const joinWatchParty = async (collectionId, userId) => {
+    if (!collectionId || !userId) return { success: false, error: new Error('Missing id') };
+
+    const { data: collection, error: findErr } = await supabase
+        .from('user_collections')
+        .select('id, user_id, is_watch_party, is_system')
+        .eq('id', collectionId)
+        .maybeSingle();
+
+    if (findErr || !collection) {
+        return { success: false, error: findErr || new Error('Collection not found') };
+    }
+    if (!collection.is_watch_party || collection.is_system) {
+        return { success: false, error: new Error('Not a watch party') };
+    }
+
+    const { error } = await supabase
+        .from('collection_party_members')
+        .upsert(
+            { collection_id: collectionId, user_id: userId },
+            { onConflict: 'collection_id,user_id' },
+        );
+
+    if (error) console.error('joinWatchParty:', error);
+    return { success: !error, error };
+};
+
+export const leaveWatchParty = async (collectionId, userId) => {
+    if (!collectionId || !userId) return { success: false, error: new Error('Missing id') };
+
+    const { data: collection } = await supabase
+        .from('user_collections')
+        .select('user_id')
+        .eq('id', collectionId)
+        .maybeSingle();
+
+    if (collection?.user_id === userId) {
+        return { success: false, error: new Error('Host cannot leave the party') };
+    }
+
+    const { error } = await supabase
+        .from('collection_party_members')
+        .delete()
+        .eq('collection_id', collectionId)
+        .eq('user_id', userId);
+
+    if (error) console.error('leaveWatchParty:', error);
+    // Also clear their party watches
+    if (!error) {
+        await supabase
+            .from('collection_party_watched')
+            .delete()
+            .eq('collection_id', collectionId)
+            .eq('user_id', userId);
+    }
+    return { success: !error, error };
+};
+
+export const togglePartyMovieWatched = async (
+    collectionId,
+    userId,
+    { movieId, movieTitle, posterPath, mediaType = 'movie', watched } = {},
+) => {
+    if (!collectionId || !userId || !movieId) {
+        return { success: false, error: new Error('Missing id') };
+    }
+    const movieKey = String(movieId);
+
+    const { data: membership } = await supabase
+        .from('collection_party_members')
+        .select('user_id')
+        .eq('collection_id', collectionId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    if (!membership) {
+        return { success: false, error: new Error('Join the party first') };
+    }
+
+    const markWatched = watched !== undefined ? !!watched : null;
+    if (markWatched === null) {
+        const { data: existingMark } = await supabase
+            .from('collection_party_watched')
+            .select('movie_id')
+            .eq('collection_id', collectionId)
+            .eq('user_id', userId)
+            .eq('movie_id', movieKey)
+            .maybeSingle();
+        const shouldMark = !existingMark;
+        return togglePartyMovieWatched(collectionId, userId, {
+            movieId: movieKey,
+            movieTitle,
+            posterPath,
+            mediaType,
+            watched: shouldMark,
+        });
+    }
+
+    if (markWatched) {
+        const { error } = await supabase
+            .from('collection_party_watched')
+            .upsert(
+                {
+                    collection_id: collectionId,
+                    user_id: userId,
+                    movie_id: movieKey,
+                    watched_at: new Date().toISOString(),
+                },
+                { onConflict: 'collection_id,user_id,movie_id' },
+            );
+        if (error) {
+            console.error('togglePartyMovieWatched upsert:', error);
+            return { success: false, error, watched: false };
+        }
+        ensureWatchedMovie(userId, movieKey, movieTitle, posterPath, mediaType).catch(() => {});
+        return { success: true, watched: true, error: null };
+    }
+
+    const { error } = await supabase
+        .from('collection_party_watched')
+        .delete()
+        .eq('collection_id', collectionId)
+        .eq('user_id', userId)
+        .eq('movie_id', movieKey);
+
+    if (error) {
+        console.error('togglePartyMovieWatched delete:', error);
+        return { success: false, error, watched: true };
+    }
+    return { success: true, watched: false, error: null };
 };
 
 export const addToCollection = async (collectionId, movieId, movieTitle, posterPath, mediaType = 'movie') => {

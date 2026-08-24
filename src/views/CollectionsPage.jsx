@@ -243,6 +243,7 @@ const CollectionsPage = () => {
     const [newCollectionName, setNewCollectionName] = useState('');
     const [isPublicCollection, setIsPublicCollection] = useState(false);
     const [tagFranchise, setTagFranchise] = useState(false);
+    const [tagWatchParty, setTagWatchParty] = useState(false);
     const [creatingCollection, setCreatingCollection] = useState(false);
     const [success, setSuccess] = useState('');
     const [toDelete, setToDelete] = useState(null);
@@ -333,6 +334,7 @@ const CollectionsPage = () => {
 
         const createdName = newCollectionName.trim();
         const wantFranchise = tagFranchise;
+        const wantWatchParty = tagWatchParty;
         const wantPublic = isPublicCollection;
 
         setCreatingCollection(true);
@@ -341,7 +343,10 @@ const CollectionsPage = () => {
             createdName,
             '',
             wantPublic,
-            { tags: wantFranchise ? ['franchise'] : [] },
+            {
+                tags: wantFranchise ? ['franchise'] : [],
+                is_watch_party: wantWatchParty,
+            },
         );
 
         if (result.success && result.data) {
@@ -357,11 +362,14 @@ const CollectionsPage = () => {
             setNewCollectionName('');
             setIsPublicCollection(false);
             setTagFranchise(false);
+            setTagWatchParty(false);
             setShowCreateCollection(false);
             setSuccess(
-                wantFranchise
-                    ? 'Collection posted! It will show on Explore → Franchise after admin approval.'
-                    : 'Collection created!',
+                wantWatchParty
+                    ? 'Watch Party list created! Share the link so friends can join.'
+                    : wantFranchise
+                        ? 'Collection posted! It will show on Explore → Franchise after admin approval.'
+                        : 'Collection created!',
             );
             setTimeout(() => setSuccess(''), 4000);
 
@@ -483,9 +491,23 @@ const CollectionsPage = () => {
                                         >
                                             Franchise
                                         </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setTagWatchParty((v) => !v)}
+                                            aria-pressed={tagWatchParty}
+                                            className={`inline-flex items-center px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-colors min-h-[36px] w-fit ${
+                                                tagWatchParty
+                                                    ? 'bg-sky-400 text-[#14181c] border-sky-300'
+                                                    : 'bg-white/5 text-white/55 border-white/15 hover:text-white hover:border-white/25'
+                                            }`}
+                                        >
+                                            Watch Party
+                                        </button>
                                     </div>
                                     <p className="text-[11px] text-white/40">
-                                        Your collection posts right away. Franchise only appears on the Franchise page after admin approval.
+                                        {tagWatchParty
+                                            ? 'Friends join this list and check off titles as they watch.'
+                                            : 'Your collection posts right away. Franchise only appears on the Franchise page after admin approval.'}
                                     </p>
                                 </div>
                                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
@@ -494,6 +516,7 @@ const CollectionsPage = () => {
                                         onClick={() => {
                                             setShowCreateCollection(false);
                                             setTagFranchise(false);
+                                            setTagWatchParty(false);
                                         }}
                                         className="px-4 py-2.5 text-sm text-white/50 hover:text-white transition-colors"
                                     >
@@ -591,6 +614,9 @@ const CollectionsPage = () => {
                                                 <span className="flex items-center gap-1 text-green-400/70 shrink-0"><FaGlobe className="text-[10px]" /> Public</span>
                                             ) : (
                                                 <span className="flex items-center gap-1 shrink-0"><FaLock className="text-[10px]" /> Private</span>
+                                            )}
+                                            {collection.is_watch_party && (
+                                                <span className="flex items-center gap-1 text-sky-300/80 shrink-0">Watch Party</span>
                                             )}
                                         </div>
                                     </div>
