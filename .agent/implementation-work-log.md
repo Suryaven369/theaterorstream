@@ -2,7 +2,7 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Aug 24, 2026 · HEAD `PENDING` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Aug 24, 2026 · HEAD `cb29388` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
 
 ---
 
@@ -1613,7 +1613,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
-| `PENDING` | Aug 2026 | Watch Party mode on collections (join, mark watched, counts) |
+| `cb29388` | Aug 2026 | Watch Party mode on collections (join, mark watched, counts) |
 | `7be1fc4` | Aug 2026 | Fix Home list posts → collection not found (link by UUID) |
 | `0d69831` | Aug 2026 | Work log HEAD sync |
 | `5c67f40` | Aug 2026 | Work log HEAD sync after review share push |
