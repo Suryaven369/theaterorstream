@@ -20,6 +20,7 @@ import {
 } from '../lib/supabase';
 import { FaTrash, FaLock, FaGlobe, FaFolderOpen, FaArrowLeft, FaPlus, FaSearch, FaCheck, FaTimes, FaEdit, FaSave, FaShare, FaLink, FaTwitter, FaEllipsisH, FaImage, FaUsers, FaEye } from 'react-icons/fa';
 import ConfirmationModal from '../components/ConfirmationModal';
+import SeoHead from '../components/SeoHead';
 import { searchContentFromEdge, getMovieDetailFromEdge } from '../lib/contentEdgeApi';
 import { isTheaterSystemCollection } from '../lib/theaterWatch';
 import { getAvatarUrl, toPublicStorageUrl } from '../lib/storagePublicUrl';
@@ -180,7 +181,34 @@ const PosterCollage = ({ movies, imageURL, size = 'large' }) => {
 // Share Modal Component
 const ShareModal = ({ collection, movies, imageURL, shareUrl, onClose }) => {
     const [copied, setCopied] = useState(false);
-    const canvasRef = useRef(null);
+
+    const ownerName = collection.user_profiles?.username
+        ? `@${collection.user_profiles.username}`
+        : null;
+    const isParty = !!collection.is_watch_party;
+    const sampleTitles = movies
+        .map((m) => m.movie_title || m.title)
+        .filter(Boolean)
+        .slice(0, 4);
+    const aboutText = (collection.description || '').trim()
+        || (sampleTitles.length
+            ? `${movies.length} ${movies.length === 1 ? 'title' : 'titles'}${ownerName ? ` by ${ownerName}` : ''}. Featuring ${sampleTitles.join(', ')}${movies.length > sampleTitles.length ? '…' : ''}`
+            : `${movies.length} ${movies.length === 1 ? 'title' : 'titles'} curated on TheaterOrStream`);
+    const shareTitle = isParty
+        ? `${collection.name} · Watch Party`
+        : collection.name;
+    const shareText = `${shareTitle}${aboutText ? ` — ${aboutText}` : ''}`;
+
+    const coverSrc = (() => {
+        const uploaded = toPublicStorageUrl(collection.cover_image || collection.banner_image);
+        if (uploaded && /^https?:\/\//i.test(uploaded)) return uploaded;
+        const withPoster = movies.find((m) => m.poster_path);
+        if (!withPoster?.poster_path) return null;
+        if (/^https?:\/\//i.test(withPoster.poster_path)) return withPoster.poster_path;
+        return `${imageURL}${withPoster.poster_path}`;
+    })();
+
+    const posters = movies.filter((m) => m.poster_path).slice(0, 4);
 
     const handleCopyLink = async () => {
         try {
@@ -204,9 +232,9 @@ const ShareModal = ({ collection, movies, imageURL, shareUrl, onClose }) => {
         if (navigator.share) {
             try {
                 await navigator.share({
-                    title: collection.name,
-                    text: collection.description || `Check out this movie collection: ${collection.name}`,
-                    url: shareUrl
+                    title: shareTitle,
+                    text: aboutText,
+                    url: shareUrl,
                 });
             } catch (err) {
                 if (err.name !== 'AbortError') {
@@ -217,12 +245,10 @@ const ShareModal = ({ collection, movies, imageURL, shareUrl, onClose }) => {
     };
 
     const handleTwitterShare = () => {
-        const text = encodeURIComponent(`Check out my movie collection: ${collection.name} 🎬`);
+        const text = encodeURIComponent(shareText.slice(0, 200));
         const url = encodeURIComponent(shareUrl);
         window.open(`https://twitter.com/intent/tweet?text=${text}&url=${url}`, '_blank');
     };
-
-    const posters = movies.slice(0, 4);
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
@@ -235,51 +261,72 @@ const ShareModal = ({ collection, movies, imageURL, shareUrl, onClose }) => {
                     </button>
                 </div>
 
-                {/* Preview Card */}
+                {/* Preview Card — mirrors what link previews should show */}
                 <div className="p-6">
-                    <div className="bg-gradient-to-br from-purple-900/50 to-pink-900/50 rounded-xl p-4 border border-white/10">
-                        {/* Collection Cover Preview */}
-                        <div className="flex gap-4 items-start">
-                            {/* Poster Grid */}
-                            <div className="w-24 h-24 rounded-xl overflow-hidden grid grid-cols-2 gap-0 bg-black/30 flex-shrink-0">
-                                {posters.map((movie, index) => (
-                                    <div key={movie.movie_id || index} className="relative overflow-hidden">
-                                        {movie.poster_path ? (
+                    <div className="rounded-xl overflow-hidden border border-white/10 bg-gradient-to-br from-[#2a1a3a] to-[#1a1520]">
+                        {coverSrc ? (
+                            <div className="relative aspect-[1.91/1] bg-black/40">
+                                <img
+                                    src={coverSrc}
+                                    alt=""
+                                    className="absolute inset-0 w-full h-full object-cover"
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
+                                {posters.length > 1 && (
+                                    <div className="absolute bottom-3 right-3 flex -space-x-2">
+                                        {posters.slice(0, 3).map((movie, index) => (
                                             <img
-                                                src={`${imageURL}${movie.poster_path}`}
+                                                key={movie.movie_id || index}
+                                                src={/^https?:\/\//i.test(movie.poster_path)
+                                                    ? movie.poster_path
+                                                    : `${imageURL}${movie.poster_path}`}
                                                 alt=""
-                                                className="w-full h-full object-cover"
+                                                className="w-10 h-14 rounded object-cover border border-white/20 shadow-lg"
                                             />
-                                        ) : (
-                                            <div className="w-full h-full bg-gray-700" />
-                                        )}
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="aspect-[1.91/1] grid grid-cols-2 gap-0.5 bg-black/40 p-0.5">
+                                {posters.map((movie, index) => (
+                                    <div key={movie.movie_id || index} className="relative overflow-hidden min-h-[4.5rem]">
+                                        <img
+                                            src={/^https?:\/\//i.test(movie.poster_path)
+                                                ? movie.poster_path
+                                                : `${imageURL}${movie.poster_path}`}
+                                            alt=""
+                                            className="w-full h-full object-cover"
+                                        />
                                     </div>
                                 ))}
                                 {Array.from({ length: Math.max(0, 4 - posters.length) }).map((_, i) => (
-                                    <div key={`empty-${i}`} className="bg-gray-700" />
+                                    <div key={`empty-${i}`} className="bg-white/5 min-h-[4.5rem]" />
                                 ))}
                             </div>
+                        )}
 
-                            {/* Info */}
-                            <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <span className="text-orange-400 text-xs font-bold">TOS</span>
-                                    <span className="text-white/40 text-xs">•</span>
-                                    <span className="text-white/40 text-xs">Collection</span>
-                                </div>
-                                <h3 className="text-white font-bold text-lg leading-tight mb-1 truncate">
-                                    {collection.name}
-                                </h3>
-                                <p className="text-white/50 text-sm line-clamp-2">
-                                    {collection.description || `${movies.length} movies curated with love`}
-                                </p>
-                                <div className="mt-2 scale-90 origin-left">
-                                    <CollectionPeopleStack
-                                        owner={collection.user_profiles}
-                                        collaborators={collection.collaborators}
-                                    />
-                                </div>
+                        <div className="p-4 space-y-1.5">
+                            <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-white/45">
+                                <span className="text-orange-400 font-bold normal-case tracking-normal">TOS</span>
+                                <span aria-hidden>·</span>
+                                <span>{isParty ? 'Watch Party' : 'Collection'}</span>
+                                {ownerName && (
+                                    <>
+                                        <span aria-hidden>·</span>
+                                        <span className="normal-case tracking-normal">{ownerName}</span>
+                                    </>
+                                )}
                             </div>
+                            <h3 className="text-white font-bold text-lg leading-snug">
+                                {collection.name}
+                            </h3>
+                            <p className="text-white/55 text-sm leading-relaxed line-clamp-3">
+                                {aboutText}
+                            </p>
+                            <p className="text-white/35 text-xs pt-1">
+                                {movies.length} {movies.length === 1 ? 'title' : 'titles'}
+                            </p>
                         </div>
                     </div>
 
@@ -300,7 +347,7 @@ const ShareModal = ({ collection, movies, imageURL, shareUrl, onClose }) => {
                         {/* Share Buttons Row */}
                         <div className="grid grid-cols-2 gap-3">
                             {/* Native Share (mobile) */}
-                            {navigator.share && (
+                            {typeof navigator !== 'undefined' && navigator.share && (
                                 <button
                                     onClick={handleNativeShare}
                                     className="flex items-center justify-center gap-2 p-4 rounded-xl bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 border border-purple-500/30 transition-all"
@@ -312,7 +359,7 @@ const ShareModal = ({ collection, movies, imageURL, shareUrl, onClose }) => {
                             {/* Twitter */}
                             <button
                                 onClick={handleTwitterShare}
-                                className={`flex items-center justify-center gap-2 p-4 rounded-xl bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-500/30 transition-all ${!navigator.share ? 'col-span-2' : ''}`}
+                                className={`flex items-center justify-center gap-2 p-4 rounded-xl bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-500/30 transition-all ${!(typeof navigator !== 'undefined' && navigator.share) ? 'col-span-2' : ''}`}
                             >
                                 <FaTwitter /> Tweet
                             </button>
@@ -894,33 +941,49 @@ const CollectionDetails = () => {
         navigate(fallbackPath);
     };
 
-    // Get first poster for OG image (uploaded cover, else auto from posters)
+    // Cover / first poster for OG (WhatsApp etc. get the same via middleware.js for bots)
     const ogImage = (() => {
-        const uploaded = collection.cover_image || collection.banner_image;
+        const uploaded = toPublicStorageUrl(collection.cover_image || collection.banner_image);
         if (uploaded && /^https?:\/\//i.test(uploaded)) return uploaded;
         if (uploaded && String(uploaded).startsWith('/')) {
-            return `https://image.tmdb.org/t/p/w500${uploaded}`;
+            return `https://image.tmdb.org/t/p/w780${uploaded}`;
         }
         const withPoster = movies.find((m) => m.poster_path);
         if (!withPoster?.poster_path) return null;
         if (/^https?:\/\//i.test(withPoster.poster_path)) return withPoster.poster_path;
-        return `https://image.tmdb.org/t/p/w500${withPoster.poster_path}`;
+        return `https://image.tmdb.org/t/p/w780${withPoster.poster_path}`;
     })();
+
+    const ownerLabel = listOwnerUsername ? `@${listOwnerUsername}` : null;
+    const sampleTitles = movies
+        .map((m) => m.movie_title || m.title)
+        .filter(Boolean)
+        .slice(0, 5);
+    const seoDescription = (() => {
+        const about = (collection.description || '').trim();
+        const featuring = sampleTitles.length
+            ? `Featuring ${sampleTitles.join(', ')}${movies.length > sampleTitles.length ? '…' : ''}`
+            : null;
+        const count = `${movies.length} ${movies.length === 1 ? 'title' : 'titles'}${ownerLabel ? ` by ${ownerLabel}` : ''}`;
+        let d = about || `A curated collection of ${count}`;
+        if (about && featuring) d = `${about} · ${featuring}`;
+        else if (!about && featuring) d = `${count}. ${featuring}`;
+        if (collection.is_watch_party && !/watch party/i.test(d)) d = `Watch Party · ${d}`;
+        return d.slice(0, 220);
+    })();
+    const seoTitle = collection.is_watch_party
+        ? `${collection.name} · Watch Party`
+        : `${collection.name} · Collection`;
 
     return (
         <>
-            {/* SEO Meta Tags */}
-            <title>{collection.name} | TheaterOrStream</title>
-            <meta name="description" content={collection.description || `A curated collection of ${movies.length} movies`} />
-            <meta property="og:title" content={`${collection.name} | TheaterOrStream`} />
-            <meta property="og:description" content={collection.description || `A curated collection of ${movies.length} movies`} />
-            <meta property="og:type" content="website" />
-            <meta property="og:url" content={shareUrl} />
-            {ogImage && <meta property="og:image" content={ogImage} />}
-            <meta name="twitter:card" content="summary_large_image" />
-            <meta name="twitter:title" content={collection.name} />
-            <meta name="twitter:description" content={collection.description || `${movies.length} movies curated with love`} />
-            {ogImage && <meta name="twitter:image" content={ogImage} />}
+            <SeoHead
+                title={`${seoTitle} | TheaterOrStream`}
+                description={seoDescription}
+                image={ogImage}
+                url={shareUrl}
+                type="website"
+            />
 
             <div className="min-h-screen bg-[#0a0a0a] pt-[calc(4.5rem+env(safe-area-inset-top,0px))] sm:pt-24 pb-4 px-3 sm:px-4 relative">
                 <div className="max-w-6xl mx-auto min-w-0">

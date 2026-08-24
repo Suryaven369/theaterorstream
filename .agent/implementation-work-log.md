@@ -2,7 +2,21 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Aug 24, 2026 · HEAD `cb29388` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Aug 24, 2026 · HEAD `8958298` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Aug 24, 2026 — Collection share link OG previews
+
+### Rich sharing cards for list links ✅
+
+**Problem:** Shared collection links (WhatsApp/X/etc.) lacked poster, full title, and about text — crawlers hit `/collection/{uuid}` but OG middleware only matched name-slugs, so bots got empty SPA HTML.
+
+**Files changed:** `middleware.js` (UUID + `?u=` lookup, cover/poster, title + description with sample titles, watch-party OG); `CollectionDetails.jsx` (Share modal preview + `SeoHead`)
+
+**Behavior:** Bot previews show list name, description / featuring titles, and cover or first poster. In-app share sheet mirrors that card. Watch parties included when shareable via invite.
+
+**Next recommended:** Deploy + paste a list URL into WhatsApp to verify card; confirm watch-party SQL if not already.
 
 ---
 

@@ -351,14 +351,50 @@ async function handleBlog(supabase, pathname, pageUrl) {
     });
 }
 
-async function handleCollection(supabase, pathname, pageUrl) {
+const COLLECTION_UUID_RE =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const COLLECTION_OG_SELECT = `
+    id, name, description, is_public, is_watch_party, cover_image, banner_image, user_id,
+    collection_movies (
+      movie_id,
+      movie_title,
+      poster_path,
+      media_type
+    )
+`;
+
+function buildCollectionOgDescription(collection, movies, username) {
+    const movieCount = movies.length;
+    const about = String(collection.description || '').trim();
+    const sample = movies
+        .map((m) => m.movie_title)
+        .filter(Boolean)
+        .slice(0, 5);
+    const countLine = `${movieCount} ${movieCount === 1 ? 'title' : 'titles'} by @${username}`;
+    const featuring = sample.length
+        ? `Featuring ${sample.join(', ')}${movieCount > sample.length ? '…' : ''}`
+        : null;
+
+    let description = about || `A curated collection of ${countLine}`;
+    if (about && featuring) description = `${about} · ${featuring}`;
+    else if (!about && featuring) description = `${countLine}. ${featuring}`;
+    if (collection.is_watch_party && !/watch party/i.test(description)) {
+        description = `Watch Party · ${description}`;
+    }
+    return description.slice(0, 220);
+}
+
+async function handleCollection(supabase, pathname, pageUrl, searchParams) {
     const parts = pathname.split('/').filter(Boolean);
     let slug = null;
     let ownerUsername = null;
     let isBoard = false;
 
     if (parts[0] === 'collection' && parts[1]) {
-        slug = parts[1];
+        slug = decodeURIComponent(parts[1]);
+        const u = (searchParams?.get('u') || '').trim().replace(/^@/, '');
+        if (u && u !== 'user') ownerUsername = u;
     } else if (parts[0] === 'boards' && parts[1]) {
         slug = parts[1];
         isBoard = true;
@@ -418,39 +454,81 @@ async function handleCollection(supabase, pathname, pageUrl) {
         });
     }
 
-    // Legacy user lists (collections)
-    const { data: collections, error } = await supabase
-        .from('user_collections')
-        .select(`
-            *,
-            collection_movies (
-              movie_id,
-              movie_title,
-              poster_path,
-              media_type
-            )
-        `)
-        .eq('is_public', true);
+    // User lists — share URLs use /collection/{uuid}?u=owner (preferred) or name slug
+    let collection = null;
 
-    if (error || !collections) return null;
+    if (COLLECTION_UUID_RE.test(slug)) {
+        const { data, error } = await supabase
+            .from('user_collections')
+            .select(COLLECTION_OG_SELECT)
+            .eq('id', slug)
+            .maybeSingle();
+        if (error) {
+            // Pre-migration DBs may lack is_watch_party
+            const { data: fallback } = await supabase
+                .from('user_collections')
+                .select(`
+                    id, name, description, is_public, cover_image, banner_image, user_id,
+                    collection_movies (movie_id, movie_title, poster_path, media_type)
+                `)
+                .eq('id', slug)
+                .maybeSingle();
+            collection = fallback;
+        } else {
+            collection = data;
+        }
+    } else {
+        let ownerId = null;
+        if (ownerUsername) {
+            const { data: profile } = await supabase
+                .from('user_profiles')
+                .select('id')
+                .eq('username', ownerUsername)
+                .maybeSingle();
+            ownerId = profile?.id || null;
+        }
 
-    const collection = collections.find((c) => createSlug(c.name) === slug);
+        let query = supabase
+            .from('user_collections')
+            .select(COLLECTION_OG_SELECT);
+        if (ownerId) {
+            query = query.eq('user_id', ownerId);
+        } else {
+            // Without owner, only scan public lists (avoid private non-party)
+            query = query.eq('is_public', true);
+        }
+
+        let { data: rows, error } = await query;
+        if (error) {
+            const retry = supabase
+                .from('user_collections')
+                .select(`
+                    id, name, description, is_public, cover_image, banner_image, user_id,
+                    collection_movies (movie_id, movie_title, poster_path, media_type)
+                `);
+            const scoped = ownerId ? retry.eq('user_id', ownerId) : retry.eq('is_public', true);
+            const res = await scoped;
+            rows = res.data;
+        }
+        collection = (rows || []).find((c) => createSlug(c.name) === slug) || null;
+    }
+
     if (!collection) return null;
+    // Public lists + watch parties (invite-link OG); RLS also gates private non-party
+    if (!collection.is_public && !collection.is_watch_party) return null;
 
-    let username = 'user';
+    let username = ownerUsername || 'user';
     if (collection.user_id) {
         const { data: profile } = await supabase
             .from('user_profiles')
             .select('username')
             .eq('id', collection.user_id)
             .maybeSingle();
-        username = profile?.username || 'user';
+        username = profile?.username || username;
     }
 
     const movies = collection.collection_movies || [];
-    const movieCount = movies.length;
     const posterPaths = movies
-        .slice(0, 4)
         .filter((m) => m.poster_path)
         .map((m) => m.poster_path);
 
@@ -460,12 +538,9 @@ async function handleCollection(supabase, pathname, pageUrl) {
         (posterPaths.length > 0 ? tmdbImage(posterPaths[0], 'w780') : null) ||
         DEFAULT_OG_IMAGE;
 
-    const description =
-        collection.meta_description ||
-        collection.description ||
-        `A curated collection of ${movieCount} ${movieCount === 1 ? 'title' : 'titles'} by @${username}`;
-    const title = collection.meta_title || collection.name;
-    const keywords = collection.keywords || '';
+    const description = buildCollectionOgDescription(collection, movies, username);
+    const kind = collection.is_watch_party ? 'Watch Party' : 'Collection';
+    const title = `${collection.name} · ${kind}`;
 
     return ogHtml({
         title,
@@ -473,7 +548,7 @@ async function handleCollection(supabase, pathname, pageUrl) {
         image: ogImage,
         url: pageUrl,
         type: 'website',
-        extra: keywords ? `<meta name="keywords" content="${escapeHtml(keywords)}">` : '',
+        extra: `<meta property="og:image:alt" content="${escapeHtml(collection.name)}">`,
     });
 }
 
@@ -510,7 +585,7 @@ export default async function middleware(request) {
             pathname.startsWith('/boards/') ||
             /\/[^/]+\/boards\/[^/]+\/?$/.test(pathname)
         ) {
-            html = await handleCollection(supabase, pathname, pageUrl);
+            html = await handleCollection(supabase, pathname, pageUrl, url.searchParams);
         }
 
         if (html) return htmlResponse(html);
