@@ -10,6 +10,7 @@ import {
     ensureWatchedMovie,
 } from '../lib/supabase';
 import { trackEvent, EVENT_TYPES } from '../lib/eventTracking';
+import QuickLogModal from './social/QuickLogModal';
 
 function ActionBtn({
     label,
@@ -22,7 +23,7 @@ function ActionBtn({
 }) {
     const sizeClass = size === 'lg'
         ? 'h-11 w-11 min-h-[44px] min-w-[44px] sm:h-11 sm:w-11'
-        : 'h-9 w-9 min-h-[36px] min-w-[36px] sm:h-8 sm:w-8';
+        : 'h-10 w-10 min-h-[40px] min-w-[40px] sm:h-8 sm:w-8';
     return (
         <button
             type="button"
@@ -70,6 +71,8 @@ export default function PosterQuickActions({
     });
     const [busy, setBusy] = useState(null);
     const [loaded, setLoaded] = useState(false);
+    const [showLogModal, setShowLogModal] = useState(false);
+    const [logIntent, setLogIntent] = useState('watched');
 
     const loadStatus = useCallback(async () => {
         if (!user?.id || !movieId) {
@@ -123,49 +126,37 @@ export default function PosterQuickActions({
         onAction?.('watchlist', r);
     });
 
-    const handleWatched = (e) => run(e, 'watched', async () => {
-        const next = !status.isWatched;
-        setStatus((prev) => ({ ...prev, isWatched: next }));
-        const r = await toggleWatchedMovie(user.id, movieId, movieTitle, posterPath, mediaType);
-        if (!r.success) {
-            setStatus((prev) => ({ ...prev, isWatched: !next }));
+    const handleWatched = (e) => {
+        stop(e);
+        if (!isAuthenticated || !user?.id) return requireAuth();
+        if (!status.isWatched) {
+            setLogIntent('watched');
+            setShowLogModal(true);
             return;
         }
-        setStatus((prev) => ({ ...prev, isWatched: r.added }));
-        if (r.added) {
-            trackEvent(EVENT_TYPES.MOVIE_WATCHED, { tmdbId: movieId, mediaType });
-        }
-        onAction?.('watched', r);
-    });
+        run(e, 'watched', async () => {
+            const r = await toggleWatchedMovie(user.id, movieId, movieTitle, posterPath, mediaType);
+            if (!r.success) return;
+            setStatus((prev) => ({ ...prev, isWatched: r.added }));
+            onAction?.('watched', r);
+        });
+    };
 
-    const handleLike = (e) => run(e, 'like', async () => {
-        const next = !status.isLiked;
-        setStatus((prev) => ({
-            ...prev,
-            isLiked: next,
-            isDisliked: next ? false : prev.isDisliked,
-            // Like implies watched.
-            isWatched: next ? true : prev.isWatched,
-        }));
-        const r = await toggleLikedMovie(user.id, movieId, movieTitle, posterPath, mediaType);
-        if (!r.success) {
-            setStatus((prev) => ({ ...prev, isLiked: !next }));
+    const handleLike = (e) => {
+        stop(e);
+        if (!isAuthenticated || !user?.id) return requireAuth();
+        if (!status.isLiked) {
+            setLogIntent('like');
+            setShowLogModal(true);
             return;
         }
-        setStatus((prev) => ({
-            ...prev,
-            isLiked: r.added,
-            isDisliked: r.added ? false : prev.isDisliked,
-            isWatched: r.added ? true : prev.isWatched,
-        }));
-        if (r.added) {
-            trackEvent(EVENT_TYPES.MOVIE_LIKED, { tmdbId: movieId, mediaType });
-            if (!status.isWatched) {
-                trackEvent(EVENT_TYPES.MOVIE_WATCHED, { tmdbId: movieId, mediaType });
-            }
-        }
-        onAction?.('like', r);
-    });
+        run(e, 'like', async () => {
+            const r = await toggleLikedMovie(user.id, movieId, movieTitle, posterPath, mediaType);
+            if (!r.success) return;
+            setStatus((prev) => ({ ...prev, isLiked: r.added }));
+            onAction?.('like', r);
+        });
+    };
 
     const handleDislike = (e) => run(e, 'dislike', async () => {
         // Dislike trains negative taste, hides from recs, and marks watched.
@@ -194,9 +185,10 @@ export default function PosterQuickActions({
     const iconClass = isInline ? 'text-sm sm:text-base' : 'text-[11px] sm:text-xs';
     const wrapClass = isInline
         ? `pointer-events-auto relative z-20 flex items-center gap-2 ${className}`
-        : `pointer-events-auto absolute inset-x-0 bottom-0 z-20 flex items-center justify-center gap-1 bg-gradient-to-t from-black/90 via-black/55 to-transparent px-1 pb-1.5 pt-8 sm:gap-1.5 sm:pb-2.5 ${className}`;
+        : `pointer-events-auto absolute inset-x-0 bottom-0 z-20 flex items-center justify-center gap-1.5 bg-gradient-to-t from-black/90 via-black/55 to-transparent px-1.5 pb-2 pt-9 sm:gap-1.5 sm:pb-2.5 sm:pt-8 ${className}`;
 
     return (
+        <>
         <div
             className={wrapClass}
             onClick={stop}
@@ -245,5 +237,27 @@ export default function PosterQuickActions({
                 <FaThumbsDown className={iconClass} />
             </ActionBtn>
         </div>
+        <QuickLogModal
+            isOpen={showLogModal}
+            onClose={() => setShowLogModal(false)}
+            userId={user?.id}
+            intent={logIntent}
+            movie={{
+                tmdb_id: movieId,
+                title: movieTitle,
+                poster_path: posterPath,
+                media_type: mediaType,
+            }}
+            onLogged={() => {
+                setStatus((prev) => ({
+                    ...prev,
+                    isWatched: true,
+                    isLiked: logIntent === 'like' ? true : prev.isLiked,
+                    isDisliked: logIntent === 'like' ? false : prev.isDisliked,
+                }));
+                onAction?.(logIntent, { success: true, added: true });
+            }}
+        />
+        </>
     );
 }

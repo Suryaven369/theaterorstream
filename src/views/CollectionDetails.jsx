@@ -21,6 +21,7 @@ import {
 import { FaTrash, FaLock, FaGlobe, FaFolderOpen, FaArrowLeft, FaPlus, FaSearch, FaCheck, FaTimes, FaEdit, FaSave, FaShare, FaLink, FaTwitter, FaEllipsisH, FaImage, FaUsers, FaEye } from 'react-icons/fa';
 import ConfirmationModal from '../components/ConfirmationModal';
 import SeoHead from '../components/SeoHead';
+import QuickLogModal from '../components/social/QuickLogModal';
 import { searchContentFromEdge, getMovieDetailFromEdge } from '../lib/contentEdgeApi';
 import { isTheaterSystemCollection } from '../lib/theaterWatch';
 import { getAvatarUrl, toPublicStorageUrl } from '../lib/storagePublicUrl';
@@ -413,6 +414,7 @@ const CollectionDetails = () => {
     const [dragMovieId, setDragMovieId] = useState(null);
     const [partyBusy, setPartyBusy] = useState(false);
     const [partyWatchBusyId, setPartyWatchBusyId] = useState(null);
+    const [partyLogMovie, setPartyLogMovie] = useState(null);
     const [coverUploading, setCoverUploading] = useState(false);
     const [coverError, setCoverError] = useState('');
     const [saving, setSaving] = useState(false);
@@ -565,11 +567,11 @@ const CollectionDetails = () => {
         }
     };
 
-    const handleTogglePartyWatched = async (movie) => {
+    const handleTogglePartyWatched = async (movie, watchedOverride = null) => {
         if (!user?.id || !collection?.id || !movie?.movie_id || !viewerIsMember) return;
         const movieId = String(movie.movie_id);
         setPartyWatchBusyId(movieId);
-        const nextWatched = !movie.viewer_watched;
+        const nextWatched = watchedOverride != null ? !!watchedOverride : !movie.viewer_watched;
         const result = await togglePartyMovieWatched(collection.id, user.id, {
             movieId,
             movieTitle: movie.movie_title || movie.title,
@@ -595,6 +597,20 @@ const CollectionDetails = () => {
                 };
             }),
         });
+        return result;
+    };
+
+    const handlePartyWatchClick = (movie) => {
+        if (!user?.id) {
+            navigate('/auth');
+            return;
+        }
+        if (!viewerIsMember) return;
+        if (movie.viewer_watched) {
+            handleTogglePartyWatched(movie, false);
+            return;
+        }
+        setPartyLogMovie(movie);
     };
 
     // Open edit / add from Collections list ⋯ menu (any list, not just franchise)
@@ -1475,9 +1491,9 @@ const CollectionDetails = () => {
                                                 onClick={(e) => {
                                                     e.preventDefault();
                                                     e.stopPropagation();
-                                                    handleTogglePartyWatched(movie);
+                                                    handlePartyWatchClick(movie);
                                                 }}
-                                                className={`absolute bottom-1.5 right-1.5 z-10 inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] sm:text-[11px] font-semibold shadow-lg border transition-colors disabled:opacity-50 ${
+                                                className={`absolute bottom-1.5 right-1.5 z-10 inline-flex items-center justify-center gap-1 min-h-[36px] sm:min-h-0 px-2.5 sm:px-2 py-1.5 sm:py-1 rounded-full text-[11px] sm:text-[11px] font-semibold shadow-lg border transition-colors disabled:opacity-50 touch-manipulation active:scale-95 ${
                                                     movie.viewer_watched
                                                         ? 'bg-sky-500 text-[#0a0a0a] border-sky-300'
                                                         : 'bg-black/75 text-white/90 border-white/20 hover:bg-sky-500/90 hover:text-[#0a0a0a]'
@@ -1552,6 +1568,43 @@ const CollectionDetails = () => {
                         imageURL={imageURL}
                         shareUrl={shareUrl}
                         onClose={() => setShowShareModal(false)}
+                    />
+                )}
+
+                {partyLogMovie && collection?.id && (
+                    <QuickLogModal
+                        isOpen
+                        onClose={() => setPartyLogMovie(null)}
+                        userId={user?.id}
+                        intent="party"
+                        partyCollectionId={collection.id}
+                        subtitle={isWatchParty ? `Watch party · ${collection.name}` : null}
+                        movie={{
+                            tmdb_id: partyLogMovie.movie_id,
+                            movie_title: partyLogMovie.movie_title,
+                            title: partyLogMovie.movie_title,
+                            poster_path: partyLogMovie.poster_path,
+                            media_type: partyLogMovie.media_type || 'movie',
+                        }}
+                        onLogged={() => {
+                            const movieId = String(partyLogMovie.movie_id);
+                            bumpCollectionCache({
+                                ...collection,
+                                viewer_is_member: true,
+                                collection_movies: (collection.collection_movies || []).map((m) => {
+                                    if (String(m.movie_id) !== movieId) return m;
+                                    const wasWatched = !!m.viewer_watched;
+                                    return {
+                                        ...m,
+                                        viewer_watched: true,
+                                        party_watched_count: wasWatched
+                                            ? (m.party_watched_count || 0)
+                                            : (m.party_watched_count || 0) + 1,
+                                    };
+                                }),
+                            });
+                            setPartyLogMovie(null);
+                        }}
                     />
                 )}
 

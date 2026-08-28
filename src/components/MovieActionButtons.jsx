@@ -28,7 +28,7 @@ const ActionButton = ({ icon: Icon, activeIcon: ActiveIcon, label, isActive, onC
         <button
             type="button"
             onClick={handleClick}
-            className={`group flex flex-col items-center justify-center gap-1 p-2 sm:p-2.5 rounded-xl transition-all duration-200 hover:bg-white/5 w-full min-h-[3.25rem] ${animating ? 'scale-110' : 'scale-100'}`}
+            className={`group flex flex-col items-center justify-center gap-1 p-2.5 sm:p-2.5 rounded-xl transition-all duration-200 hover:bg-white/5 w-full min-h-[3.5rem] sm:min-h-[3.25rem] touch-manipulation active:scale-[0.98] ${animating ? 'scale-110' : 'scale-100'}`}
             title={label}
         >
             <div className={`relative transition-all duration-200 ${animating ? 'animate-bounce' : ''}`}>
@@ -61,6 +61,7 @@ const MovieActionButtons = ({
     const [status, setStatus] = useState({ inWatchlist: false, isLiked: false, isWatched: false });
     const [showCollections, setShowCollections] = useState(false);
     const [showLogModal, setShowLogModal] = useState(false);
+    const [logIntent, setLogIntent] = useState('log');
     const [hasDiaryLog, setHasDiaryLog] = useState(false);
     const [loading, setLoading] = useState(true);
 
@@ -107,53 +108,44 @@ const MovieActionButtons = ({
         );
     };
 
+    const openLogModal = (intent) => {
+        if (!isAuthenticated) return handleAuthRequired();
+        if (!isMovie) return;
+        setLogIntent(intent);
+        setShowLogModal(true);
+    };
+
     const handleLike = async () => {
         if (!isAuthenticated) return handleAuthRequired();
-        const next = !status.isLiked;
-        const wasWatched = status.isWatched;
-        setStatus((prev) => ({
-            ...prev,
-            isLiked: next,
-            isWatched: next ? true : prev.isWatched,
-        }));
-        const result = await toggleLikedMovie(user.id, movieId, movieTitle, posterPath, mediaType);
-        if (!result.success) {
-            setStatus((prev) => ({ ...prev, isLiked: !next, isWatched: wasWatched }));
+        if (!status.isLiked) {
+            openLogModal('like');
             return;
         }
-        setStatus((prev) => ({
-            ...prev,
-            isLiked: result.added,
-            isWatched: result.added ? true : prev.isWatched,
-        }));
-        if (result.added) {
-            trackEvent(EVENT_TYPES.MOVIE_LIKED, { tmdbId: movieId, mediaType });
-            if (!wasWatched) {
-                trackEvent(EVENT_TYPES.MOVIE_WATCHED, { tmdbId: movieId, mediaType });
-            }
+        setStatus((prev) => ({ ...prev, isLiked: false }));
+        const result = await toggleLikedMovie(user.id, movieId, movieTitle, posterPath, mediaType);
+        if (!result.success) {
+            setStatus((prev) => ({ ...prev, isLiked: true }));
+        } else {
+            setStatus((prev) => ({ ...prev, isLiked: result.added }));
         }
     };
 
     const handleWatched = async () => {
         if (!isAuthenticated) return handleAuthRequired();
-        const next = !status.isWatched;
-        setStatus((prev) => ({ ...prev, isWatched: next }));
-        const result = await toggleWatchedMovie(user.id, movieId, movieTitle, posterPath, mediaType);
-        if (!result.success) {
-            setStatus((prev) => ({ ...prev, isWatched: !next }));
+        if (!status.isWatched) {
+            openLogModal('watched');
             return;
         }
-        setStatus((prev) => ({ ...prev, isWatched: result.added }));
-        if (result.added) {
-            trackEvent(EVENT_TYPES.MOVIE_WATCHED, { tmdbId: movieId, mediaType });
+        setStatus((prev) => ({ ...prev, isWatched: false }));
+        const result = await toggleWatchedMovie(user.id, movieId, movieTitle, posterPath, mediaType);
+        if (!result.success) {
+            setStatus((prev) => ({ ...prev, isWatched: true }));
+        } else {
+            setStatus((prev) => ({ ...prev, isWatched: result.added }));
         }
     };
 
-    const handleLog = () => {
-        if (!isAuthenticated) return handleAuthRequired();
-        if (!isMovie) return;
-        setShowLogModal(true);
-    };
+    const handleLog = () => openLogModal('log');
 
     const handleSave = () => {
         if (!isAuthenticated) return handleAuthRequired();
@@ -239,6 +231,7 @@ const MovieActionButtons = ({
                     onClose={() => setShowLogModal(false)}
                     userId={user?.id}
                     releaseYear={releaseYear}
+                    intent={logIntent}
                     movie={{
                         tmdb_id: movieId,
                         title: movieTitle,
@@ -247,8 +240,11 @@ const MovieActionButtons = ({
                     }}
                     onLogged={() => {
                         setHasDiaryLog(true);
-                        setStatus((prev) => ({ ...prev, isWatched: true }));
-                        trackEvent(EVENT_TYPES.MOVIE_WATCHED, { tmdbId: movieId, mediaType: 'movie' });
+                        setStatus((prev) => ({
+                            ...prev,
+                            isWatched: true,
+                            isLiked: logIntent === 'like' ? true : prev.isLiked,
+                        }));
                         onDiaryLogged?.();
                     }}
                 />

@@ -1,7 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { FaTimes } from 'react-icons/fa';
-import { createMovieLog, getUserMovieLogCount } from '../../lib/movieDiary';
+import { createMovieLog, getUserMovieLogCount, publishRatingActivity } from '../../lib/movieDiary';
+import {
+    getUserRatingForMovie,
+    submitRating,
+    toggleLikedMovie,
+    ensureWatchedMovie,
+    togglePartyMovieWatched,
+} from '../../lib/supabase';
+import LetterboxdStarRating, {
+    starsToTosScore,
+    tosScoreToStars,
+    uniformCategoryRatings,
+} from './LetterboxdStarRating';
+import { trackEvent, EVENT_TYPES } from '../../lib/eventTracking';
 
 function todayISO() {
     return new Date().toISOString().slice(0, 10);
@@ -13,17 +26,48 @@ function posterUrl(path) {
     return `https://image.tmdb.org/t/p/w154${path}`;
 }
 
+const INTENT_COPY = {
+    log: { badge: 'Log film', cta: 'Save to diary', ctaShort: 'Save' },
+    watched: { badge: 'Mark watched', cta: 'Save & mark watched', ctaShort: 'Mark watched' },
+    like: { badge: 'You liked this', cta: 'Save & like', ctaShort: 'Save & like' },
+    party: { badge: 'Watch party', cta: 'Save & mark watched', ctaShort: 'Mark watched' },
+};
+
+function ToggleChip({ active, onClick, disabled, children }) {
+    return (
+        <button
+            type="button"
+            disabled={disabled}
+            onClick={onClick}
+            className={`flex-1 min-h-[44px] rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors touch-manipulation disabled:opacity-50 ${
+                active
+                    ? 'border-[var(--accent-green)]/50 bg-[var(--accent-green)]/10 text-[var(--accent-green)]'
+                    : 'border-white/10 bg-white/5 text-white/55 active:bg-white/10'
+            }`}
+        >
+            {children}
+        </button>
+    );
+}
+
+/**
+ * Letterboxd-style log: rate, review, watched date — mobile bottom sheet + desktop dialog.
+ */
 export default function QuickLogModal({
     movie,
     userId,
     isOpen,
     onClose,
     onLogged,
-    prefillRating = null,
+    intent = 'log',
+    partyCollectionId = null,
     subtitle = null,
     releaseYear = null,
+    initialStars = null,
+    ratingAlreadySaved = false,
 }) {
     const [watchedOn, setWatchedOn] = useState(todayISO());
+    const [stars, setStars] = useState(null);
     const [reviewText, setReviewText] = useState('');
     const [inTheater, setInTheater] = useState(false);
     const [visibility, setVisibility] = useState('public');
@@ -33,38 +77,57 @@ export default function QuickLogModal({
 
     const tmdbId = movie?.tmdb_id || movie?.id;
     const mediaType = movie?.media_type || 'movie';
+    const copy = INTENT_COPY[intent] || INTENT_COPY.log;
 
     useEffect(() => {
         if (!isOpen || !userId || !tmdbId) return;
         let cancelled = false;
-        getUserMovieLogCount(userId, tmdbId, mediaType).then((n) => {
-            if (!cancelled) setPriorLogCount(n);
+        Promise.all([
+            getUserMovieLogCount(userId, tmdbId, mediaType),
+            getUserRatingForMovie(userId, tmdbId),
+        ]).then(([n, existingRating]) => {
+            if (cancelled) return;
+            setPriorLogCount(n);
+            if (initialStars != null) {
+                setStars(initialStars);
+            } else {
+                setStars(tosScoreToStars(existingRating));
+            }
         });
         return () => { cancelled = true; };
-    }, [isOpen, userId, tmdbId, mediaType]);
+    }, [isOpen, userId, tmdbId, mediaType, initialStars]);
 
     useEffect(() => {
-        if (isOpen) {
-            setWatchedOn(todayISO());
-            setReviewText('');
-            setInTheater(false);
-            setVisibility('public');
-            setError(null);
-        }
+        if (!isOpen) return;
+        setWatchedOn(todayISO());
+        setReviewText('');
+        setInTheater(false);
+        setVisibility('public');
+        setError(null);
     }, [isOpen, tmdbId]);
+
+    useEffect(() => {
+        if (!isOpen) return undefined;
+        const prevOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => {
+            document.body.style.overflow = prevOverflow;
+        };
+    }, [isOpen]);
 
     if (!isOpen || !movie) return null;
 
-    const title = movie.title || movie.name;
+    const title = movie.title || movie.name || movie.movie_title;
     const thumb = posterUrl(movie.poster_path);
+    const isRewatch = priorLogCount > 0;
 
     const handleSubmit = async () => {
         if (!userId) return;
         setSubmitting(true);
         setError(null);
 
+        const tosScore = starsToTosScore(stars);
         const watchedWith = inTheater ? ['theater'] : [];
-        const isRewatch = priorLogCount > 0;
 
         const result = await createMovieLog(userId, {
             tmdbId,
@@ -72,7 +135,7 @@ export default function QuickLogModal({
             posterPath: movie.poster_path,
             mediaType,
             watchedOn,
-            rating: prefillRating != null ? Number(prefillRating) : null,
+            rating: tosScore,
             reviewText: reviewText.trim() || null,
             watchedWith,
             watchedInTheater: inTheater,
@@ -80,52 +143,147 @@ export default function QuickLogModal({
             rewatchCount: isRewatch ? 1 : 0,
         });
 
-        setSubmitting(false);
-
-        if (result.success) {
-            onLogged?.(result.data);
-            onClose();
-        } else {
+        if (!result.success) {
+            setSubmitting(false);
             setError(result.error?.message || 'Could not save log');
+            return;
         }
+
+        if (tosScore != null && !ratingAlreadySaved) {
+            const categories = uniformCategoryRatings(tosScore);
+            const ratingResult = await submitRating(tmdbId, title, categories, userId);
+            if (ratingResult.success) {
+                publishRatingActivity(userId, ratingResult.data || {
+                    movie_id: tmdbId,
+                    movie_title: title,
+                    ...categories,
+                }, { title, mediaType }).catch(() => {});
+            }
+        }
+
+        if (intent === 'like') {
+            await toggleLikedMovie(userId, tmdbId, title, movie.poster_path, mediaType);
+            trackEvent(EVENT_TYPES.MOVIE_LIKED, { tmdbId, mediaType });
+        }
+
+        if (intent === 'watched' || intent === 'like' || intent === 'party' || intent === 'log') {
+            await ensureWatchedMovie(userId, tmdbId, title, movie.poster_path, mediaType);
+            trackEvent(EVENT_TYPES.MOVIE_WATCHED, { tmdbId, mediaType });
+        }
+
+        if (intent === 'party' && partyCollectionId) {
+            await togglePartyMovieWatched(partyCollectionId, userId, {
+                movieId: String(tmdbId),
+                movieTitle: title,
+                posterPath: movie.poster_path,
+                mediaType,
+                watched: true,
+            });
+        }
+
+        setSubmitting(false);
+        onLogged?.({
+            log: result.data,
+            intent,
+            stars,
+            tosScore,
+            liked: intent === 'like',
+            watched: true,
+            partyMarked: intent === 'party',
+        });
+        onClose();
     };
 
     const modal = (
         <div
-            className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/75 backdrop-blur-sm"
-            onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+            className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center sm:p-4"
+            role="presentation"
         >
+            <button
+                type="button"
+                className="absolute inset-0 bg-black/80 backdrop-blur-[2px]"
+                aria-label="Close"
+                disabled={submitting}
+                onClick={() => { if (!submitting) onClose(); }}
+            />
+
             <div
-                className="w-full max-w-md max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-[#14181c] border border-white/10 shadow-2xl animate-fadeIn"
+                className="relative w-full max-w-md flex flex-col max-h-[min(94dvh,94vh)] sheet-mobile sm:max-h-[90vh] sm:rounded-2xl bg-[#14181c] border border-white/10 border-b-0 sm:border-b shadow-2xl animate-fadeIn"
                 role="dialog"
+                aria-modal="true"
                 aria-labelledby="log-modal-title"
+                onClick={(e) => e.stopPropagation()}
             >
-                <div className="flex items-start justify-between gap-3 p-4 border-b border-white/10">
+                {/* Mobile sheet handle */}
+                <div className="sm:hidden flex justify-center pt-2.5 pb-1 shrink-0" aria-hidden>
+                    <div className="w-9 h-1 rounded-full bg-white/25" />
+                </div>
+
+                {/* Header */}
+                <div className="shrink-0 flex items-start justify-between gap-3 px-4 pt-1 sm:pt-4 pb-3 border-b border-white/10">
                     <div className="flex gap-3 min-w-0 flex-1">
                         {thumb && (
-                            <img src={thumb} alt="" className="w-14 h-[84px] rounded object-cover border border-white/10 shrink-0" />
+                            <img
+                                src={thumb}
+                                alt=""
+                                className="w-12 h-[72px] sm:w-14 sm:h-[84px] rounded-md object-cover border border-white/10 shrink-0"
+                            />
                         )}
                         <div className="min-w-0 pt-0.5">
-                            <h3 id="log-modal-title" className="text-base font-bold text-white leading-snug line-clamp-2">
+                            <h3 id="log-modal-title" className="text-[15px] sm:text-base font-bold text-white leading-snug line-clamp-2">
                                 {title}
                             </h3>
                             {releaseYear && (
                                 <p className="text-xs text-white/40 mt-0.5">{releaseYear}</p>
                             )}
-                            <p className="text-[11px] uppercase tracking-wider text-[var(--accent-green)] mt-1.5 font-semibold">
-                                {priorLogCount > 0 ? 'Log rewatch' : 'Log film'}
+                            <p className="text-[10px] sm:text-[11px] uppercase tracking-wider text-[var(--accent-green)] mt-1 font-semibold">
+                                {isRewatch ? 'Log rewatch' : copy.badge}
                             </p>
                         </div>
                     </div>
-                    <button type="button" onClick={onClose} className="text-white/45 hover:text-white p-1 shrink-0" aria-label="Close">
-                        <FaTimes />
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        disabled={submitting}
+                        className="text-white/45 hover:text-white p-2 -mr-1 min-w-[44px] min-h-[44px] flex items-center justify-center shrink-0 touch-manipulation"
+                        aria-label="Close"
+                    >
+                        <FaTimes className="text-lg" />
                     </button>
                 </div>
 
-                <div className="p-4 space-y-5">
+                {/* Scrollable body — stays above keyboard on mobile */}
+                <div className="flex-1 overflow-y-auto overscroll-contain min-h-0 px-4 py-4 space-y-4 sm:space-y-5">
                     {subtitle && (
-                        <p className="text-xs text-white/45 -mt-1">{subtitle}</p>
+                        <p className="text-xs text-white/45 leading-relaxed">{subtitle}</p>
                     )}
+
+                    <div className="rounded-xl bg-white/[0.03] border border-white/5 px-3 py-4 sm:py-3 sm:bg-transparent sm:border-0 sm:px-0">
+                        <p className="text-[11px] uppercase tracking-wide text-white/45 font-medium mb-3 text-center sm:text-left">
+                            Your rating
+                        </p>
+                        <LetterboxdStarRating
+                            value={stars}
+                            onChange={setStars}
+                            disabled={submitting}
+                        />
+                    </div>
+
+                    <div>
+                        <label htmlFor="log-review" className="text-[11px] uppercase tracking-wide text-white/45 font-medium">
+                            Review
+                        </label>
+                        <textarea
+                            id="log-review"
+                            value={reviewText}
+                            onChange={(e) => setReviewText(e.target.value)}
+                            placeholder="What did you think?"
+                            rows={3}
+                            disabled={submitting}
+                            enterKeyHint="done"
+                            className="mt-1.5 w-full rounded-xl bg-white/5 border border-white/10 px-3 py-3 text-base sm:text-sm text-white placeholder-white/25 resize-none leading-relaxed disabled:opacity-60"
+                        />
+                    </div>
 
                     <div>
                         <label htmlFor="log-watched-on" className="text-[11px] uppercase tracking-wide text-white/45 font-medium">
@@ -136,55 +294,50 @@ export default function QuickLogModal({
                             type="date"
                             value={watchedOn}
                             max={todayISO()}
+                            disabled={submitting}
                             onChange={(e) => setWatchedOn(e.target.value)}
-                            className="mt-1.5 w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white [color-scheme:dark]"
+                            className="mt-1.5 w-full min-h-[44px] rounded-xl bg-white/5 border border-white/10 px-3 py-2.5 text-base sm:text-sm text-white [color-scheme:dark] disabled:opacity-60"
                         />
                     </div>
 
-                    <div>
-                        <label htmlFor="log-review" className="text-[11px] uppercase tracking-wide text-white/45 font-medium">
-                            Review or notes
-                        </label>
-                        <textarea
-                            id="log-review"
-                            value={reviewText}
-                            onChange={(e) => setReviewText(e.target.value)}
-                            placeholder="Share your thoughts…"
-                            rows={4}
-                            className="mt-1.5 w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2.5 text-sm text-white placeholder-white/25 resize-none leading-relaxed"
-                        />
-                    </div>
-
-                    <div className="flex flex-col gap-2.5">
-                        <label className="flex items-center gap-2.5 text-sm text-white/70 cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={inTheater}
-                                onChange={(e) => setInTheater(e.target.checked)}
-                                className="rounded border-white/20"
-                            />
-                            Watched in theaters
-                        </label>
-                        <label className="flex items-center gap-2.5 text-sm text-white/70 cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={visibility === 'public'}
-                                onChange={(e) => setVisibility(e.target.checked ? 'public' : 'private')}
-                                className="rounded border-white/20"
-                            />
-                            Show in activity feed
-                        </label>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                        <ToggleChip
+                            active={inTheater}
+                            disabled={submitting}
+                            onClick={() => setInTheater((v) => !v)}
+                        >
+                            In theaters
+                        </ToggleChip>
+                        <ToggleChip
+                            active={visibility === 'public'}
+                            disabled={submitting}
+                            onClick={() => setVisibility((v) => (v === 'public' ? 'private' : 'public'))}
+                        >
+                            Share to feed
+                        </ToggleChip>
                     </div>
 
                     {error && <p className="text-sm text-red-400">{error}</p>}
+                </div>
 
+                {/* Sticky footer — always reachable on mobile */}
+                <div className="shrink-0 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] border-t border-white/10 bg-[#14181c]/95 backdrop-blur-md flex gap-2">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        disabled={submitting}
+                        className="flex-1 min-h-[48px] rounded-xl border border-white/10 text-white/65 text-sm font-medium active:bg-white/5 disabled:opacity-50 touch-manipulation"
+                    >
+                        Cancel
+                    </button>
                     <button
                         type="button"
                         onClick={handleSubmit}
                         disabled={submitting}
-                        className="w-full py-3 rounded-lg bg-[var(--accent-green)] text-[#14181c] font-bold text-sm uppercase tracking-wide hover:brightness-110 disabled:opacity-50 transition-all"
+                        className="flex-[1.35] min-h-[48px] rounded-xl bg-[var(--accent-green)] text-[#14181c] font-bold text-sm uppercase tracking-wide active:brightness-95 disabled:opacity-50 transition-all touch-manipulation px-2"
                     >
-                        {submitting ? 'Saving…' : 'Save log'}
+                        <span className="sm:hidden">{submitting ? 'Saving…' : copy.ctaShort}</span>
+                        <span className="hidden sm:inline">{submitting ? 'Saving…' : copy.cta}</span>
                     </button>
                 </div>
             </div>
