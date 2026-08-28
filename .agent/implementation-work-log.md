@@ -2,7 +2,21 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Aug 24, 2026 · HEAD `f497b93` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Aug 28, 2026 · HEAD `521b3ce` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Aug 28, 2026 — Letterboxd-style log + mobile sheet
+
+### Unified rate/review dialog (Like, Watched, Log, watch party) ✅
+
+**Problem:** Like/Watched/Log toggled silently; no rating/review prompt. Watch party “Watch” on others’ lists had no diary flow. Mobile sheet was cramped and stars hard to tap.
+
+**Files changed:** `LetterboxdStarRating.jsx` (new), `QuickLogModal.jsx` (stars + review + intents + mobile bottom sheet), `MovieActionButtons.jsx`, `PosterQuickActions.jsx`, `CollectionDetails.jsx` (party → modal), `Details.jsx` (prefill stars after category rating)
+
+**Behavior:** Like/Watched/Log/Watch party open bottom sheet with 5-star rating, review, watched date, toggles. Saves diary + TOS rating; party marks progress. Mobile: sticky Save, safe areas, 44px targets, slide-to-rate stars.
+
+**Next recommended:** Smoke-test on phone (Like → rate → save); watch party on another user’s list.
 
 ---
 
@@ -1627,6 +1641,8 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `521b3ce` | Aug 2026 | Letterboxd log sheet: rate/review on Like/Watched/Log/party + mobile UX |
+| `bede0b3` | Aug 2026 | Work log HEAD sync to f497b93 |
 | `f497b93` | Aug 2026 | Collection share OG: UUID lookup, poster, title, about |
 | `cb29388` | Aug 2026 | Watch Party mode on collections (join, mark watched, counts) |
 | `7be1fc4` | Aug 2026 | Fix Home list posts → collection not found (link by UUID) |
