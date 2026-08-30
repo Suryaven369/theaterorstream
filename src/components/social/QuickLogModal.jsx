@@ -65,6 +65,7 @@ export default function QuickLogModal({
     subtitle = null,
     releaseYear = null,
     ratingAlreadySaved = false,
+    initialCategories = null,
 }) {
     const [watchedOn, setWatchedOn] = useState(todayISO());
     const [categories, setCategories] = useState(defaultTosRatings);
@@ -88,10 +89,10 @@ export default function QuickLogModal({
         ]).then(([n, existingRating]) => {
             if (cancelled) return;
             setPriorLogCount(n);
-            setCategories(ratingsFromExisting(existingRating));
+            setCategories(ratingsFromExisting(initialCategories || existingRating));
         });
         return () => { cancelled = true; };
-    }, [isOpen, userId, tmdbId, mediaType]);
+    }, [isOpen, userId, tmdbId, mediaType, initialCategories]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -100,8 +101,8 @@ export default function QuickLogModal({
         setInTheater(false);
         setVisibility('public');
         setError(null);
-        setCategories(defaultTosRatings());
-    }, [isOpen, tmdbId]);
+        setCategories(ratingsFromExisting(initialCategories));
+    }, [isOpen, tmdbId, initialCategories]);
 
     useEffect(() => {
         if (!isOpen) return undefined;

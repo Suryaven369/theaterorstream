@@ -271,6 +271,7 @@ const Details = () => {
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [logRatingAlreadySaved, setLogRatingAlreadySaved] = useState(false);
+  const [logPrefillCategories, setLogPrefillCategories] = useState(null);
   const [ratingsKey, setRatingsKey] = useState(0);
   const [userShareReview, setUserShareReview] = useState(null);
 
@@ -425,6 +426,7 @@ const Details = () => {
     }
 
     if (user?.id && movieId) {
+      setLogPrefillCategories(submittedRatings || null);
       setLogRatingAlreadySaved(true);
       setLogModalOpen(true);
     }
@@ -949,6 +951,7 @@ const Details = () => {
         onClose={() => {
           setLogModalOpen(false);
           setLogRatingAlreadySaved(false);
+          setLogPrefillCategories(null);
         }}
         userId={user?.id}
         movie={{
@@ -959,9 +962,11 @@ const Details = () => {
           media_type: mediaType,
         }}
         ratingAlreadySaved={logRatingAlreadySaved}
+        initialCategories={logPrefillCategories}
         subtitle="Rating saved — add how you watched and your review (optional)"
         onLogged={() => {
           setLogRatingAlreadySaved(false);
+          setLogPrefillCategories(null);
           setRatingsKey((k) => k + 1);
         }}
       />

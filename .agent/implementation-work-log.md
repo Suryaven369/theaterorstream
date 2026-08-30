@@ -14,7 +14,7 @@ Session log for production architecture Phase 1 work (DB-first performance + Ver
 
 **Files changed:** `QuickLogModal.jsx`, `TosCategorySliders.jsx` (new), `UserRatingSystem.jsx`, `ratingUtils.js`, `Details.jsx`; deleted `LetterboxdStarRating.jsx`
 
-**Behavior:** Like, Watched, Log, and watch-party sheets show the original 0–10 category sliders (Acting, Screenplay, Sound, Direction, Entertainment, Pacing, Cinematography) plus overall / 10. Save writes real category scores, not a flattened star value. After Rate on Details, the diary sheet skips sliders (rating already saved) and only asks for review / watched date.
+**Behavior:** Like, Watched, Log, and watch-party sheets show the original 0–10 category sliders (Acting, Screenplay, Sound, Direction, Entertainment, Pacing, Cinematography) plus overall / 10. Save writes real category scores, not a flattened star value. After Rate on Details, the diary sheet skips sliders (rating already saved) and only asks for review / watched date; the diary overall uses the categories just submitted.
 
 **Next recommended:** Smoke-test Like → rate categories → save; Rate on Details then log without seeing 5 stars.
 
