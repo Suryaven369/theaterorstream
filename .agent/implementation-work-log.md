@@ -2,7 +2,7 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Aug 30, 2026 · HEAD `pending` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Aug 30, 2026 · HEAD `59b62df` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
 
 ---
 
@@ -1655,7 +1655,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
-| `pending` | Aug 2026 | Restore TOS 0–10 category sliders in log/like/watched/party flows |
+| `59b62df` | Aug 2026 | Restore TOS 0–10 category sliders in log/like/watched/party flows |
 | `521b3ce` | Aug 2026 | Letterboxd log sheet: rate/review on Like/Watched/Log/party + mobile UX |
 | `bede0b3` | Aug 2026 | Work log HEAD sync to f497b93 |
 | `f497b93` | Aug 2026 | Collection share OG: UUID lookup, poster, title, about |
