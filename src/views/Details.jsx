@@ -14,7 +14,6 @@ import UserRatingSystem, { RatingModal } from "../components/UserRatingSystem";
 import { getMovieRatings, getUserRatingForMovie } from "../lib/supabase";
 import { computeOverallFromCategories } from "../lib/ratingUtils";
 import QuickLogModal from "../components/social/QuickLogModal";
-import { tosScoreToStars } from "../components/social/LetterboxdStarRating";
 import WriteReviewModal from "../components/social/WriteReviewModal";
 import { getMovieDetailFromEdge } from "../lib/contentEdgeApi";
 import { ShareButton } from "../components/ShareMovie";
@@ -271,7 +270,7 @@ const Details = () => {
   const [ratingModalOpen, setRatingModalOpen] = useState(false);
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
-  const [logPrefillStars, setLogPrefillStars] = useState(null);
+  const [logRatingAlreadySaved, setLogRatingAlreadySaved] = useState(false);
   const [ratingsKey, setRatingsKey] = useState(0);
   const [userShareReview, setUserShareReview] = useState(null);
 
@@ -426,7 +425,7 @@ const Details = () => {
     }
 
     if (user?.id && movieId) {
-      setLogPrefillStars(tosScoreToStars(submittedRatings));
+      setLogRatingAlreadySaved(true);
       setLogModalOpen(true);
     }
   };
@@ -949,7 +948,7 @@ const Details = () => {
         isOpen={logModalOpen}
         onClose={() => {
           setLogModalOpen(false);
-          setLogPrefillStars(null);
+          setLogRatingAlreadySaved(false);
         }}
         userId={user?.id}
         movie={{
@@ -959,11 +958,10 @@ const Details = () => {
           poster_path: data?.poster_path,
           media_type: mediaType,
         }}
-        initialStars={logPrefillStars}
-        ratingAlreadySaved={logPrefillStars != null}
+        ratingAlreadySaved={logRatingAlreadySaved}
         subtitle="Rating saved — add how you watched and your review (optional)"
         onLogged={() => {
-          setLogPrefillStars(null);
+          setLogRatingAlreadySaved(false);
           setRatingsKey((k) => k + 1);
         }}
       />

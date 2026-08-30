@@ -1,4 +1,4 @@
-const RATING_CATEGORIES = [
+export const RATING_CATEGORIES = [
     'acting',
     'screenplay',
     'sound',
@@ -7,6 +7,38 @@ const RATING_CATEGORIES = [
     'pacing',
     'cinematography',
 ];
+
+export const TOS_RATING_CATEGORY_DEFS = [
+    { key: 'acting', label: 'Acting', color: '#22c55e' },
+    { key: 'screenplay', label: 'Screenplay', color: '#3b82f6' },
+    { key: 'sound', label: 'Sound', color: '#a855f7' },
+    { key: 'direction', label: 'Direction', color: '#f97316' },
+    { key: 'entertainment', label: 'Entertainment', color: '#ec4899' },
+    { key: 'pacing', label: 'Pacing', color: '#06b6d4' },
+    { key: 'cinematography', label: 'Cinematography', color: '#f59e0b' },
+];
+
+export const defaultTosRatings = () => ({
+    acting: 5,
+    screenplay: 5,
+    sound: 5,
+    direction: 5,
+    entertainment: 5,
+    pacing: 5,
+    cinematography: 5,
+});
+
+export const ratingsFromExisting = (existing) => {
+    const next = defaultTosRatings();
+    if (!existing) return next;
+    RATING_CATEGORIES.forEach((key) => {
+        const value = existing[key];
+        if (value != null && !Number.isNaN(Number(value))) {
+            next[key] = Number(value);
+        }
+    });
+    return next;
+};
 
 export const computeOverallFromCategories = (ratings) => {
     if (!ratings) return null;

@@ -2,7 +2,21 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Aug 28, 2026 · HEAD `521b3ce` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Aug 30, 2026 · HEAD `pending` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Aug 30, 2026 — Restore TOS category ratings in log flows
+
+### Remove 5-star picker from Like / Watched / Log / party ✅
+
+**Problem:** Log/like/watched/party sheets used a Letterboxd 5-star picker and saved a single score copied across all TOS axes. Users wanted the original Entertainment / Screenplay / Pacing / Sound ratings out of 10.
+
+**Files changed:** `QuickLogModal.jsx`, `TosCategorySliders.jsx` (new), `UserRatingSystem.jsx`, `ratingUtils.js`, `Details.jsx`; deleted `LetterboxdStarRating.jsx`
+
+**Behavior:** Like, Watched, Log, and watch-party sheets show the original 0–10 category sliders (Acting, Screenplay, Sound, Direction, Entertainment, Pacing, Cinematography) plus overall / 10. Save writes real category scores, not a flattened star value. After Rate on Details, the diary sheet skips sliders (rating already saved) and only asks for review / watched date.
+
+**Next recommended:** Smoke-test Like → rate categories → save; Rate on Details then log without seeing 5 stars.
 
 ---
 
@@ -1641,6 +1655,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `pending` | Aug 2026 | Restore TOS 0–10 category sliders in log/like/watched/party flows |
 | `521b3ce` | Aug 2026 | Letterboxd log sheet: rate/review on Like/Watched/Log/party + mobile UX |
 | `bede0b3` | Aug 2026 | Work log HEAD sync to f497b93 |
 | `f497b93` | Aug 2026 | Collection share OG: UUID lookup, poster, title, about |
