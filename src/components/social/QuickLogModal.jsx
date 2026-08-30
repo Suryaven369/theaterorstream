@@ -9,11 +9,12 @@ import {
     ensureWatchedMovie,
     togglePartyMovieWatched,
 } from '../../lib/supabase';
-import LetterboxdStarRating, {
-    starsToTosScore,
-    tosScoreToStars,
-    uniformCategoryRatings,
-} from './LetterboxdStarRating';
+import TosCategorySliders from '../TosCategorySliders';
+import {
+    computeOverallFromCategories,
+    defaultTosRatings,
+    ratingsFromExisting,
+} from '../../lib/ratingUtils';
 import { trackEvent, EVENT_TYPES } from '../../lib/eventTracking';
 
 function todayISO() {
@@ -51,7 +52,7 @@ function ToggleChip({ active, onClick, disabled, children }) {
 }
 
 /**
- * Letterboxd-style log: rate, review, watched date — mobile bottom sheet + desktop dialog.
+ * Diary log: TOS category ratings (out of 10), review, watched date — mobile bottom sheet + desktop dialog.
  */
 export default function QuickLogModal({
     movie,
@@ -63,11 +64,11 @@ export default function QuickLogModal({
     partyCollectionId = null,
     subtitle = null,
     releaseYear = null,
-    initialStars = null,
     ratingAlreadySaved = false,
+    initialCategories = null,
 }) {
     const [watchedOn, setWatchedOn] = useState(todayISO());
-    const [stars, setStars] = useState(null);
+    const [categories, setCategories] = useState(defaultTosRatings);
     const [reviewText, setReviewText] = useState('');
     const [inTheater, setInTheater] = useState(false);
     const [visibility, setVisibility] = useState('public');
@@ -88,14 +89,10 @@ export default function QuickLogModal({
         ]).then(([n, existingRating]) => {
             if (cancelled) return;
             setPriorLogCount(n);
-            if (initialStars != null) {
-                setStars(initialStars);
-            } else {
-                setStars(tosScoreToStars(existingRating));
-            }
+            setCategories(ratingsFromExisting(initialCategories || existingRating));
         });
         return () => { cancelled = true; };
-    }, [isOpen, userId, tmdbId, mediaType, initialStars]);
+    }, [isOpen, userId, tmdbId, mediaType, initialCategories]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -104,7 +101,8 @@ export default function QuickLogModal({
         setInTheater(false);
         setVisibility('public');
         setError(null);
-    }, [isOpen, tmdbId]);
+        setCategories(ratingsFromExisting(initialCategories));
+    }, [isOpen, tmdbId, initialCategories]);
 
     useEffect(() => {
         if (!isOpen) return undefined;
@@ -126,7 +124,7 @@ export default function QuickLogModal({
         setSubmitting(true);
         setError(null);
 
-        const tosScore = starsToTosScore(stars);
+        const tosScore = computeOverallFromCategories(categories);
         const watchedWith = inTheater ? ['theater'] : [];
 
         const result = await createMovieLog(userId, {
@@ -150,7 +148,6 @@ export default function QuickLogModal({
         }
 
         if (tosScore != null && !ratingAlreadySaved) {
-            const categories = uniformCategoryRatings(tosScore);
             const ratingResult = await submitRating(tmdbId, title, categories, userId);
             if (ratingResult.success) {
                 publishRatingActivity(userId, ratingResult.data || {
@@ -185,7 +182,7 @@ export default function QuickLogModal({
         onLogged?.({
             log: result.data,
             intent,
-            stars,
+            categories,
             tosScore,
             liked: intent === 'like',
             watched: true,
@@ -208,7 +205,7 @@ export default function QuickLogModal({
             />
 
             <div
-                className="relative w-full max-w-md flex flex-col max-h-[min(94dvh,94vh)] sheet-mobile sm:max-h-[90vh] sm:rounded-2xl bg-[#14181c] border border-white/10 border-b-0 sm:border-b shadow-2xl animate-fadeIn"
+                className="relative w-full max-w-lg flex flex-col max-h-[min(94dvh,94vh)] sheet-mobile sm:max-h-[90vh] sm:rounded-2xl bg-[#14181c] border border-white/10 border-b-0 sm:border-b shadow-2xl animate-fadeIn"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="log-modal-title"
@@ -258,16 +255,15 @@ export default function QuickLogModal({
                         <p className="text-xs text-white/45 leading-relaxed">{subtitle}</p>
                     )}
 
-                    <div className="rounded-xl bg-white/[0.03] border border-white/5 px-3 py-4 sm:py-3 sm:bg-transparent sm:border-0 sm:px-0">
-                        <p className="text-[11px] uppercase tracking-wide text-white/45 font-medium mb-3 text-center sm:text-left">
-                            Your rating
-                        </p>
-                        <LetterboxdStarRating
-                            value={stars}
-                            onChange={setStars}
-                            disabled={submitting}
-                        />
-                    </div>
+                    {!ratingAlreadySaved && (
+                        <div className="rounded-xl bg-white/[0.03] border border-white/5 px-3 py-4 sm:py-3 sm:bg-transparent sm:border-0 sm:px-0">
+                            <TosCategorySliders
+                                ratings={categories}
+                                onChange={setCategories}
+                                disabled={submitting}
+                            />
+                        </div>
+                    )}
 
                     <div>
                         <label htmlFor="log-review" className="text-[11px] uppercase tracking-wide text-white/45 font-medium">

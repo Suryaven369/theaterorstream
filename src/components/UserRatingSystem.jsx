@@ -14,7 +14,8 @@ import {
 } from "../lib/supabase";
 import { requestTasteProfileRebuild } from "../lib/tasteProfileApi";
 import { publishRatingActivity } from "../lib/movieDiary";
-import { computeOverallFromCategories, computeTosScoreFromAggregates } from "../lib/ratingUtils";
+import { computeOverallFromCategories, computeTosScoreFromAggregates, TOS_RATING_CATEGORY_DEFS, defaultTosRatings, ratingsFromExisting } from "../lib/ratingUtils";
+import { RatingSlider } from "./TosCategorySliders";
 import { markUserRatedMovie, patchHomepageMovieTosRating } from "../store/movieSlice";
 import { useAuth } from "../context/AuthContext";
 import { getAvatarUrl } from "../lib/storagePublicUrl";
@@ -65,41 +66,6 @@ function ReviewAvatar({ avatarUrl, avatarId, size = 'md', className = '' }) {
         </div>
     );
 }
-
-// Reddit-style rating slider
-const RatingSlider = ({ label, value, onChange, color = "#22c55e" }) => {
-    const getEmoji = (val) => {
-        if (val >= 9) return "🤩";
-        if (val >= 7) return "😊";
-        if (val >= 5) return "😐";
-        if (val >= 3) return "😕";
-        return "😢";
-    };
-
-    return (
-        <div className="mb-4">
-            <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-white/80">{label}</span>
-                <div className="flex items-center gap-2">
-                    <span className="text-lg">{getEmoji(value)}</span>
-                    <span className="text-sm font-bold" style={{ color }}>{value.toFixed(1)}</span>
-                </div>
-            </div>
-            <input
-                type="range"
-                min="0"
-                max="10"
-                step="0.5"
-                value={value}
-                onChange={(e) => onChange(parseFloat(e.target.value))}
-                className="w-full h-2 rounded-full appearance-none cursor-pointer"
-                style={{
-                    background: `linear-gradient(to right, ${color} 0%, ${color} ${value * 10}%, rgba(255,255,255,0.1) ${value * 10}%, rgba(255,255,255,0.1) 100%)`
-                }}
-            />
-        </div>
-    );
-};
 
 // Time ago helper — recent relative, else "19 Apr 2026"
 function getTimeAgo(dateString) {
@@ -288,29 +254,7 @@ export const RatingModal = ({ isOpen, onClose, movieId, movieTitle, onSubmitSucc
     const [submitting, setSubmitting] = useState(false);
     const [showSuccess, setShowSuccess] = useState(false);
 
-    // Initialize with existing rating or defaults
-    const getInitialRatings = () => {
-        if (existingRating) {
-            return {
-                acting: existingRating.acting || 5,
-                screenplay: existingRating.screenplay || 5,
-                sound: existingRating.sound || 5,
-                direction: existingRating.direction || 5,
-                entertainment: existingRating.entertainment || 5,
-                pacing: existingRating.pacing || 5,
-                cinematography: existingRating.cinematography || 5
-            };
-        }
-        return {
-            acting: 5,
-            screenplay: 5,
-            sound: 5,
-            direction: 5,
-            entertainment: 5,
-            pacing: 5,
-            cinematography: 5
-        };
-    };
+    const getInitialRatings = () => (existingRating ? ratingsFromExisting(existingRating) : defaultTosRatings());
 
     const [userRatings, setUserRatings] = useState(getInitialRatings);
 
@@ -324,15 +268,7 @@ export const RatingModal = ({ isOpen, onClose, movieId, movieTitle, onSubmitSucc
 
     const isUpdating = !!existingRating;
 
-    const ratingCategories = [
-        { key: "acting", label: "Acting", color: "#22c55e" },
-        { key: "screenplay", label: "Screenplay", color: "#3b82f6" },
-        { key: "sound", label: "Sound", color: "#a855f7" },
-        { key: "direction", label: "Direction", color: "#f97316" },
-        { key: "entertainment", label: "Entertainment", color: "#ec4899" },
-        { key: "pacing", label: "Pacing", color: "#06b6d4" },
-        { key: "cinematography", label: "Cinematography", color: "#f59e0b" },
-    ];
+    const ratingCategories = TOS_RATING_CATEGORY_DEFS;
 
     const userOverall = Object.values(userRatings).reduce((a, b) => a + b, 0) / Object.keys(userRatings).length;
 
@@ -433,7 +369,7 @@ export const RatingModal = ({ isOpen, onClose, movieId, movieTitle, onSubmitSucc
                     <div className="text-center mb-6">
                         <div className="inline-flex flex-col items-center">
                             <span className="text-5xl font-bold text-orange-400">{userOverall.toFixed(1)}</span>
-                            <span className="text-white/40 text-sm">Your Overall Rating</span>
+                            <span className="text-white/40 text-sm">Your overall / 10</span>
                         </div>
                     </div>
 
