@@ -1655,6 +1655,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `2b9decc` | Aug 2026 | TOS category sliders in log sheet (replace Letterboxd stars) |
 | `521b3ce` | Aug 2026 | Letterboxd log sheet: rate/review on Like/Watched/Log/party + mobile UX |
 | `bede0b3` | Aug 2026 | Work log HEAD sync to f497b93 |
 | `f497b93` | Aug 2026 | Collection share OG: UUID lookup, poster, title, about |
