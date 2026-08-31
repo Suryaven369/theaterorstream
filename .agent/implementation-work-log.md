@@ -2,7 +2,21 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Aug 28, 2026 · HEAD `521b3ce` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Aug 31, 2026 · HEAD `2b9decc` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Aug 31, 2026 — TOS ratings in log sheet
+
+### Replace Letterboxd stars with TOS category sliders in log flow ✅
+
+**Problem:** Log sheet used 5-star Letterboxd picker; product uses 7-category TOS ratings elsewhere.
+
+**Files changed:** `QuickLogModal.jsx` (TOS sliders + overall score), new `src/components/ratings/*`, `UserRatingSystem.jsx` (shared sliders), `Details.jsx` (Rate → log sheet; removed duplicate RatingModal on details Rate), deleted `LetterboxdStarRating.jsx`
+
+**Behavior:** Like/Watched/Log/party sheet shows Acting–Cinematography sliders; saves TOS rating when sliders moved + diary. Details Rate opens same sheet. Reviews Rate still uses RatingModal then diary follow-up.
+
+**Next recommended:** Smoke-test Like → adjust sliders → save on phone and desktop.
 
 ---
 
