@@ -1,19 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useDispatch } from 'react-redux';
 import { FaTimes } from 'react-icons/fa';
 import { createMovieLog, getUserMovieLogCount, publishRatingActivity } from '../../lib/movieDiary';
 import {
     getUserRatingForMovie,
+    getMovieRatings,
     submitRating,
     toggleLikedMovie,
     ensureWatchedMovie,
     togglePartyMovieWatched,
 } from '../../lib/supabase';
-import LetterboxdStarRating, {
-    starsToTosScore,
-    tosScoreToStars,
-    uniformCategoryRatings,
-} from './LetterboxdStarRating';
+import { computeOverallFromCategories, computeTosScoreFromAggregates } from '../../lib/ratingUtils';
+import { requestTasteProfileRebuild } from '../../lib/tasteProfileApi';
+import { markUserRatedMovie, patchHomepageMovieTosRating } from '../../store/movieSlice';
+import TosCategoryRatingForm from '../ratings/TosCategoryRatingForm';
+import { DEFAULT_TOS_RATINGS, tosRatingsFromRow } from '../ratings/tosRatingCategories';
 import { trackEvent, EVENT_TYPES } from '../../lib/eventTracking';
 
 function todayISO() {
@@ -51,7 +53,7 @@ function ToggleChip({ active, onClick, disabled, children }) {
 }
 
 /**
- * Letterboxd-style log: rate, review, watched date — mobile bottom sheet + desktop dialog.
+ * Log sheet with TOS category ratings, review, and watched date.
  */
 export default function QuickLogModal({
     movie,
@@ -63,11 +65,13 @@ export default function QuickLogModal({
     partyCollectionId = null,
     subtitle = null,
     releaseYear = null,
-    initialStars = null,
+    initialRatings = null,
     ratingAlreadySaved = false,
 }) {
+    const dispatch = useDispatch();
     const [watchedOn, setWatchedOn] = useState(todayISO());
-    const [stars, setStars] = useState(null);
+    const [userRatings, setUserRatings] = useState({ ...DEFAULT_TOS_RATINGS });
+    const [ratingTouched, setRatingTouched] = useState(false);
     const [reviewText, setReviewText] = useState('');
     const [inTheater, setInTheater] = useState(false);
     const [visibility, setVisibility] = useState('public');
@@ -78,24 +82,30 @@ export default function QuickLogModal({
     const tmdbId = movie?.tmdb_id || movie?.id;
     const mediaType = movie?.media_type || 'movie';
     const copy = INTENT_COPY[intent] || INTENT_COPY.log;
+    const showTosRating = mediaType === 'movie';
 
     useEffect(() => {
         if (!isOpen || !userId || !tmdbId) return;
         let cancelled = false;
         Promise.all([
             getUserMovieLogCount(userId, tmdbId, mediaType),
-            getUserRatingForMovie(userId, tmdbId),
+            showTosRating ? getUserRatingForMovie(userId, tmdbId) : Promise.resolve(null),
         ]).then(([n, existingRating]) => {
             if (cancelled) return;
             setPriorLogCount(n);
-            if (initialStars != null) {
-                setStars(initialStars);
+            if (initialRatings) {
+                setUserRatings(tosRatingsFromRow(initialRatings));
+                setRatingTouched(true);
+            } else if (existingRating) {
+                setUserRatings(tosRatingsFromRow(existingRating));
+                setRatingTouched(true);
             } else {
-                setStars(tosScoreToStars(existingRating));
+                setUserRatings({ ...DEFAULT_TOS_RATINGS });
+                setRatingTouched(false);
             }
         });
         return () => { cancelled = true; };
-    }, [isOpen, userId, tmdbId, mediaType, initialStars]);
+    }, [isOpen, userId, tmdbId, mediaType, initialRatings, showTosRating]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -121,12 +131,47 @@ export default function QuickLogModal({
     const thumb = posterUrl(movie.poster_path);
     const isRewatch = priorLogCount > 0;
 
+    const handleRatingsChange = (next) => {
+        setUserRatings(next);
+        setRatingTouched(true);
+    };
+
+    const syncRatingSideEffects = (savedCategories) => {
+        const userScore = computeOverallFromCategories(savedCategories);
+        if (!userId || userScore == null) return;
+
+        dispatch(markUserRatedMovie({ movieId: String(tmdbId), score: userScore }));
+
+        void (async () => {
+            try {
+                const community = await getMovieRatings(tmdbId);
+                const communityScore = computeTosScoreFromAggregates(community);
+                const tosRating = communityScore != null
+                    ? { score: communityScore, count: community.totalRatings }
+                    : { score: userScore, count: 1 };
+                dispatch(patchHomepageMovieTosRating({
+                    movieId: String(tmdbId),
+                    tos_rating: tosRating,
+                }));
+            } catch {
+                dispatch(patchHomepageMovieTosRating({
+                    movieId: String(tmdbId),
+                    tos_rating: { score: userScore, count: 1 },
+                }));
+            }
+            requestTasteProfileRebuild({ includeEmbedding: true }).catch(() => {});
+        })();
+    };
+
     const handleSubmit = async () => {
         if (!userId) return;
         setSubmitting(true);
         setError(null);
 
-        const tosScore = starsToTosScore(stars);
+        const shouldSaveRating = showTosRating && ratingTouched && !ratingAlreadySaved;
+        const tosScore = showTosRating && ratingTouched
+            ? computeOverallFromCategories(userRatings)
+            : null;
         const watchedWith = inTheater ? ['theater'] : [];
 
         const result = await createMovieLog(userId, {
@@ -149,14 +194,14 @@ export default function QuickLogModal({
             return;
         }
 
-        if (tosScore != null && !ratingAlreadySaved) {
-            const categories = uniformCategoryRatings(tosScore);
-            const ratingResult = await submitRating(tmdbId, title, categories, userId);
+        if (shouldSaveRating) {
+            const ratingResult = await submitRating(tmdbId, title, userRatings, userId);
             if (ratingResult.success) {
+                syncRatingSideEffects(userRatings);
                 publishRatingActivity(userId, ratingResult.data || {
                     movie_id: tmdbId,
                     movie_title: title,
-                    ...categories,
+                    ...userRatings,
                 }, { title, mediaType }).catch(() => {});
             }
         }
@@ -185,7 +230,7 @@ export default function QuickLogModal({
         onLogged?.({
             log: result.data,
             intent,
-            stars,
+            ratings: ratingTouched ? userRatings : null,
             tosScore,
             liked: intent === 'like',
             watched: true,
@@ -208,18 +253,16 @@ export default function QuickLogModal({
             />
 
             <div
-                className="relative w-full max-w-md flex flex-col max-h-[min(94dvh,94vh)] sheet-mobile sm:max-h-[90vh] sm:rounded-2xl bg-[#14181c] border border-white/10 border-b-0 sm:border-b shadow-2xl animate-fadeIn"
+                className="relative w-full max-w-lg flex flex-col max-h-[min(94dvh,94vh)] sheet-mobile sm:max-h-[90vh] sm:rounded-2xl bg-[#14181c] border border-white/10 border-b-0 sm:border-b shadow-2xl animate-fadeIn"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="log-modal-title"
                 onClick={(e) => e.stopPropagation()}
             >
-                {/* Mobile sheet handle */}
                 <div className="sm:hidden flex justify-center pt-2.5 pb-1 shrink-0" aria-hidden>
                     <div className="w-9 h-1 rounded-full bg-white/25" />
                 </div>
 
-                {/* Header */}
                 <div className="shrink-0 flex items-start justify-between gap-3 px-4 pt-1 sm:pt-4 pb-3 border-b border-white/10">
                     <div className="flex gap-3 min-w-0 flex-1">
                         {thumb && (
@@ -252,22 +295,21 @@ export default function QuickLogModal({
                     </button>
                 </div>
 
-                {/* Scrollable body — stays above keyboard on mobile */}
                 <div className="flex-1 overflow-y-auto overscroll-contain min-h-0 px-4 py-4 space-y-4 sm:space-y-5">
                     {subtitle && (
                         <p className="text-xs text-white/45 leading-relaxed">{subtitle}</p>
                     )}
 
-                    <div className="rounded-xl bg-white/[0.03] border border-white/5 px-3 py-4 sm:py-3 sm:bg-transparent sm:border-0 sm:px-0">
-                        <p className="text-[11px] uppercase tracking-wide text-white/45 font-medium mb-3 text-center sm:text-left">
-                            Your rating
-                        </p>
-                        <LetterboxdStarRating
-                            value={stars}
-                            onChange={setStars}
-                            disabled={submitting}
-                        />
-                    </div>
+                    {showTosRating && (
+                        <div className="rounded-xl bg-white/[0.03] border border-white/5 px-3 py-4 sm:px-4">
+                            <TosCategoryRatingForm
+                                value={userRatings}
+                                onChange={handleRatingsChange}
+                                disabled={submitting}
+                                compact
+                            />
+                        </div>
+                    )}
 
                     <div>
                         <label htmlFor="log-review" className="text-[11px] uppercase tracking-wide text-white/45 font-medium">
@@ -320,7 +362,6 @@ export default function QuickLogModal({
                     {error && <p className="text-sm text-red-400">{error}</p>}
                 </div>
 
-                {/* Sticky footer — always reachable on mobile */}
                 <div className="shrink-0 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] border-t border-white/10 bg-[#14181c]/95 backdrop-blur-md flex gap-2">
                     <button
                         type="button"

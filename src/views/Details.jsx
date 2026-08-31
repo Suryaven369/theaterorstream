@@ -10,11 +10,10 @@ import ReviewAnalysis from "../components/ReviewAnalysis";
 import TOSRating from "../components/TOSRating";
 import { FaStar, FaClock, FaCalendar, FaPlay } from "react-icons/fa";
 import { IoArrowBack } from "react-icons/io5";
-import UserRatingSystem, { RatingModal } from "../components/UserRatingSystem";
+import UserRatingSystem from "../components/UserRatingSystem";
 import { getMovieRatings, getUserRatingForMovie } from "../lib/supabase";
 import { computeOverallFromCategories } from "../lib/ratingUtils";
 import QuickLogModal from "../components/social/QuickLogModal";
-import { tosScoreToStars } from "../components/social/LetterboxdStarRating";
 import WriteReviewModal from "../components/social/WriteReviewModal";
 import { getMovieDetailFromEdge } from "../lib/contentEdgeApi";
 import { ShareButton } from "../components/ShareMovie";
@@ -268,10 +267,10 @@ const Details = () => {
 
   const [playVideo, setPlayVideo] = useState(false);
   const [playVideoId, setPlayVideoId] = useState("");
-  const [ratingModalOpen, setRatingModalOpen] = useState(false);
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
-  const [logPrefillStars, setLogPrefillStars] = useState(null);
+  const [logInitialRatings, setLogInitialRatings] = useState(null);
+  const [logRatingAlreadySaved, setLogRatingAlreadySaved] = useState(false);
   const [ratingsKey, setRatingsKey] = useState(0);
   const [userShareReview, setUserShareReview] = useState(null);
 
@@ -406,12 +405,13 @@ const Details = () => {
       navigate('/auth');
       return;
     }
-    setRatingModalOpen(true);
+    setLogInitialRatings(null);
+    setLogRatingAlreadySaved(false);
+    setLogModalOpen(true);
   };
 
-  // Handle rating submission success — rating is saved in RatingModal; then open diary log
+  // Reviews section rated via RatingModal — open log sheet for diary only (rating already saved)
   const handleRatingSubmitSuccess = (submittedRatings) => {
-    setRatingModalOpen(false);
     setRatingsKey((prev) => prev + 1);
 
     if (submittedRatings && user?.id && movieId) {
@@ -426,7 +426,8 @@ const Details = () => {
     }
 
     if (user?.id && movieId) {
-      setLogPrefillStars(tosScoreToStars(submittedRatings));
+      setLogInitialRatings(submittedRatings || null);
+      setLogRatingAlreadySaved(true);
       setLogModalOpen(true);
     }
   };
@@ -918,17 +919,6 @@ const Details = () => {
         />
       )}
 
-      {/* Rating Modal */}
-      <RatingModal
-        isOpen={ratingModalOpen}
-        onClose={() => setRatingModalOpen(false)}
-        movieId={movieId}
-        movieTitle={data?.title || data?.name}
-        onSubmitSuccess={handleRatingSubmitSuccess}
-        existingRating={userRating}
-        userId={user?.id}
-      />
-
       {reviewModalOpen && data && (
         <WriteReviewModal
           movie={{
@@ -949,7 +939,8 @@ const Details = () => {
         isOpen={logModalOpen}
         onClose={() => {
           setLogModalOpen(false);
-          setLogPrefillStars(null);
+          setLogInitialRatings(null);
+          setLogRatingAlreadySaved(false);
         }}
         userId={user?.id}
         movie={{
@@ -959,11 +950,12 @@ const Details = () => {
           poster_path: data?.poster_path,
           media_type: mediaType,
         }}
-        initialStars={logPrefillStars}
-        ratingAlreadySaved={logPrefillStars != null}
-        subtitle="Rating saved — add how you watched and your review (optional)"
+        initialRatings={logInitialRatings}
+        ratingAlreadySaved={logRatingAlreadySaved}
+        subtitle={logRatingAlreadySaved ? 'Rating saved — add how you watched and your review (optional)' : null}
         onLogged={() => {
-          setLogPrefillStars(null);
+          setLogInitialRatings(null);
+          setLogRatingAlreadySaved(false);
           setRatingsKey((k) => k + 1);
         }}
       />
