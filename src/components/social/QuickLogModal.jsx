@@ -263,13 +263,13 @@ export default function QuickLogModal({
                     <div className="w-9 h-1 rounded-full bg-white/25" />
                 </div>
 
-                <div className="shrink-0 flex items-start justify-between gap-3 px-4 pt-1 sm:pt-4 pb-3 border-b border-white/10">
-                    <div className="flex gap-3 min-w-0 flex-1">
+                <div className="shrink-0 flex items-start justify-between gap-2 px-4 pt-1 sm:pt-4 pb-2.5 sm:pb-3 border-b border-white/10">
+                    <div className="flex gap-2.5 min-w-0 flex-1">
                         {thumb && (
                             <img
                                 src={thumb}
                                 alt=""
-                                className="w-12 h-[72px] sm:w-14 sm:h-[84px] rounded-md object-cover border border-white/10 shrink-0"
+                                className="w-10 h-[60px] sm:w-14 sm:h-[84px] rounded-md object-cover border border-white/10 shrink-0"
                             />
                         )}
                         <div className="min-w-0 pt-0.5">
@@ -295,20 +295,18 @@ export default function QuickLogModal({
                     </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto overscroll-contain min-h-0 px-4 py-4 space-y-4 sm:space-y-5">
+                <div className="flex-1 overflow-y-auto overscroll-contain min-h-0 px-4 py-3 sm:py-4 space-y-3 sm:space-y-4">
                     {subtitle && (
                         <p className="text-xs text-white/45 leading-relaxed">{subtitle}</p>
                     )}
 
                     {showTosRating && (
-                        <div className="rounded-xl bg-white/[0.03] border border-white/5 px-3 py-4 sm:px-4">
-                            <TosCategoryRatingForm
-                                value={userRatings}
-                                onChange={handleRatingsChange}
-                                disabled={submitting}
-                                compact
-                            />
-                        </div>
+                        <TosCategoryRatingForm
+                            value={userRatings}
+                            onChange={handleRatingsChange}
+                            disabled={submitting}
+                            variant="compact"
+                        />
                     )}
 
                     <div>
@@ -320,7 +318,7 @@ export default function QuickLogModal({
                             value={reviewText}
                             onChange={(e) => setReviewText(e.target.value)}
                             placeholder="What did you think?"
-                            rows={3}
+                            rows={2}
                             disabled={submitting}
                             enterKeyHint="done"
                             className="mt-1.5 w-full rounded-xl bg-white/5 border border-white/10 px-3 py-3 text-base sm:text-sm text-white placeholder-white/25 resize-none leading-relaxed disabled:opacity-60"
