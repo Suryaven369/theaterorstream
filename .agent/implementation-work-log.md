@@ -2,7 +2,19 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Aug 31, 2026 · HEAD `2b9decc` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Aug 31, 2026 · HEAD `6e6ed8a` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Aug 31, 2026 — Compact TOS rating in log sheet
+
+### Denser inline sliders for mobile log UI ✅
+
+**Problem:** Seven full-size TOS sliders dominated the log bottom sheet on mobile.
+
+**Files changed:** `RatingSlider.jsx` (inline variant), `TosCategoryRatingForm.jsx` (compact layout), `QuickLogModal.jsx` (tighter spacing)
+
+**Behavior:** Log sheet uses one-line label · slider · score rows, smaller TOS header, 2-col on sm+; full emoji sliders unchanged in RatingModal.
 
 ---
 
@@ -1655,6 +1667,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `6e6ed8a` | Aug 2026 | Compact inline TOS sliders in log sheet (mobile) |
 | `2b9decc` | Aug 2026 | TOS category sliders in log sheet (replace Letterboxd stars) |
 | `521b3ce` | Aug 2026 | Letterboxd log sheet: rate/review on Like/Watched/Log/party + mobile UX |
 | `bede0b3` | Aug 2026 | Work log HEAD sync to f497b93 |
