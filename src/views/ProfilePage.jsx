@@ -925,6 +925,9 @@ const ProfilePage = () => {
                                                         <Link to="/settings/taste" onClick={() => setMenuOpen(false)} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-white/80 hover:bg-white/10">
                                                             <FaStar className="text-xs" /> Taste Preferences
                                                         </Link>
+                                                        <Link to="/onboarding/taste?from=settings" onClick={() => setMenuOpen(false)} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-white/80 hover:bg-white/10">
+                                                            <FaStar className="text-xs" /> Taste questions
+                                                        </Link>
                                                         <Link to="/settings" onClick={() => setMenuOpen(false)} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-white/80 hover:bg-white/10">
                                                             <FaUserCheck className="text-xs" /> Settings
                                                         </Link>
@@ -1362,6 +1365,20 @@ const ProfilePage = () => {
                     <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-8">
                         {/* LEFT: Main Content */}
                         <div className="space-y-8">
+                            {isOwnProfile && tasteProfile?.onboarding_step_data?.taste_questionnaire === 'skipped' && (
+                                <Link
+                                    to="/onboarding/taste?from=settings"
+                                    className="flex items-start gap-3 rounded-xl border border-[var(--primary)]/25 bg-[var(--primary)]/8 px-4 py-3.5 transition-colors hover:border-[var(--primary)]/40"
+                                >
+                                    <span className="text-lg" aria-hidden>🎯</span>
+                                    <span className="min-w-0">
+                                        <span className="block text-sm font-semibold text-white">Finish your taste questions</span>
+                                        <span className="mt-0.5 block text-[13px] text-white/55">
+                                            You skipped these at signup. A few checkboxes — no movie titles.
+                                        </span>
+                                    </span>
+                                </Link>
+                            )}
                             {/* Taste Identity & Achievements Row */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {/* Taste Identity Card */}

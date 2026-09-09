@@ -11,6 +11,7 @@ import {
     verifyEmailOtp,
     requestPasswordReset,
 } from '../lib/auth';
+import { markTasteOnboardingPending } from '../lib/tasteOnboarding';
 
 function GoogleIcon() {
     return (
@@ -99,6 +100,7 @@ const AuthPage = () => {
         }
 
         if (signUpResult.data?.session) {
+            markTasteOnboardingPending();
             setSuccess('Account created! Redirecting…');
             setLoading(false);
             return;
@@ -137,6 +139,7 @@ const AuthPage = () => {
             return;
         }
 
+        markTasteOnboardingPending();
         setSuccess('Email verified! Redirecting…');
         setLoading(false);
     };

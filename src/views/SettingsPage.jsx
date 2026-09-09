@@ -144,6 +144,12 @@ const SettingsPage = () => {
                         >
                             Edit preferences
                         </Link>
+                        <Link
+                            to="/onboarding/taste?from=settings"
+                            className="inline-flex min-h-[44px] items-center justify-center rounded-full border border-white/15 px-4 py-2.5 text-sm text-white/80 hover:border-white/30 hover:text-white sm:min-h-0 sm:justify-start sm:py-2"
+                        >
+                            Taste questions
+                        </Link>
                     </div>
                 </Section>
 

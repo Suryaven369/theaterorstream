@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { isTasteOnboardingPending, rememberAfterTastePath } from '../lib/tasteOnboarding';
 
 function AuthLoadingScreen() {
     return (
@@ -11,7 +12,7 @@ function AuthLoadingScreen() {
 
 /**
  * Auth-only pages — redirect signed-in users away from /auth.
- * Users always go to home or their previous location after login.
+ * New signups with a pending taste questionnaire go there first (no feed).
  */
 export function GuestRoute({ children }) {
     const { loading, isAuthenticated } = useAuth();
@@ -23,8 +24,10 @@ export function GuestRoute({ children }) {
 
     if (isAuthenticated) {
         const from = location.state?.from;
-        // Always go to home or previous location, never force onboarding
-        const destination = from && from !== '/auth' ? from : '/';
+        if (from && from !== '/auth') rememberAfterTastePath(from);
+        const destination = isTasteOnboardingPending()
+            ? '/onboarding/taste'
+            : (from && from !== '/auth' ? from : '/');
         return <Navigate to={destination} replace />;
     }
 

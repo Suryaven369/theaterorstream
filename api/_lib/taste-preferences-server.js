@@ -102,7 +102,8 @@ export async function getTastePreferences(userId) {
         .from('user_taste_profiles')
         .select('manual_genre_weights, manual_mood_preferences, manual_languages, '
             + 'manual_preferred_eras, favorite_actors, favorite_directors, '
-            + 'genre_weights, mood_preferences, preferred_languages, preferred_decades')
+            + 'genre_weights, mood_preferences, preferred_languages, preferred_decades, '
+            + 'onboarding_step_data, onboarding_completed_at')
         .eq('user_id', userId)
         .maybeSingle();
 
@@ -124,6 +125,8 @@ export async function getTastePreferences(userId) {
             languages: profile?.preferred_languages || [],
             decades: profile?.preferred_decades || [],
         },
+        questionnaire: questionnaireFromStep(profile?.onboarding_step_data),
+        onboardingCompletedAt: profile?.onboarding_completed_at || null,
         options: {
             genres: TASTE_GENRES,
             moods: TASTE_MOODS,
@@ -133,26 +136,116 @@ export async function getTastePreferences(userId) {
     };
 }
 
+const VALID_WATCH_STYLES = new Set(['theater', 'stream', 'both']);
+const VALID_COMPANY = new Set(['solo', 'partner', 'friends', 'family']);
+
+function sanitizeWatchStyle(value) {
+    return VALID_WATCH_STYLES.has(value) ? value : null;
+}
+
+function sanitizeCompany(ids) {
+    if (!Array.isArray(ids)) return [];
+    return [...new Set(ids.filter((id) => VALID_COMPANY.has(id)))];
+}
+
+function questionnaireFromStep(step = {}) {
+    return {
+        status: step.taste_questionnaire === 'completed' || step.taste_questionnaire === 'skipped'
+            ? step.taste_questionnaire
+            : null,
+        watchStyle: sanitizeWatchStyle(step.watch_style),
+        company: sanitizeCompany(step.questionnaire_company),
+    };
+}
+
+function isEmptyWeights(obj) {
+    return !obj || typeof obj !== 'object' || Object.keys(obj).length === 0;
+}
+
 /** Persist manual prefs and invalidate the recommendation cache. */
 export async function updateTastePreferences(userId, input) {
     const supabase = getSupabaseAdmin();
 
+    const { data: existing } = await supabase
+        .from('user_taste_profiles')
+        .select('onboarding_step_data, onboarding_completed_at, genre_weights, mood_preferences, preferred_languages, preferred_decades')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    const status = input?.questionnaireStatus === 'skipped' || input?.questionnaireStatus === 'completed'
+        ? input.questionnaireStatus
+        : null;
+    const skipOnly = status === 'skipped'
+        && input?.genres == null
+        && input?.moods == null
+        && input?.languages == null
+        && input?.eras == null;
+
+    const now = new Date().toISOString();
+    const step = { ...(existing?.onboarding_step_data || {}) };
+    if (status) step.taste_questionnaire = status;
+    if (input?.watchStyle !== undefined) {
+        const style = sanitizeWatchStyle(input.watchStyle);
+        if (style) step.watch_style = style;
+        else delete step.watch_style;
+    }
+    if (input?.company !== undefined) {
+        step.questionnaire_company = sanitizeCompany(input.company);
+    }
+
+    if (skipOnly) {
+        const { error } = await supabase
+            .from('user_taste_profiles')
+            .upsert({
+                user_id: userId,
+                onboarding_step_data: step,
+                onboarding_completed_at: existing?.onboarding_completed_at || now,
+                updated_at: now,
+            }, { onConflict: 'user_id' });
+        if (error) throw new Error(error.message);
+        return { ok: true };
+    }
+
     const actors = sanitizePeople(input?.actors);
     const directors = sanitizePeople(input?.directors);
+    const genreWeights = sanitizeGenreWeights(input?.genres);
+    const moodPrefs = sanitizeMoodPrefs(input?.moods);
+    const languages = sanitizeLanguages(input?.languages);
+    const eras = sanitizeEras(input?.eras);
+
+    if (!status && (Object.keys(genreWeights).length || Object.keys(moodPrefs).length)) {
+        step.taste_questionnaire = 'completed';
+    }
 
     const payload = {
         user_id: userId,
-        manual_genre_weights: sanitizeGenreWeights(input?.genres),
-        manual_mood_preferences: sanitizeMoodPrefs(input?.moods),
-        manual_languages: sanitizeLanguages(input?.languages),
-        manual_preferred_eras: sanitizeEras(input?.eras),
+        manual_genre_weights: genreWeights,
+        manual_mood_preferences: moodPrefs,
+        manual_languages: languages,
+        manual_preferred_eras: eras,
         favorite_actor_ids: actors.ids,
         favorite_director_ids: directors.ids,
         favorite_actors: actors.list,
         favorite_directors: directors.list,
-        manual_updated_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        onboarding_step_data: step,
+        onboarding_completed_at: existing?.onboarding_completed_at || now,
+        manual_updated_at: now,
+        updated_at: now,
     };
+
+    // Cold start: seed computed columns so For You has signal before any logs.
+    if (isEmptyWeights(existing?.genre_weights) && Object.keys(genreWeights).length) {
+        payload.genre_weights = genreWeights;
+    }
+    if (isEmptyWeights(existing?.mood_preferences) && Object.keys(moodPrefs).length) {
+        payload.mood_preferences = moodPrefs;
+    }
+    if (!(existing?.preferred_languages || []).length && languages.length) {
+        payload.preferred_languages = languages.filter((l) => l !== 'other');
+    }
+    if (!(existing?.preferred_decades || []).length && eras.length) {
+        payload.preferred_decades = eras;
+    }
 
     const { error } = await supabase
         .from('user_taste_profiles')
@@ -160,7 +253,6 @@ export async function updateTastePreferences(userId, input) {
 
     if (error) throw new Error(error.message);
 
-    // Manual change should reflect in recs immediately.
     await supabase.from('recommendation_cache').delete().eq('user_id', userId);
 
     return { ok: true };

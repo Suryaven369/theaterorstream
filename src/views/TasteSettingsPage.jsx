@@ -108,6 +108,12 @@ export default function TasteSettingsPage() {
                     <p className="mt-1 text-[13px] text-[var(--text-secondary)] sm:text-sm">
                         Optional. Fine-tune recommendations — a starting point only.
                     </p>
+                    <Link
+                        to="/onboarding/taste?from=settings"
+                        className="mt-3 inline-flex min-h-[40px] items-center text-[13px] font-medium text-[var(--primary)] hover:underline sm:text-sm"
+                    >
+                        Answer the taste questions
+                    </Link>
                 </div>
 
                 <div className="mb-6 flex items-start gap-2.5 rounded-xl border border-white/8 bg-white/[0.03] px-3.5 py-3 text-[11px] leading-snug text-white/55 sm:mb-8 sm:px-4 sm:text-xs">

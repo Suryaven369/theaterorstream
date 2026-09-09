@@ -161,6 +161,11 @@ export async function updateTastePreferences(prefs) {
     return sendJson('/api/recommendations/taste-profile', 'PUT', prefs);
 }
 
+/** Skip the signup taste questionnaire without wiping prefs. */
+export async function skipTasteQuestionnaire() {
+    return sendJson('/api/recommendations/taste-profile', 'PUT', { questionnaireStatus: 'skipped' });
+}
+
 /** Taste dashboard rollup (favorite genres/moods, evolving interests, accuracy). */
 export async function getTasteDashboard() {
     const res = await sendJson('/api/recommendations/dashboard', 'GET');

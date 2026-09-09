@@ -9,6 +9,7 @@ import { TMDB_IMAGE_BASE } from "./utils/imageHelper";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 import MobileNavigation from "./components/MobileNavigation";
+import TasteOnboardingGate from "./components/TasteOnboardingGate";
 
 function App() {
   const dispatch = useDispatch();
@@ -49,6 +50,8 @@ function App() {
   }, [dispatch]);
 
   const isSearchPage = location.pathname === '/search';
+  const isTasteOnboarding = location.pathname.startsWith('/onboarding/taste');
+  const hideChrome = isSearchPage || isTasteOnboarding;
 
   // Scroll to top on route / home-tab change (not mood/ott filter tweaks)
   const homeTab = new URLSearchParams(location.search).get('tab') || '';
@@ -59,14 +62,16 @@ function App() {
   }, [location.pathname, homeTab, isSearchPage]);
 
   return (
-    <div className="bg-[var(--bg-primary)] min-h-screen">
-      {!isSearchPage && <Header />}
-      <main className={isSearchPage ? '' : 'pb-nav'}>
-        <Outlet />
-      </main>
-      {!isSearchPage && <Footer />}
-      {!isSearchPage && <MobileNavigation />}
-    </div>
+    <TasteOnboardingGate>
+      <div className="bg-[var(--bg-primary)] min-h-screen">
+        {!hideChrome && <Header />}
+        <main className={hideChrome ? '' : 'pb-nav'}>
+          <Outlet />
+        </main>
+        {!hideChrome && <Footer />}
+        {!hideChrome && <MobileNavigation />}
+      </div>
+    </TasteOnboardingGate>
   );
 }
 

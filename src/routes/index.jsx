@@ -36,6 +36,7 @@ const DiaryPage = lazyPage(() => import("../views/DiaryPage"));
 const FeedPage = lazyPage(() => import("../views/FeedPage"));
 const WatchPage = lazyPage(() => import("../views/WatchPage"));
 const TasteSettingsPage = lazyPage(() => import("../views/TasteSettingsPage"));
+const TasteOnboardingPage = lazyPage(() => import("../views/TasteOnboardingPage"));
 const TasteMapPage = lazyPage(() => import("../views/TasteMapPage"));
 const SettingsPage = lazyPage(() => import("../views/SettingsPage"));
 const AchievementsPage = lazyPage(() => import("../views/AchievementsPage"));
@@ -234,6 +235,10 @@ const router = createBrowserRouter([
           {
             path: "settings/taste",
             element: <TasteSettingsPage />,
+          },
+          {
+            path: "onboarding/taste",
+            element: <TasteOnboardingPage />,
           },
           {
             path: "taste-map",

@@ -6,6 +6,20 @@ Session log for production architecture Phase 1 work (DB-first performance + Ver
 
 ---
 
+## Session: Sep 9, 2026 — Signup taste questionnaire
+
+### Title-free onboarding questions (skippable) ✅
+
+**Problem:** New signups landed on the feed with no taste signal; old onboarding that showed movie titles/posters had been removed.
+
+**Files changed:** `TasteOnboardingPage.jsx`, `TasteQuestionnaire.jsx`, `tasteOnboarding.js`, `tasteOnboarding` constants, `TasteOnboardingGate.jsx`, `App.jsx`, `GuestRoute.jsx`, `AuthPage.jsx`, `TasteSettingsPage.jsx`, `SettingsPage.jsx`, `ProfilePage.jsx`, `TasteMapControls.jsx`, `taste-preferences-server.js`, `recommendationApi.js`, routes
+
+**Behavior:** After signup (email/OTP/Google new account), users get a 6-step checkbox questionnaire (genres, moods, languages, eras, theater vs stream, who they watch with) — no titles or posters. Skip for now still enters the app. Answers seed manual + cold-start taste prefs. Resume anytime from Settings, Taste Preferences, Taste Map, or Profile (banner if they skipped).
+
+**Next recommended:** Smoke-test a fresh signup on phone; confirm skip then resume from Settings → Taste questions.
+
+---
+
 ## Session: Sep 9, 2026 — Taste-first recommendations
 
 ### Stronger For You / Hidden Gems beyond library popularity ✅
