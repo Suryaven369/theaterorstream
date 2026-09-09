@@ -2,7 +2,7 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Sep 9, 2026 · HEAD `cda3ddd` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Sep 9, 2026 · HEAD `2b162aa` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
 
 ---
 
@@ -1695,6 +1695,7 @@ Full roadmap: [tos-production-architecture-plan.md](./tos-production-architectur
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `2b162aa` | Sep 2026 | Skippable title-free taste questionnaire on signup |
 | `cda3ddd` | Sep 2026 | Taste-first recs: TMDB seeds, hidden gems, dislike demotion |
 | `6e6ed8a` | Aug 2026 | Compact inline TOS sliders in log sheet (mobile) |
 | `2b9decc` | Aug 2026 | TOS category sliders in log sheet (replace Letterboxd stars) |
