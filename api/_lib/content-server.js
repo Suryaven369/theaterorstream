@@ -75,7 +75,8 @@ async function importFullTitleToLibrary(admin, tmdbId, mediaType) {
  * For TMDB search/person hits: load cards from DB, full-import any missing titles.
  * @param {{ id: number|string, media_type: string }[]} candidates
  */
-async function ensureLibraryCardsForCandidates(candidates, { maxImport = SEARCH_IMPORT_MAX } = {}) {
+/** Reco / search: hydrate from library and import missing TMDB titles (bounded). */
+export async function ensureLibraryCardsForCandidates(candidates, { maxImport = SEARCH_IMPORT_MAX } = {}) {
     if (!candidates?.length) return [];
 
     const unique = [];

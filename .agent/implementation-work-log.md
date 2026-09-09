@@ -2,7 +2,21 @@
 
 Session log for production architecture Phase 1 work (DB-first performance + Vercel Edge).
 
-**Last synced with `main`:** Aug 31, 2026 · HEAD `6e6ed8a` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+**Last synced with `main`:** Sep 9, 2026 · HEAD `6e6ed8a` · [github.com/Suryaven369/theaterorstream](https://github.com/Suryaven369/theaterorstream)
+
+---
+
+## Session: Sep 9, 2026 — Taste-first recommendations
+
+### Stronger For You / Hidden Gems beyond library popularity ✅
+
+**Problem:** Recs felt like recently saved / popular `movies_library` rows; likes/dislikes weakly shaped the pool; TMDB neighbors were dropped when not in DB.
+
+**Files changed:** `recommendation-server.js` (taste-seed TMDB expansion, gem Discover, capped popularity, dislike demotion, `for_you_v3`, hidden_gems_v2, Because-you-loved seeds); `taste-profile-server.js` (signed genre weights); `events-server.js` (MIN_LIKES=1, signed genreSignal); `content-server.js` (export `ensureLibraryCardsForCandidates`); `recommendationApi.js` + `SimilarMoviesSection.jsx` (personalized similar when signed in)
+
+**Behavior:** For You seeds from recent likes/high ratings → TMDB similar/recs + low-pop Discover gems; missing titles imported into library; popularity backfill capped; negative genre weights + neighbor dislike penalty; one like busts taste; detail “More like this” uses personalized similar for auth users.
+
+**Next recommended:** Deploy and smoke-test Watch For You + Hidden Gems after a like/dislike; confirm TMDB env works on Vercel.
 
 ---
 

@@ -55,8 +55,8 @@ export const CACHE_BUST_EVENTS = new Set([
     'rated_5', 'rated_4', 'rated_3', 'rated_2', 'rated_1',
 ]);
 
-/** Need this many hearted titles before a like triggers taste re-analysis. */
-export const MIN_LIKES_FOR_TASTE_REBUILD = 3;
+/** One heart is enough to refresh taste / bust reco cache. */
+export const MIN_LIKES_FOR_TASTE_REBUILD = 1;
 
 // Events that signal positive engagement with a specific title (for suppress logic).
 const POSITIVE_EVENTS = new Set([
@@ -310,12 +310,13 @@ export async function getBehavioralSignals(userId, options = {}) {
  * Normalised [0..1] genre weights derived purely from behaviour, for folding
  * into the taste profile rebuild. Only positive signal survives.
  */
+/** Normalize genre signal to [-1, 1] — keeps dislike demotion for taste rebuild. */
 export function genreSignalToWeights(genreSignal) {
-    const positive = Object.entries(genreSignal).filter(([, v]) => v > 0);
-    if (!positive.length) return {};
-    const max = Math.max(...positive.map(([, v]) => v));
+    const entries = Object.entries(genreSignal || {});
+    if (!entries.length) return {};
+    const maxAbs = Math.max(...entries.map(([, v]) => Math.abs(Number(v) || 0)), 0.001);
     return Object.fromEntries(
-        positive.map(([id, v]) => [id, Math.round((v / max) * 100) / 100]),
+        entries.map(([id, v]) => [id, Math.round((Number(v) / maxAbs) * 100) / 100]),
     );
 }
 

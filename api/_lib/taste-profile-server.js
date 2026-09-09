@@ -70,6 +70,16 @@ function normalizeWeights(scores) {
     );
 }
 
+/** Keep positive + negative genre affinity (likes vs low ratings / dislikes). */
+function normalizeSignedWeights(scores) {
+    const entries = Object.entries(scores).filter(([, v]) => Number(v) !== 0);
+    if (!entries.length) return {};
+    const maxAbs = Math.max(...entries.map(([, v]) => Math.abs(Number(v) || 0)), 0.001);
+    return Object.fromEntries(
+        entries.map(([id, value]) => [id, Math.round((Number(value) / maxAbs) * 100) / 100]),
+    );
+}
+
 function mergeGenreWeights(declared = {}, computed = {}, hasRatings) {
     const ids = new Set([...Object.keys(declared), ...Object.keys(computed)]);
     const merged = {};
@@ -88,14 +98,15 @@ function mergeGenreWeights(declared = {}, computed = {}, hasRatings) {
  * Behaviour leads slightly because it captures intent ratings can't (e.g. the
  * trailers a user replays but never logs).
  */
-function blendGenreSources(ratingGenres, behavioralGenres) {
+function blendGenreSources(ratingGenres, behavioralGenres, ratingShare = 0.55) {
     const ids = new Set([...Object.keys(ratingGenres), ...Object.keys(behavioralGenres)]);
     if (!ids.size) return {};
+    const bShare = 1 - ratingShare;
     const blended = {};
     ids.forEach((id) => {
         const r = Number(ratingGenres[id]) || 0;
         const b = Number(behavioralGenres[id]) || 0;
-        blended[id] = Math.round((0.45 * r + 0.55 * b) * 100) / 100;
+        blended[id] = Math.round((ratingShare * r + bShare * b) * 100) / 100;
     });
     return blended;
 }
@@ -121,9 +132,8 @@ function computeGenreWeightsFromRatings(ratings, movieByTmdbId) {
         });
     });
 
-    return normalizeWeights(
-        Object.fromEntries(Object.entries(raw).filter(([, v]) => v > 0)),
-    );
+    // Keep negative signals from low ratings so scoring can demote those genres.
+    return normalizeSignedWeights(raw);
 }
 
 function computeAxisPreferences(ratings) {

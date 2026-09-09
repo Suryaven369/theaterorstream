@@ -130,9 +130,18 @@ export function getMoodRecommendations(moodId, options = {}) {
     return fetchRecommendations(`/api/recommendations/mood/${encodeURIComponent(moodId)}`, options);
 }
 
-/** A discovery feed section: because-you-loved | hidden-gems | underrated | outside-comfort-zone. */
-export function getDiscoverySection(section, options = {}) {
-    return fetchRecommendations(`/api/recommendations/discovery/${section}`, options);
+/** Personalized similar titles (auth) — taste + TMDB neighbors. */
+export async function getPersonalizedSimilar(tmdbId, options = {}) {
+    if (!tmdbId) return { data: [], meta: {}, error: 'missing_id' };
+    const res = await fetchRecommendations(
+        `/api/recommendations/similar/${encodeURIComponent(String(tmdbId))}`,
+        options,
+    );
+    return {
+        ...res,
+        // Route returns { data: items } via handler — also accept nested items.
+        data: res.data?.length ? res.data : (res.items || []),
+    };
 }
 
 /** One Perfect Movie Tonight — single daily pick. Returns { movie, message, day }. */

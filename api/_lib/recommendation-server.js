@@ -7,6 +7,7 @@ import { getBehavioralSignals, genreSignalToWeights } from './events-server.js';
 import { isLlmEnabled, rerankRecommendations, generateRecoMessage } from './llm-server.js';
 import { dnaMatchScore } from './movie-dna-server.js';
 import { fetchTmdbApi } from './tmdb-server.js';
+import { ensureLibraryCardsForCandidates } from './content-server.js';
 
 const AXIS_KEYS = [
     'acting', 'screenplay', 'sound', 'direction',
@@ -33,19 +34,19 @@ const EXPLORATION_RATIO = 0.2;
 const FRESHNESS_PENALTY = 0.85;
 
 const WEIGHTS_WITH_EMBEDDING = {
-    content: 0.40,
-    genre: 0.25,
+    content: 0.42,
+    genre: 0.28,
     axis: 0.15,
     collaborative: 0.10,
-    popularity: 0.10,
+    popularity: 0.05,
 };
 
 const WEIGHTS_NO_EMBEDDING = {
     content: 0,
-    genre: 0.45,
+    genre: 0.50,
     axis: 0.25,
-    collaborative: 0.10,
-    popularity: 0.20,
+    collaborative: 0.20,
+    popularity: 0.05,
 };
 
 /** Seed-similar rows ("Because you loved X") — prioritize likeness to the seed, not general taste. */
@@ -230,18 +231,51 @@ function genreMatchScore(genreWeights, movie) {
     const ids = extractGenreIds(movie);
     if (!ids.length) return 0.35;
 
-    let sum = 0;
-    let hits = 0;
+    let posSum = 0;
+    let posHits = 0;
+    let negSum = 0;
+    let negHits = 0;
     ids.forEach((id) => {
         const w = Number(weights[id]);
         if (w > 0) {
-            sum += w;
-            hits += 1;
+            posSum += w;
+            posHits += 1;
+        } else if (w < 0) {
+            negSum += w;
+            negHits += 1;
         }
     });
 
-    if (!hits) return 0.2;
-    return Math.min(1, sum / hits);
+    if (!posHits && !negHits) return 0.2;
+    const positive = posHits ? Math.min(1, posSum / posHits) : 0.15;
+    const negative = negHits ? Math.min(1, Math.abs(negSum) / negHits) : 0;
+    return Math.max(0, Math.min(1, positive - negative * 0.65));
+}
+
+/** Soft demote when candidate shares many genres with recently disliked titles. */
+function dislikedGenreOverlapPenalty(movie, dislikedGenreSets) {
+    if (!dislikedGenreSets?.length) return 0;
+    const ids = extractGenreIds(movie).map(String);
+    if (!ids.length) return 0;
+
+    let worst = 0;
+    dislikedGenreSets.forEach((disliked) => {
+        const set = new Set((disliked || []).map(String));
+        const hits = ids.filter((id) => set.has(id)).length;
+        if (hits >= 2) worst = Math.max(worst, Math.min(0.4, 0.12 * hits));
+    });
+    return worst;
+}
+
+/** High quality + low reach → gem bonus (0–0.1). */
+function hiddenGemBonus(movie) {
+    const vote = Number(movie.vote_average) || 0;
+    const votes = Number(movie.vote_count) || 0;
+    const pop = Number(movie.popularity) || 0;
+    if (vote < 7.2 || votes < 80 || pop > 45) return 0;
+    const quality = Math.min(1, (vote - 7) / 2);
+    const obscurity = Math.min(1, Math.max(0, (40 - pop) / 40));
+    return Math.round(quality * obscurity * 0.1 * 1000) / 1000;
 }
 
 /** Core (non-drama) genres that define a seed title's identity. */
@@ -491,9 +525,13 @@ function buildEffectiveProfile(profile, signals) {
         const computed = Number(computedGenres[id]) || 0;
         const behavioral = Number(behavioralGenres[id]) || 0;
         const manualFloor = (Number(manualGenres[id]) || 0) * 0.5; // floor, never dominates
-        // Behaviour leads (0.6), computed supports (0.4); manual only raises the floor.
-        const blended = 0.6 * behavioral + 0.4 * computed;
-        effectiveGenres[id] = Math.round(Math.max(blended, manualFloor) * 100) / 100;
+        // Likes/ratings lead; behavioural supports. Preserve negative (dislike) weights.
+        const blended = 0.55 * computed + 0.45 * behavioral;
+        if (blended < 0) {
+            effectiveGenres[id] = Math.round(blended * 100) / 100;
+        } else {
+            effectiveGenres[id] = Math.round(Math.max(blended, manualFloor) * 100) / 100;
+        }
     });
 
     const computedMoods = profile.mood_preferences || {};
@@ -518,6 +556,7 @@ async function loadUserContext(supabase, userId) {
         { data: watchedRows },
         { data: logRows },
         { data: likedRows },
+        { data: dislikeEvents },
         { data: account },
     ] = await Promise.all([
         supabase.from('user_taste_profiles').select('*').eq('user_id', userId).maybeSingle(),
@@ -526,7 +565,19 @@ async function loadUserContext(supabase, userId) {
         // "Seen" history — never recommend these back. Best-effort (missing tables ignored).
         supabase.from('user_watched_movies').select('movie_id').eq('user_id', userId).limit(2000),
         supabase.from('movie_logs').select('tmdb_id').eq('user_id', userId).limit(2000),
-        supabase.from('user_liked_movies').select('movie_id').eq('user_id', userId).limit(500),
+        supabase
+            .from('user_liked_movies')
+            .select('movie_id, media_type, liked_at')
+            .eq('user_id', userId)
+            .order('liked_at', { ascending: false })
+            .limit(500),
+        supabase
+            .from('user_events')
+            .select('tmdb_id')
+            .eq('user_id', userId)
+            .eq('event_type', 'movie_disliked')
+            .order('created_at', { ascending: false })
+            .limit(40),
         supabase.from('user_profiles').select('display_name, username').eq('id', userId).maybeSingle(),
     ]);
 
@@ -561,6 +612,18 @@ async function loadUserContext(supabase, userId) {
     const lovedGenreSets = [];
     const lovedTmdbIds = [];
     const lovedSet = new Set();
+    /** @type {{ tmdbId: string, mediaType: string, score: number }[]} */
+    const tasteSeeds = [];
+
+    (likedRows || []).slice(0, 12).forEach((row, index) => {
+        const id = String(row.movie_id);
+        tasteSeeds.push({
+            tmdbId: id,
+            mediaType: row.media_type === 'tv' ? 'tv' : 'movie',
+            // Recent likes rank ahead of older ones for TMDB seeding.
+            score: 100 - index,
+        });
+    });
 
     (ratings || []).forEach((rating) => {
         const overall = computeOverallFromRatingRow(rating);
@@ -569,6 +632,13 @@ async function loadUserContext(supabase, userId) {
             if (!lovedSet.has(id)) {
                 lovedSet.add(id);
                 lovedTmdbIds.push(id);
+            }
+            if (!tasteSeeds.some((s) => s.tmdbId === id)) {
+                tasteSeeds.push({
+                    tmdbId: id,
+                    mediaType: 'movie',
+                    score: overall,
+                });
             }
         }
     });
@@ -579,15 +649,34 @@ async function loadUserContext(supabase, userId) {
         }
     });
 
+    tasteSeeds.sort((a, b) => b.score - a.score);
+
     if (lovedTmdbIds.length) {
         const { data: lovedMovies } = await supabase
             .from('movies_library')
-            .select('tmdb_id, genres, genre_ids')
+            .select('tmdb_id, genres, genre_ids, media_type')
             .in('tmdb_id', lovedTmdbIds.slice(0, 40));
 
         (lovedMovies || []).forEach((m) => {
             const ids = extractGenreIds(m);
             if (ids.length) lovedGenreSets.push(ids);
+            const seed = tasteSeeds.find((s) => s.tmdbId === String(m.tmdb_id));
+            if (seed && m.media_type) seed.mediaType = m.media_type === 'tv' ? 'tv' : 'movie';
+        });
+    }
+
+    const dislikedGenreSets = [];
+    const dislikedIds = [...new Set(
+        (dislikeEvents || []).map((e) => String(e.tmdb_id)).filter(Boolean),
+    )].slice(0, 30);
+    if (dislikedIds.length) {
+        const { data: dislikedMovies } = await supabase
+            .from('movies_library')
+            .select('tmdb_id, genres, genre_ids')
+            .in('tmdb_id', dislikedIds);
+        (dislikedMovies || []).forEach((m) => {
+            const ids = extractGenreIds(m);
+            if (ids.length >= 2) dislikedGenreSets.push(ids);
         });
     }
 
@@ -597,11 +686,52 @@ async function loadUserContext(supabase, userId) {
         ratedIds,
         seenIds,
         lovedGenreSets,
+        dislikedGenreSets,
+        tasteSeeds: tasteSeeds.slice(0, 8),
         suppressTmdbIds: signals.suppressTmdbIds || new Set(),
         userEmbedding: parseEmbeddingVector(baseProfile.embedding),
         userEmbeddingProvider: baseProfile.embedding_provider || null,
         userName: account?.display_name || account?.username || null,
     };
+}
+
+/** TMDB Discover: high-rated, low-popularity titles in the user's top genres. */
+async function fetchTasteGemIdsFromTmdb(context, { mediaType = 'movie', limit = 60 } = {}) {
+    const type = mediaType === 'tv' ? 'tv' : 'movie';
+    const genreIds = topGenreIds(context.profile?.genre_weights, 3)
+        .map((id) => Number(id))
+        .filter((n) => Number.isFinite(n) && n > 0);
+    if (!genreIds.length) return [];
+
+    const out = [];
+    const seen = new Set();
+    try {
+        for (let page = 1; page <= 2 && out.length < limit; page += 1) {
+            // eslint-disable-next-line no-await-in-loop
+            const data = await fetchTmdbApi(`/discover/${type}`, {
+                with_genres: genreIds.join('|'),
+                sort_by: 'vote_average.desc',
+                'vote_average.gte': '7.2',
+                'vote_count.gte': '80',
+                'vote_count.lte': '8000',
+                include_adult: 'false',
+                page: String(page),
+            });
+            for (const m of data?.results || []) {
+                const id = String(m.id);
+                if (!id || seen.has(id)) continue;
+                const pop = Number(m.popularity) || 0;
+                if (pop > 40) continue;
+                if (context.seenIds?.has(id) || context.suppressTmdbIds?.has(id)) continue;
+                seen.add(id);
+                out.push({ tmdbId: id, mediaType: type, popularity: pop, vote_average: m.vote_average });
+                if (out.length >= limit) break;
+            }
+        }
+    } catch (err) {
+        console.warn('[reco] gem discover failed:', err.message);
+    }
+    return out;
 }
 
 async function fetchCandidateMovies(supabase, context, options) {
@@ -611,11 +741,24 @@ async function fetchCandidateMovies(supabase, context, options) {
         seedTmdbId = null,
         useEmbeddingPool = true,
         seedMediaType = null,
+        includeGemPool = false,
+        maxImport = 30,
     } = options;
 
     const tmdbIdSet = new Set();
     const embeddingSimilarity = new Map();
+    const mediaTypeById = new Map();
     const isSeedMode = !!seedTmdbId;
+
+    const remember = (id, mt, similarity = null) => {
+        const tid = String(id);
+        if (!tid) return;
+        tmdbIdSet.add(tid);
+        if (mt) mediaTypeById.set(tid, mt === 'tv' ? 'tv' : 'movie');
+        if (similarity != null && !embeddingSimilarity.has(tid)) {
+            embeddingSimilarity.set(tid, similarity);
+        }
+    };
 
     if (seedTmdbId) {
         const { data: similarRows, error } = await supabase.rpc('match_similar_to_movie', {
@@ -625,8 +768,7 @@ async function fetchCandidateMovies(supabase, context, options) {
 
         if (!error && similarRows?.length) {
             similarRows.forEach((row) => {
-                tmdbIdSet.add(String(row.tmdb_id));
-                embeddingSimilarity.set(String(row.tmdb_id), Number(row.similarity) || 0);
+                remember(row.tmdb_id, seedMediaType || mediaType, Number(row.similarity) || 0);
             });
         }
 
@@ -634,51 +776,71 @@ async function fetchCandidateMovies(supabase, context, options) {
         const tmdbNeighbors = await fetchTmdbNeighborIds(
             seedTmdbId,
             seedMediaType || mediaType || 'movie',
-            Math.min(candidateLimit, 40),
+            Math.min(candidateLimit, 50),
         );
         tmdbNeighbors.forEach((id) => {
-            tmdbIdSet.add(id);
-            // Mild prior so TMDB-only neighbors aren't scored as pure zeros on content.
-            if (!embeddingSimilarity.has(id)) embeddingSimilarity.set(id, 0.42);
+            remember(id, seedMediaType || mediaType || 'movie', 0.42);
         });
-    } else if (useEmbeddingPool && context.userEmbedding) {
-        const literal = embeddingToRpcLiteral(context.userEmbedding);
-        if (literal) {
-            const { data: matchRows, error } = await supabase.rpc('match_movies_by_embedding', {
-                query_embedding: literal,
-                match_count: candidateLimit,
-                filter_media_type: mediaType,
-                // Only compare within the same embedding space (Gemini vs Mistral).
-                filter_provider: context.userEmbeddingProvider,
-            });
-
-            if (!error && matchRows?.length) {
-                matchRows.forEach((row) => {
-                    tmdbIdSet.add(String(row.tmdb_id));
-                    embeddingSimilarity.set(String(row.tmdb_id), Number(row.similarity) || 0);
+    } else if (useEmbeddingPool) {
+        if (context.userEmbedding) {
+            const literal = embeddingToRpcLiteral(context.userEmbedding);
+            if (literal) {
+                const { data: matchRows, error } = await supabase.rpc('match_movies_by_embedding', {
+                    query_embedding: literal,
+                    match_count: candidateLimit,
+                    filter_media_type: mediaType,
+                    filter_provider: context.userEmbeddingProvider,
                 });
+
+                if (!error && matchRows?.length) {
+                    matchRows.forEach((row) => {
+                        remember(row.tmdb_id, mediaType, Number(row.similarity) || 0);
+                    });
+                }
             }
+        }
+
+        // Taste-seeded TMDB expansion from recent likes + high ratings.
+        const seeds = (context.tasteSeeds || []).slice(0, 5);
+        if (seeds.length) {
+            const neighborLists = await Promise.all(
+                seeds.map((seed) => fetchTmdbNeighborIds(
+                    seed.tmdbId,
+                    seed.mediaType || mediaType || 'movie',
+                    28,
+                ).then((ids) => ({ ids, mediaType: seed.mediaType || mediaType || 'movie' }))),
+            );
+            neighborLists.forEach(({ ids, mediaType: mt }) => {
+                ids.forEach((id) => remember(id, mt, 0.40));
+            });
+        }
+
+        if (includeGemPool) {
+            const gems = await fetchTasteGemIdsFromTmdb(context, {
+                mediaType: mediaType || 'movie',
+                limit: Math.min(80, Math.round(candidateLimit * 0.35)),
+            });
+            gems.forEach((g) => remember(g.tmdbId, g.mediaType, 0.38));
         }
     }
 
-    // Popularity backfill is for general For You feeds only.
-    // Mixing it into seed-similar pools is what lets Moana rank under "Because you loved The Witch".
-    if (!isSeedMode) {
+    // Popularity backfill only when the taste pool is thin — avoid crowding with blockbusters.
+    const popularityCap = 40;
+    if (!isSeedMode && tmdbIdSet.size < 60) {
         let popularityQuery = supabase
             .from('movies_library')
             .select(RECO_MOVIE_SELECT)
             .eq('is_active', true)
             .order('popularity', { ascending: false, nullsFirst: false })
-            .limit(candidateLimit);
+            .limit(popularityCap);
 
         if (mediaType) popularityQuery = popularityQuery.eq('media_type', mediaType);
 
         const { data: popularRows, error: popError } = await popularityQuery;
         if (popError) throw new Error(popError.message);
 
-        (popularRows || []).forEach((m) => tmdbIdSet.add(String(m.tmdb_id)));
-    } else if (!tmdbIdSet.size) {
-        // Last-resort: genre-discover from library using seed genres (handled by caller filter).
+        (popularRows || []).forEach((m) => remember(m.tmdb_id, m.media_type || mediaType));
+    } else if (isSeedMode && !tmdbIdSet.size) {
         let popularityQuery = supabase
             .from('movies_library')
             .select(RECO_MOVIE_SELECT)
@@ -689,17 +851,29 @@ async function fetchCandidateMovies(supabase, context, options) {
             popularityQuery = popularityQuery.eq('media_type', seedMediaType || mediaType);
         }
         const { data: fallbackRows } = await popularityQuery;
-        (fallbackRows || []).forEach((m) => tmdbIdSet.add(String(m.tmdb_id)));
+        (fallbackRows || []).forEach((m) => remember(m.tmdb_id, m.media_type || seedMediaType || mediaType));
     }
 
     if (!tmdbIdSet.size) return [];
 
+    const idList = Array.from(tmdbIdSet);
+
+    // Import missing titles into the library (bounded) so posters/details work.
+    try {
+        const importCandidates = idList.slice(0, Math.min(idList.length, maxImport * 3)).map((id) => ({
+            id,
+            media_type: mediaTypeById.get(id) || mediaType || 'movie',
+        }));
+        await ensureLibraryCardsForCandidates(importCandidates, { maxImport });
+    } catch (err) {
+        console.warn('[reco] library import skipped:', err.message);
+    }
+
     let hydrateQuery = supabase
         .from('movies_library')
         .select(RECO_MOVIE_SELECT)
-        .in('tmdb_id', Array.from(tmdbIdSet));
+        .in('tmdb_id', idList);
 
-    // Keep media-type requests honest — embedding IDs can otherwise hydrate as movies.
     if (mediaType === 'tv' || mediaType === 'movie') {
         hydrateQuery = hydrateQuery.eq('media_type', mediaType);
     }
@@ -763,6 +937,7 @@ function applyHardFilters(movies, context, filters) {
 
 function topGenreIds(genreWeights, count = 2) {
     return Object.entries(genreWeights || {})
+        .filter(([, w]) => Number(w) > 0)
         .sort((a, b) => b[1] - a[1])
         .slice(0, count)
         .map(([id]) => String(id));
@@ -913,6 +1088,11 @@ async function scoreAndRankMovies(supabase, movies, context, options = {}) {
 
         // Freshness layer: demote titles recently shown and ignored.
         if (suppress.has(tmdbId)) finalScore *= FRESHNESS_PENALTY;
+
+        const dislikePenalty = dislikedGenreOverlapPenalty(movie, context.dislikedGenreSets);
+        if (dislikePenalty > 0) finalScore *= (1 - dislikePenalty);
+
+        finalScore += hiddenGemBonus(movie);
 
         return {
             ...movie,
@@ -1086,6 +1266,11 @@ export async function getRecommendations(userId, cacheKey, options = {}) {
         seedTmdbId,
         seedMediaType,
         useEmbeddingPool: !seedTmdbId,
+        includeGemPool: !seedTmdbId && (
+            options.includeGemPool === true
+            || String(cacheKey).startsWith('for_you')
+        ),
+        maxImport: options.maxImport ?? 30,
     });
 
     // Keep "Because you loved X" on-theme: drop titles that don't share a core genre.
@@ -1209,17 +1394,50 @@ async function cachedSection(userId, cacheKey, builder, ttl = CACHE_TTL_HOURS) {
 /** "Because you loved X" — similar to the user's single highest-rated title. */
 export async function getBecauseYouLoved(userId, options = {}) {
     const supabase = getSupabaseAdmin();
-    const { data: ratings } = await supabase
-        .from('ratings').select('*').eq('user_id', userId)
-        .order('updated_at', { ascending: false }).limit(60);
+    const [
+        { data: ratings },
+        { data: likes },
+    ] = await Promise.all([
+        supabase.from('ratings').select('*').eq('user_id', userId)
+            .order('updated_at', { ascending: false }).limit(60),
+        supabase.from('user_liked_movies').select('movie_id, media_type, liked_at')
+            .eq('user_id', userId)
+            .order('liked_at', { ascending: false }).limit(20),
+    ]);
 
-    // Prefer a high score with identifiable genres (avoid seeding on untitled / empty DNA).
+    // Prefer a recent high score, then fall back to a recent like.
     let seed = null;
+    let seedMediaType = null;
     let best = 0;
-    (ratings || []).forEach((r) => {
+    const recentHigh = (ratings || []).slice(0, 15);
+    recentHigh.forEach((r) => {
         const o = computeOverallFromRatingRow(r);
-        if (o != null && o > best) { best = o; seed = String(r.movie_id); }
+        if (o != null && o >= 7 && o > best) {
+            best = o;
+            seed = String(r.movie_id);
+            seedMediaType = 'movie';
+        }
     });
+
+    // Sometimes prefer the most recent loved title over the all-time highest score.
+    if ((ratings || []).length && Math.random() < 0.45) {
+        const recent = recentHigh.find((r) => {
+            const o = computeOverallFromRatingRow(r);
+            return o != null && o >= 7;
+        });
+        if (recent) {
+            seed = String(recent.movie_id);
+            seedMediaType = 'movie';
+            best = computeOverallFromRatingRow(recent) || best;
+        }
+    }
+
+    if ((!seed || best < 7) && likes?.length) {
+        seed = String(likes[0].movie_id);
+        seedMediaType = likes[0].media_type === 'tv' ? 'tv' : 'movie';
+        best = 8;
+    }
+
     if (!seed || best < 7) return null;
 
     const { data: seedMovie } = await supabase
@@ -1231,7 +1449,7 @@ export async function getBecauseYouLoved(userId, options = {}) {
     const res = await getSimilarRecommendations(userId, seed, {
         limit: options.limit || 18,
         excludeRated: true,
-        mediaType: seedMovie?.media_type || null,
+        mediaType: seedMovie?.media_type || seedMediaType || null,
     });
     return {
         ...res,
@@ -1240,20 +1458,66 @@ export async function getBecauseYouLoved(userId, options = {}) {
     };
 }
 
-/** "Hidden Gems You Missed" — well-rated but low-popularity, matched to taste. */
+/** "Hidden Gems You Missed" — TMDB Discover + library gems, scored to taste. */
 export async function getHiddenGems(userId, options = {}) {
-    return cachedSection(userId, 'hidden_gems', async (supabase) => {
+    return cachedSection(userId, 'hidden_gems_v2', async (supabase) => {
         const context = await loadUserContext(supabase, userId);
-        const { data: pool } = await supabase
-            .from('movies_library').select(RECO_MOVIE_SELECT)
-            .eq('is_active', true)
-            .gte('vote_average', 7.3).gte('vote_count', 50).lte('popularity', 25)
-            .order('vote_average', { ascending: false }).limit(options.candidateLimit || 250);
+        const limit = options.limit || 18;
+
+        const [libPoolRes, tmdbGems] = await Promise.all([
+            supabase
+                .from('movies_library').select(RECO_MOVIE_SELECT)
+                .eq('is_active', true)
+                .gte('vote_average', 7.3).gte('vote_count', 50).lte('popularity', 40)
+                .order('vote_average', { ascending: false }).limit(options.candidateLimit || 200),
+            fetchTasteGemIdsFromTmdb(context, {
+                mediaType: options.mediaType || 'movie',
+                limit: 80,
+            }),
+        ]);
+
+        const idSet = new Set((libPoolRes.data || []).map((m) => String(m.tmdb_id)));
+        tmdbGems.forEach((g) => idSet.add(String(g.tmdbId)));
+
+        if (tmdbGems.length) {
+            try {
+                await ensureLibraryCardsForCandidates(
+                    tmdbGems.slice(0, 40).map((g) => ({
+                        id: g.tmdbId,
+                        media_type: g.mediaType || 'movie',
+                    })),
+                    { maxImport: 25 },
+                );
+            } catch (err) {
+                console.warn('[reco] hidden gems import:', err.message);
+            }
+        }
+
+        const { data: hydrated } = await supabase
+            .from('movies_library')
+            .select(RECO_MOVIE_SELECT)
+            .in('tmdb_id', Array.from(idSet).slice(0, 280));
+
+        const pool = (hydrated || [])
+            .map(normalizeLibraryItem)
+            .filter((m) => {
+                const pop = Number(m.popularity) || 0;
+                const vote = Number(m.vote_average) || 0;
+                return vote >= 7.2 && pop <= 45;
+            });
 
         const { items: candidates } = applyFiltersWithFallback(
-            (pool || []).map(normalizeLibraryItem), context, { excludeRated: true }, 6);
-        const items = await scoreAndRankMovies(supabase, candidates, context, { limit: options.limit || 18 });
-        return { cacheKey: 'hidden_gems', heading: 'Hidden Gems You Missed', items, meta: { count: items.length } };
+            pool, context, { excludeRated: true }, 6);
+        const items = await scoreAndRankMovies(supabase, candidates, context, {
+            limit,
+            skipDiversity: false,
+        });
+        return {
+            cacheKey: 'hidden_gems_v2',
+            heading: 'Hidden Gems You Missed',
+            items,
+            meta: { count: items.length },
+        };
     });
 }
 
@@ -1300,10 +1564,11 @@ export async function getOutsideComfortZone(userId, options = {}) {
 }
 
 export async function getForYouRecommendations(userId, options = {}) {
-    return getRecommendations(userId, 'for_you_v2', {
+    return getRecommendations(userId, 'for_you_v3', {
         requireOtt: options?.ottMode !== false,
         // seenIds always excludes watched/logged/liked/rated; excludeRated is redundant.
         excludeRated: true,
+        includeGemPool: true,
         ...options,
         // Watch list rails stay deterministic on Vercel (LLM optional opt-in only).
         useLlm: options?.useLlm === true,
