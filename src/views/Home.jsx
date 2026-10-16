@@ -272,9 +272,9 @@ const Home = () => {
 
   const mapTrailer = (m, officialUser = null) => {
     const feedAt =
+      m.featured_trailer?.published_at ||
       m.featured_trailer?.feed_at ||
       m.updated_at ||
-      m.featured_trailer?.published_at ||
       null;
     return {
       id: `trailer-${m.tmdb_id ?? m.id}`,
@@ -430,7 +430,7 @@ const Home = () => {
           ? Promise.all([
               // Use CDN cache (no fresh bust). Library /trailers scan is admin-only —
               // Home trailers come from trailer_posts via rss-trailers.
-              getRssTrailersFromEdge({ daysBack: 21, limit: 15 }),
+              getRssTrailersFromEdge({ daysBack: 14, limit: 15 }),
               getArticlesFromEdge({ limit: 20 }),
               getOfficialProfile(),
               getRecentPublicBlogs(12),

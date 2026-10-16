@@ -167,7 +167,7 @@ export default async function handler(request) {
         if (segment === 'rss-trailers') {
             const result = await fetchRssTrailers({
                 limit: parseInt(url.searchParams.get('limit') || '15', 10),
-                daysBack: parseInt(url.searchParams.get('daysBack') || '21', 10),
+                daysBack: Math.min(parseInt(url.searchParams.get('daysBack') || '14', 10) || 14, 14),
             });
             // CDN-friendly: Home no longer cache-busts; admin publish can wait ~2 min.
             return jsonResponse(result, 'public, s-maxage=120, stale-while-revalidate=300');

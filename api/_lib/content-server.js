@@ -1437,8 +1437,8 @@ export async function fetchRssTrailers({ limit = 15, daysBack = 21 } = {}) {
     since.setDate(since.getDate() - daysBack);
     const sinceIso = since.toISOString();
 
-    // Prefer recently approved / activated trailers (updated_at), not only YouTube publish date.
-    // Include either recently updated OR recently published so older teasers still appear after approve.
+    // Only genuinely new trailers: filter and sort by the YouTube publish date. updated_at is
+    // NOT used — backfills/re-saves bump it and would resurface old trailers on Home.
     const { data, error } = await supabase
         .from('trailer_posts')
         .select(`
@@ -1447,8 +1447,8 @@ export async function fetchRssTrailers({ limit = 15, daysBack = 21 } = {}) {
             published_at, youtube_key, trailer_name, trailer_type, trailer_url
         `)
         .eq('is_active', true)
-        .or(`updated_at.gte."${sinceIso}",published_at.gte."${sinceIso}"`)
-        .order('updated_at', { ascending: false })
+        .gte('published_at', sinceIso)
+        .order('published_at', { ascending: false })
         .limit(limit);
 
     if (error || !data?.length) return { data: [], total: 0 };
@@ -1460,7 +1460,7 @@ export async function fetchRssTrailers({ limit = 15, daysBack = 21 } = {}) {
 
     const items = eligible.map((p) => {
         const tmdbThumb = p.backdrop_path ? `https://image.tmdb.org/t/p/w780${p.backdrop_path}` : null;
-        const feedAt = p.updated_at || p.created_at || p.published_at;
+        const feedAt = p.published_at || p.created_at || p.updated_at;
         return {
             id: p.tmdb_id,
             tmdb_id: p.tmdb_id,
