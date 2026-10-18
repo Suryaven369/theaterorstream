@@ -1,8 +1,12 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { generateSlugWithId } from '../../lib/slugUtils';
+import { getUpcomingFromEdge } from '../../lib/contentEdgeApi';
 
 const FALLBACK_REGION_ORDER = ['IN', 'US', 'GB', 'CA', 'AU'];
+const COMING_SOON_COUNT = 6;
+// Nearest upcoming library titles to choose top-ups from (by popularity).
+const LIBRARY_POOL_SIZE = 60;
 
 function formatReleaseDate(dateStr) {
   if (!dateStr) return 'TBA';
@@ -54,6 +58,26 @@ function pickComingSoonMovies(cmsSections, regionCode, limit = 8) {
   return { movies: [], usedRegion: regionCode, isFallback: false };
 }
 
+/**
+ * Curated CMS picks for the region first, then top up with the most anticipated
+ * upcoming library titles so the widget always has a full list, shown by date.
+ */
+function fillFromLibrary(curated, libraryPool, limit) {
+  if (curated.length >= limit || !libraryPool.length) return curated.slice(0, limit);
+  const seen = new Set(curated.map((m) => String(m.tmdb_id)));
+  const extras = libraryPool
+    .filter((m) => m.poster_path && !seen.has(String(m.tmdb_id)))
+    .sort((a, b) => (Number(b.popularity) || 0) - (Number(a.popularity) || 0))
+    .slice(0, limit - curated.length);
+  return [...curated, ...extras].sort(
+    (a, b) => new Date(a.release_date) - new Date(b.release_date),
+  );
+}
+
+function posterSrc(path) {
+  return path.startsWith('http') ? path : `https://image.tmdb.org/t/p/w92${path}`;
+}
+
 function MovieRow({ movie }) {
   const year = movie.release_date?.split('-')[0] || '';
   const slug = generateSlugWithId(movie.title, movie.tmdb_id, year);
@@ -67,7 +91,7 @@ function MovieRow({ movie }) {
       <div className="flex-shrink-0 w-11 h-[4.125rem] rounded-md overflow-hidden bg-[var(--color-surface-subtle)]">
         {movie.poster_path ? (
           <img
-            src={`https://image.tmdb.org/t/p/w92${movie.poster_path}`}
+            src={posterSrc(movie.poster_path)}
             alt={movie.title}
             className="w-full h-full object-cover"
             loading="lazy"
@@ -136,10 +160,31 @@ export default function HomeComingSoonSidebar({
   selectedRegion,
   placement = 'rail',
 }) {
-  const { movies: comingSoonMovies, usedRegion, isFallback } = useMemo(
-    () => pickComingSoonMovies(cmsSections, selectedRegion.code, 7),
-    [cmsSections, selectedRegion.code],
-  );
+  const [libraryPool, setLibraryPool] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const today = new Date().toISOString().split('T')[0];
+    getUpcomingFromEdge({ minReleaseDate: today, limit: LIBRARY_POOL_SIZE })
+      .then(({ data }) => {
+        if (!cancelled) setLibraryPool(data || []);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const { movies: comingSoonMovies, usedRegion, isFallback } = useMemo(() => {
+    const picked = pickComingSoonMovies(cmsSections, selectedRegion.code, COMING_SOON_COUNT);
+    if (!libraryPool.length) return picked;
+    // With library top-ups available, prefer the selected region's own curated
+    // picks over another region's list.
+    const curated = picked.isFallback ? [] : picked.movies;
+    return {
+      movies: fillFromLibrary(curated, libraryPool, COMING_SOON_COUNT),
+      usedRegion: selectedRegion.code,
+      isFallback: false,
+    };
+  }, [cmsSections, selectedRegion.code, libraryPool]);
 
   if (placement === 'strip') {
     if (!comingSoonMovies.length) return null;
