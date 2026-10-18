@@ -10,7 +10,7 @@ import ReviewAnalysis from "../components/ReviewAnalysis";
 import TOSRating from "../components/TOSRating";
 import { FaStar, FaClock, FaCalendar, FaPlay } from "react-icons/fa";
 import { IoArrowBack } from "react-icons/io5";
-import UserRatingSystem from "../components/UserRatingSystem";
+import UserRatingSystem, { RatingModal } from "../components/UserRatingSystem";
 import { getMovieRatings, getUserRatingForMovie } from "../lib/supabase";
 import { computeOverallFromCategories } from "../lib/ratingUtils";
 import QuickLogModal from "../components/social/QuickLogModal";
@@ -268,6 +268,7 @@ const Details = () => {
   const [playVideo, setPlayVideo] = useState(false);
   const [playVideoId, setPlayVideoId] = useState("");
   const [logModalOpen, setLogModalOpen] = useState(false);
+  const [ratingModalOpen, setRatingModalOpen] = useState(false);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [logInitialRatings, setLogInitialRatings] = useState(null);
   const [logRatingAlreadySaved, setLogRatingAlreadySaved] = useState(false);
@@ -405,9 +406,7 @@ const Details = () => {
       navigate('/auth');
       return;
     }
-    setLogInitialRatings(null);
-    setLogRatingAlreadySaved(false);
-    setLogModalOpen(true);
+    setRatingModalOpen(true);
   };
 
   // Reviews section rated via RatingModal — open log sheet for diary only (rating already saved)
@@ -934,6 +933,16 @@ const Details = () => {
           }}
         />
       )}
+
+      <RatingModal
+        isOpen={ratingModalOpen}
+        onClose={() => setRatingModalOpen(false)}
+        movieId={movieId}
+        movieTitle={data?.title || data?.name}
+        onSubmitSuccess={handleRatingSubmitSuccess}
+        existingRating={userRating}
+        userId={user?.id}
+      />
 
       <QuickLogModal
         isOpen={logModalOpen}
