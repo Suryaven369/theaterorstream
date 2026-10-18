@@ -5,8 +5,10 @@ import { getUpcomingFromEdge } from '../../lib/contentEdgeApi';
 
 const FALLBACK_REGION_ORDER = ['IN', 'US', 'GB', 'CA', 'AU'];
 const COMING_SOON_COUNT = 6;
-// Nearest upcoming library titles to choose top-ups from (by popularity).
-const LIBRARY_POOL_SIZE = 60;
+// Upcoming library titles to rank by popularity: wide enough to reach the big
+// releases, capped to a horizon so far-off titles don't crowd out near ones.
+const LIBRARY_POOL_SIZE = 400;
+const HORIZON_DAYS = 120;
 
 function formatReleaseDate(dateStr) {
   if (!dateStr) return 'TBA';
@@ -59,19 +61,23 @@ function pickComingSoonMovies(cmsSections, regionCode, limit = 8) {
 }
 
 /**
- * Curated CMS picks for the region first, then top up with the most anticipated
- * upcoming library titles so the widget always has a full list, shown by date.
+ * Showcase only the most popular upcoming titles: curated CMS picks and library
+ * titles are ranked together by popularity, then shown by release date.
  */
-function fillFromLibrary(curated, libraryPool, limit) {
-  if (curated.length >= limit || !libraryPool.length) return curated.slice(0, limit);
-  const seen = new Set(curated.map((m) => String(m.tmdb_id)));
-  const extras = libraryPool
-    .filter((m) => m.poster_path && !seen.has(String(m.tmdb_id)))
-    .sort((a, b) => (Number(b.popularity) || 0) - (Number(a.popularity) || 0))
-    .slice(0, limit - curated.length);
-  return [...curated, ...extras].sort(
-    (a, b) => new Date(a.release_date) - new Date(b.release_date),
+function pickPopular(curated, libraryPool, limit) {
+  const poolPopularity = new Map(
+    libraryPool.map((m) => [String(m.tmdb_id), Number(m.popularity) || 0]),
   );
+  const byId = new Map();
+  [...curated, ...libraryPool].forEach((m) => {
+    const id = String(m.tmdb_id);
+    if (!m.poster_path || byId.has(id)) return;
+    byId.set(id, { ...m, popularity: poolPopularity.get(id) ?? (Number(m.popularity) || 0) });
+  });
+  return [...byId.values()]
+    .sort((a, b) => b.popularity - a.popularity)
+    .slice(0, limit)
+    .sort((a, b) => new Date(a.release_date) - new Date(b.release_date));
 }
 
 function posterSrc(path) {
@@ -167,20 +173,26 @@ export default function HomeComingSoonSidebar({
     const today = new Date().toISOString().split('T')[0];
     getUpcomingFromEdge({ minReleaseDate: today, limit: LIBRARY_POOL_SIZE })
       .then(({ data }) => {
-        if (!cancelled) setLibraryPool(data || []);
+        if (cancelled) return;
+        const horizon = new Date(Date.now() + HORIZON_DAYS * 86400000).toISOString().split('T')[0];
+        setLibraryPool((data || []).filter((m) => m.release_date && m.release_date <= horizon));
       })
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
 
   const { movies: comingSoonMovies, usedRegion, isFallback } = useMemo(() => {
-    const picked = pickComingSoonMovies(cmsSections, selectedRegion.code, COMING_SOON_COUNT);
+    const picked = pickComingSoonMovies(
+      cmsSections,
+      selectedRegion.code,
+      libraryPool.length ? Infinity : COMING_SOON_COUNT,
+    );
     if (!libraryPool.length) return picked;
     // With library top-ups available, prefer the selected region's own curated
     // picks over another region's list.
     const curated = picked.isFallback ? [] : picked.movies;
     return {
-      movies: fillFromLibrary(curated, libraryPool, COMING_SOON_COUNT),
+      movies: pickPopular(curated, libraryPool, COMING_SOON_COUNT),
       usedRegion: selectedRegion.code,
       isFallback: false,
     };
