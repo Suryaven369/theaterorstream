@@ -130,6 +130,10 @@ export function getMoodRecommendations(moodId, options = {}) {
     return fetchRecommendations(`/api/recommendations/mood/${encodeURIComponent(moodId)}`, options);
 }
 
+export function getDiscoverySection(section, options = {}) {
+    return fetchRecommendations(`/api/recommendations/discovery/${section}`, options);
+}
+
 /** Personalized similar titles (auth) — taste + TMDB neighbors. */
 export async function getPersonalizedSimilar(tmdbId, options = {}) {
     if (!tmdbId) return { data: [], meta: {}, error: 'missing_id' };
