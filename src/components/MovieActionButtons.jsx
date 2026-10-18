@@ -35,7 +35,7 @@ const ActionButton = ({ icon: Icon, activeIcon: ActiveIcon, label, isActive, onC
                 {isActive && ActiveIcon ? (
                     <ActiveIcon className={`text-lg sm:text-xl ${activeColor} drop-shadow-[0_0_6px_currentColor]`} />
                 ) : (
-                    <Icon className={`text-lg sm:text-xl ${isActive ? `${activeColor} drop-shadow-[0_0_6px_currentColor]` : inactiveColor} group-hover:text-white transition-colors`} />
+                    <Icon className={`text-lg sm:text-xl transition-colors ${isActive ? `${activeColor} drop-shadow-[0_0_6px_currentColor]` : `${inactiveColor} group-hover:text-white`}`} />
                 )}
                 {animating && (
                     <span className={`absolute inset-0 rounded-full ${activeBg}/30 animate-ping`} />
@@ -117,14 +117,15 @@ const MovieActionButtons = ({
 
     const handleLike = async () => {
         if (!isAuthenticated) return handleAuthRequired();
-        if (!status.isLiked) {
+        if (!status.isLiked && isMovie) {
             openLogModal('like');
             return;
         }
-        setStatus((prev) => ({ ...prev, isLiked: false }));
+        const next = !status.isLiked;
+        setStatus((prev) => ({ ...prev, isLiked: next }));
         const result = await toggleLikedMovie(user.id, movieId, movieTitle, posterPath, mediaType);
         if (!result.success) {
-            setStatus((prev) => ({ ...prev, isLiked: true }));
+            setStatus((prev) => ({ ...prev, isLiked: !next }));
         } else {
             setStatus((prev) => ({ ...prev, isLiked: result.added }));
         }
@@ -132,14 +133,15 @@ const MovieActionButtons = ({
 
     const handleWatched = async () => {
         if (!isAuthenticated) return handleAuthRequired();
-        if (!status.isWatched) {
+        if (!status.isWatched && isMovie) {
             openLogModal('watched');
             return;
         }
-        setStatus((prev) => ({ ...prev, isWatched: false }));
+        const next = !status.isWatched;
+        setStatus((prev) => ({ ...prev, isWatched: next }));
         const result = await toggleWatchedMovie(user.id, movieId, movieTitle, posterPath, mediaType);
         if (!result.success) {
-            setStatus((prev) => ({ ...prev, isWatched: true }));
+            setStatus((prev) => ({ ...prev, isWatched: !next }));
         } else {
             setStatus((prev) => ({ ...prev, isWatched: result.added }));
         }
