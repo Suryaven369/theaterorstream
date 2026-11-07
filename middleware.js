@@ -3,9 +3,6 @@ import { createClient } from '@supabase/supabase-js';
 export const config = {
     matcher: [
         '/collection/:slug*',
-        '/boards/:slug*',
-        '/:username/boards/:slug*',
-        '/blog/:id*',
         '/movies/:slug*',
         '/tv/:slug*',
         '/:username/profile',
@@ -305,65 +302,6 @@ async function handlePost(supabase, pathname, pageUrl) {
     return ogHtml({ title, description, image, url: pageUrl, type: 'article' });
 }
 
-async function handleBlog(supabase, pathname, pageUrl) {
-    const parts = pathname.split('/').filter(Boolean);
-    if (parts[0] !== 'blog' || !parts[1]) return null;
-    const id = parts[1];
-
-    const { data: blog } = await supabase
-        .from('blog_posts')
-        .select('title, content, cover_image')
-        .eq('id', id)
-        .eq('visibility', 'public')
-        .maybeSingle();
-
-    if (!blog) return null;
-
-    const desc = String(blog.content || '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 180);
-    const img = toPublicStorageUrl(blog.cover_image) || DEFAULT_OG_IMAGE;
-
-    const articleLd = {
-        '@context': 'https://schema.org',
-        '@type': 'Article',
-        headline: blog.title,
-        description: desc,
-        image: img,
-        url: pageUrl,
-        mainEntityOfPage: pageUrl,
-        publisher: {
-            '@type': 'Organization',
-            name: 'TheaterOrStream',
-            url: SITE,
-        },
-    };
-
-    return ogHtml({
-        title: blog.title,
-        description: desc,
-        image: img,
-        url: pageUrl,
-        type: 'article',
-        extra: `<script type="application/ld+json">${JSON.stringify(articleLd).replace(/</g, '\\u003c')}</script>`,
-    });
-}
-
-const COLLECTION_UUID_RE =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-const COLLECTION_OG_SELECT = `
-    id, name, description, is_public, is_watch_party, cover_image, banner_image, user_id,
-    collection_movies (
-      movie_id,
-      movie_title,
-      poster_path,
-      media_type
-    )
-`;
-
 function buildCollectionOgDescription(collection, movies, username) {
     const movieCount = movies.length;
     const about = String(collection.description || '').trim();
@@ -389,70 +327,13 @@ async function handleCollection(supabase, pathname, pageUrl, searchParams) {
     const parts = pathname.split('/').filter(Boolean);
     let slug = null;
     let ownerUsername = null;
-    let isBoard = false;
 
     if (parts[0] === 'collection' && parts[1]) {
         slug = decodeURIComponent(parts[1]);
         const u = (searchParams?.get('u') || '').trim().replace(/^@/, '');
         if (u && u !== 'user') ownerUsername = u;
-    } else if (parts[0] === 'boards' && parts[1]) {
-        slug = parts[1];
-        isBoard = true;
-    } else if (parts[1] === 'boards' && parts[2]) {
-        ownerUsername = parts[0];
-        slug = parts[2];
-        isBoard = true;
     }
     if (!slug) return null;
-
-    if (isBoard) {
-        let ownerId = null;
-        if (ownerUsername) {
-            const { data: profile } = await supabase
-                .from('user_profiles')
-                .select('id')
-                .eq('username', ownerUsername)
-                .maybeSingle();
-            if (!profile) return null;
-            ownerId = profile.id;
-        }
-
-        let query = supabase
-            .from('boards')
-            .select('*, board_items(item_id, title, image_path, item_type)')
-            .eq('is_public', true)
-            .eq('slug', slug)
-            .limit(1);
-        if (ownerId) query = query.eq('user_id', ownerId);
-
-        const { data: rows } = await query;
-        const board = rows?.[0];
-        if (!board) return null;
-
-        let username = ownerUsername || 'user';
-        if (board.user_id && !ownerUsername) {
-            const { data: profile } = await supabase
-                .from('user_profiles')
-                .select('username')
-                .eq('id', board.user_id)
-                .maybeSingle();
-            username = profile?.username || 'user';
-        }
-
-        const items = board.board_items || [];
-        const img = toPublicStorageUrl(board.banner_image)
-            || toPublicStorageUrl(board.cover_image)
-            || (items[0]?.image_path ? tmdbImage(items[0].image_path, 'w780') : null)
-            || DEFAULT_OG_IMAGE;
-
-        return ogHtml({
-            title: `${board.title} · Board`,
-            description: board.description || `A cinematic board of ${board.items_count || items.length} titles by @${username}`,
-            image: img,
-            url: pageUrl,
-            type: 'website',
-        });
-    }
 
     // User lists — share URLs use /collection/{uuid}?u=owner (preferred) or name slug
     let collection = null;
@@ -578,13 +459,7 @@ export default async function middleware(request) {
             html = await handleProfile(supabase, pathname, pageUrl);
         } else if (pathname.startsWith('/post/')) {
             html = await handlePost(supabase, pathname, pageUrl);
-        } else if (pathname.startsWith('/blog/')) {
-            html = await handleBlog(supabase, pathname, pageUrl);
-        } else if (
-            pathname.startsWith('/collection/') ||
-            pathname.startsWith('/boards/') ||
-            /\/[^/]+\/boards\/[^/]+\/?$/.test(pathname)
-        ) {
+        } else if (pathname.startsWith('/collection/')) {
             html = await handleCollection(supabase, pathname, pageUrl, url.searchParams);
         }
 

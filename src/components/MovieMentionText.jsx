@@ -1,37 +1,14 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { parseMentions } from "../lib/movieMentions";
-import { splitTextWithHashtags } from "../lib/hashtags";
 import { generateSlugWithId } from "../lib/slugUtils";
 import { resolveTmdbImageUrl } from "../utils/imageHelper";
 
 const TMDB_SIZE = { sm: "w92", md: "w185", lg: "w342" };
 const POSTER_CLASS = { sm: "w-5 h-7", md: "w-10 h-14", lg: "w-20 h-28" };
 
-function renderTextWithHashtags(text, keyPrefix) {
-  return splitTextWithHashtags(text).map((part, j) => {
-    if (part.type === "hashtag") {
-      return (
-        <Link
-          key={`${keyPrefix}-h-${j}`}
-          to={`/tag/${part.slug}`}
-          className="font-medium text-orange-400 hover:text-orange-300"
-          onClick={(e) => e.stopPropagation()}
-        >
-          #{part.displayName}
-        </Link>
-      );
-    }
-    return (
-      <span key={`${keyPrefix}-t-${j}`} className="whitespace-pre-wrap break-words">
-        {part.value}
-      </span>
-    );
-  });
-}
-
 /**
- * Renders post/blog content with movie/@ mentions and clickable #hashtags.
+ * Renders post content with movie/@ mentions.
  */
 const MovieMentionText = ({ content, className = "" }) => {
   const segments = parseMentions(content);
@@ -41,9 +18,9 @@ const MovieMentionText = ({ content, className = "" }) => {
       {segments.map((seg, i) => {
         if (seg.type === "text") {
           return (
-            <React.Fragment key={i}>
-              {renderTextWithHashtags(seg.value, i)}
-            </React.Fragment>
+            <span key={i} className="whitespace-pre-wrap break-words">
+              {seg.value}
+            </span>
           );
         }
 

@@ -80,7 +80,7 @@ const ActivityFeedPage = () => {
                         {isOwnProfile ? 'Your Activity' : `@${username}'s Activity`}
                     </h1>
                     {isOwnProfile && (
-                        <Link to="/feed" className="text-sm text-yellow-400 hover:text-yellow-300">
+                        <Link to="/?tab=feed" className="text-sm text-yellow-400 hover:text-yellow-300">
                             Following feed →
                         </Link>
                     )}

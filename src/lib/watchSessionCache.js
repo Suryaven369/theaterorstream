@@ -56,6 +56,40 @@ export function removeFromWatchSessionCache(userId, tmdbId) {
     });
 }
 
+/**
+ * Call when the user marks a title watched / liked / disliked / logged / rated
+ * anywhere in the app, so the Watch tab never shows it again this session.
+ */
+export function markSeenInWatchCache(tmdbId) {
+    if (!entry?.userId || tmdbId == null) return;
+    removeFromWatchSessionCache(entry.userId, tmdbId);
+    const mood = entry?.payload?.moodRow;
+    if (mood?.items) {
+        entry.payload.moodRow = {
+            ...mood,
+            items: mood.items.filter((m) => String(m.tmdb_id ?? m.id) !== String(tmdbId)),
+        };
+    }
+}
+
 export function clearWatchSessionCache() {
     entry = null;
+    inflight.clear();
+}
+
+// In-flight request sharing: a remount (StrictMode, tab switch mid-load,
+// auth refresh) attaches to the request already running instead of firing
+// the same API call again. Entries drop once settled — results live in the
+// session cache above.
+const inflight = new Map();
+
+export function sharedWatchRequest(key, factory) {
+    if (inflight.has(key)) return inflight.get(key);
+    const promise = Promise.resolve()
+        .then(factory)
+        .finally(() => {
+            if (inflight.get(key) === promise) inflight.delete(key);
+        });
+    inflight.set(key, promise);
+    return promise;
 }

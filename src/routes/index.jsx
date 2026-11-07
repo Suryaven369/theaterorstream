@@ -23,30 +23,20 @@ const ProfilePage = lazyPage(() => import("../views/ProfilePage"));
 const WatchlistPage = lazyPage(() => import("../views/WatchlistPage"));
 const CollectionDetails = lazyPage(() => import("../views/CollectionDetails"));
 const CollectionsPage = lazyPage(() => import("../views/CollectionsPage"));
-const BoardsExplorePage = lazyPage(() => import("../views/BoardsExplorePage"));
-const BoardDetailsPage = lazyPage(() => import("../views/BoardDetailsPage"));
-const UserBoardsPage = lazyPage(() => import("../views/UserBoardsPage"));
-const BlogsPage = lazyPage(() => import("../views/BlogsPage"));
-const BlogDetails = lazyPage(() => import("../views/BlogDetails"));
 const PostDetails = lazyPage(() => import("../views/PostDetails"));
 const ThreadPage = lazyPage(() => import("../views/ThreadPage"));
 const WatchedMoviesPage = lazyPage(() => import("../views/WatchedMoviesPage"));
 const ActivityFeedPage = lazyPage(() => import("../views/ActivityFeedPage"));
 const DiaryPage = lazyPage(() => import("../views/DiaryPage"));
-const FeedPage = lazyPage(() => import("../views/FeedPage"));
 const WatchPage = lazyPage(() => import("../views/WatchPage"));
 const TasteSettingsPage = lazyPage(() => import("../views/TasteSettingsPage"));
 const TasteOnboardingPage = lazyPage(() => import("../views/TasteOnboardingPage"));
 const TasteMapPage = lazyPage(() => import("../views/TasteMapPage"));
 const SettingsPage = lazyPage(() => import("../views/SettingsPage"));
-const AchievementsPage = lazyPage(() => import("../views/AchievementsPage"));
-const HashtagPage = lazyPage(() => import("../views/HashtagPage"));
-const TagsDiscoverPage = lazyPage(() => import("../views/TagsDiscoverPage"));
 const ParentGuideBrowsePage = lazyPage(() => import("../views/ParentGuideBrowsePage"));
 const AdminSectionsPage = lazyPage(() => import("../views/admin/AdminSectionsPage"));
 const AdminTrailersPage = lazyPage(() => import("../views/admin/AdminTrailersPage"));
 const AdminArticlesPage = lazyPage(() => import("../views/admin/AdminArticlesPage"));
-const AdminNewsIntelPage = lazyPage(() => import("../views/admin/AdminNewsIntelPage"));
 const AdminCollectionsPage = lazyPage(() => import("../views/admin/AdminCollectionsPage"));
 const AdminFranchiseListsPage = lazyPage(() => import("../views/admin/AdminFranchiseListsPage"));
 const AdminSettingsPage = lazyPage(() => import("../views/admin/AdminSettingsPage"));
@@ -110,10 +100,6 @@ const router = createBrowserRouter([
         element: <Navigate to="/?tab=explore" replace />,
       },
       {
-        path: "feed",
-        element: <FeedPage />,
-      },
-      {
         path: "search",
         element: <Search />,
       },
@@ -143,10 +129,6 @@ const router = createBrowserRouter([
         element: <CollectionsPage />,
       },
       {
-        path: ":username/blogs",
-        element: <BlogsPage />,
-      },
-      {
         path: ":username/watched",
         element: <WatchedMoviesPage />,
       },
@@ -158,34 +140,10 @@ const router = createBrowserRouter([
         path: ":username/diary",
         element: <DiaryPage />,
       },
-      {
-        path: ":username/achievements",
-        element: <AchievementsPage />,
-      },
       // Public shareable pages (OG crawlers + guests can open shared links)
-      {
-        path: "boards",
-        element: <BoardsExplorePage />,
-      },
-      {
-        path: "boards/:slug",
-        element: <BoardDetailsPage />,
-      },
-      {
-        path: ":username/boards/:slug",
-        element: <BoardDetailsPage />,
-      },
-      {
-        path: ":username/boards",
-        element: <UserBoardsPage />,
-      },
       {
         path: "collection/:slug",
         element: <CollectionDetails />,
-      },
-      {
-        path: "blog/:id",
-        element: <BlogDetails />,
       },
       {
         path: "thread/:feedId",
@@ -194,14 +152,6 @@ const router = createBrowserRouter([
       {
         path: "post/:id",
         element: <PostDetails />,
-      },
-      {
-        path: "tag/:slug",
-        element: <HashtagPage />,
-      },
-      {
-        path: "tags",
-        element: <TagsDiscoverPage />,
       },
       {
         path: "parent-guide",
@@ -227,10 +177,6 @@ const router = createBrowserRouter([
           {
             path: "settings",
             element: <SettingsPage />,
-          },
-          {
-            path: "achievements",
-            element: <AchievementsPage />,
           },
           {
             path: "settings/taste",
@@ -285,10 +231,6 @@ const router = createBrowserRouter([
             element: <AdminPanel initialTab="library" />,
           },
           {
-            path: "legacy",
-            element: <AdminPanel />,
-          },
-          {
             path: "pipeline",
             element: <AdminControlTowerPage />,
           },
@@ -307,10 +249,6 @@ const router = createBrowserRouter([
           {
             path: "articles",
             element: <AdminArticlesPage />,
-          },
-          {
-            path: "news-intel",
-            element: <AdminNewsIntelPage />,
           },
           {
             path: "collections",

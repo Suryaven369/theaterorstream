@@ -4,14 +4,10 @@ import Card from '../Card';
 import HomeRegionPicker from './HomeRegionPicker';
 import HomeComingSoonSidebar from './HomeComingSoonSidebar';
 import HomeExploreBrowseSidebar from './HomeExploreBrowseSidebar';
-import {
-  ExploreCollectionsPanel,
-  ExploreBoardsPanel,
-  ExploreBlogsPanel,
-} from './ExplorePanels';
+import { ExploreCollectionsPanel } from './ExplorePanels';
 
 const FALLBACK_REGION_ORDER = ['IN', 'US', 'GB', 'CA', 'AU'];
-const VALID_PANELS = new Set(['feed', 'collections', 'boards', 'blogs']);
+const VALID_PANELS = new Set(['feed', 'collections']);
 
 /** Classify a CMS row for My Feed filtering. */
 function browseSectionKind(section) {
@@ -103,7 +99,7 @@ function panelFromSearch(searchParams) {
 
 /**
  * Explore tab — CMS movie rails + browse sidebar + coming soon.
- * Left nav switches Collections / Boards / Blogs in the main column (same page).
+ * Left nav switches between Feed and Collections in the main column (same page).
  */
 export default function HomeBrowseTab({
   selectedRegion,
@@ -161,14 +157,6 @@ export default function HomeBrowseTab({
       title: 'Collections',
       subtitle: null,
     },
-    boards: {
-      title: 'Boards',
-      subtitle: 'Discover cinematic boards in one place',
-    },
-    blogs: {
-      title: 'Blogs',
-      subtitle: 'Long-form posts from the community',
-    },
   };
   const header = panelCopy[activePanel] || panelCopy.feed;
 
@@ -213,8 +201,6 @@ export default function HomeBrowseTab({
 
             <div className="flex-1 min-w-0 space-y-7 sm:space-y-10 lg:space-y-12">
               {activePanel === 'collections' && <ExploreCollectionsPanel />}
-              {activePanel === 'boards' && <ExploreBoardsPanel />}
-              {activePanel === 'blogs' && <ExploreBlogsPanel />}
 
               {activePanel === 'feed' && (
                 <>

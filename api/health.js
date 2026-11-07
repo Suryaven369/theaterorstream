@@ -49,6 +49,7 @@ export default async function handler(req, res) {
             hasAnon,
             hasServiceRole,
             serviceRoleLen,
+            hasGptKey: !!(process.env.GPT_KEY || process.env.OPENAI_API_KEY),
             hasMistKey: !!(process.env.MIST_API_KEY || process.env.MISTRAL_API_KEY),
             hasTmdb: !!process.env.TMDB_ACCESS_TOKEN,
         },

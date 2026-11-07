@@ -2,18 +2,14 @@ import React from 'react';
 import {
   HiOutlineHome,
   HiOutlineBookmark,
-  HiOutlineRectangleStack,
-  HiOutlineBookOpen,
 } from 'react-icons/hi2';
 
 /**
- * Explore left rail — Feed + Collections / Boards / Blogs (in-page panels).
+ * Explore left rail — Feed + Collections (in-page panels).
  */
 const NAV_ITEMS = [
   { id: 'feed', label: 'Feed', icon: HiOutlineHome },
   { id: 'collections', label: 'Collections', short: 'Lists', icon: HiOutlineBookmark },
-  { id: 'boards', label: 'Boards', icon: HiOutlineRectangleStack },
-  { id: 'blogs', label: 'Blogs', icon: HiOutlineBookOpen },
 ];
 
 function itemClass(active) {
@@ -42,7 +38,7 @@ export default function HomeExploreBrowseSidebar({
     return (
       <div className="lg:hidden sticky top-[calc(4.25rem+env(safe-area-inset-top,0px))] z-30 -mx-3 sm:-mx-6 mb-4 px-3 sm:px-6 py-2 bg-[#0a0a0a]/90 backdrop-blur-md border-b border-white/[0.06]">
         <div
-          className="grid grid-cols-4 gap-1 p-1 rounded-2xl bg-white/[0.04] border border-white/[0.06]"
+          className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-white/[0.04] border border-white/[0.06]"
           role="tablist"
           aria-label="Explore sections"
         >

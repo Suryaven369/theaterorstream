@@ -11,7 +11,6 @@ import VerifiedBadge from '../VerifiedBadge';
 import RedditActionBar from './RedditActionBar';
 import RedditMediaFrame from './RedditMediaFrame';
 import PostMediaCarousel from './PostMediaCarousel';
-import FeedPoll from './FeedPoll';
 import { feedArticleClass } from './feedItemShell';
 import { getAvatarUrl } from '../../lib/storagePublicUrl';
 import { collectionPublicPath } from '../../lib/supabase';
@@ -69,8 +68,6 @@ export default function FeedPostCard({
   onShare,
   onOpenComments,
   onOpenThread,
-  onVotePoll,
-  pollVotingId = null,
   variant = 'feed',
 }) {
   const location = useLocation();
@@ -286,16 +283,6 @@ export default function FeedPostCard({
             )
           )}
         </>
-      )}
-
-      {item.postType === 'poll' && item.pollData && (
-        <FeedPoll
-          pollData={item.pollData}
-          userVote={item.userPollVote}
-          voting={pollVotingId === item.id}
-          disabled={!currentUserId}
-          onVote={(optionIndex) => onVotePoll?.(item, optionIndex)}
-        />
       )}
 
       {item.movie && (item.movie.poster || item.movie.backdrop || item.movie.title) && (

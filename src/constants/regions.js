@@ -1,3 +1,5 @@
+import { getUserRegionCode, setManualRegion } from '../lib/userRegion.js';
+
 /** Content-region options for My Feed / upcoming filtering. */
 export const REGIONS = [
   { code: 'IN', name: 'India', flag: '🇮🇳' },
@@ -12,15 +14,13 @@ export const REGIONS = [
   { code: 'BR', name: 'Brazil', flag: '🇧🇷' },
 ];
 
+/** The viewer's region: manual pick, else the auto-detected country (see lib/userRegion). */
 export function getSavedRegion() {
-  const saved = localStorage.getItem('selectedRegion');
-  if (saved) {
-    const found = REGIONS.find((r) => r.code === saved);
-    if (found) return found;
-  }
-  return REGIONS[0];
+  const code = getUserRegionCode();
+  return REGIONS.find((r) => r.code === code) || REGIONS[0];
 }
 
+/** A region chosen in a picker is remembered and beats auto-detection. */
 export function persistRegion(region) {
-  if (region?.code) localStorage.setItem('selectedRegion', region.code);
+  if (region?.code) setManualRegion(region.code);
 }

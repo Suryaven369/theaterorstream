@@ -3,7 +3,7 @@ import { useLocation, useNavigate, Link } from "react-router-dom";
 import { IoSearchOutline, IoClose } from "react-icons/io5";
 import { FaFolderOpen, FaFilm } from "react-icons/fa";
 import Card from "../components/Card";
-import { searchProfiles, searchPublicCollections, searchPublicBoards, collectionPublicPath } from "../lib/supabase";
+import { searchProfiles, searchPublicCollections, collectionPublicPath } from "../lib/supabase";
 import {
   searchContentFromEdge,
   searchPeopleFromEdge,
@@ -14,7 +14,6 @@ import {
   removeRecentSearch,
   clearRecentSearches,
 } from "../lib/searchHistory";
-import { searchHashtags } from "../lib/hashtagApi";
 import { SEARCH_GENRES, SEARCH_THEMES } from "../constants/searchCategories";
 import { fetchPublicBrowseThemes } from "../lib/browseThemes";
 
@@ -23,10 +22,8 @@ const SEARCH_PAGE_SIZE = 30;
 const TABS = [
   { id: "content", label: "Content" },
   { id: "collections", label: "Collections" },
-  { id: "boards", label: "Boards" },
   { id: "cast", label: "Cast & Crew" },
   { id: "users", label: "Users" },
-  { id: "tags", label: "Hashtags" },
 ];
 
 const AVATARS = {
@@ -87,28 +84,6 @@ function CollectionRow({ collection }) {
   );
 }
 
-function BoardRow({ board }) {
-  const username = board.owner?.username;
-  const href = username ? `/${username}/boards/${board.slug}` : `/boards/${board.slug}`;
-  return (
-    <Link
-      to={href}
-      className="flex items-center gap-4 px-4 py-3 rounded-xl hover:bg-white/[0.04] transition-colors group"
-    >
-      <div className="w-12 h-12 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0 text-lg">
-        🎬
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="font-medium text-white group-hover:text-amber-300 truncate">{board.title}</p>
-        <p className="text-sm text-white/40 truncate">
-          {username ? `@${username}` : "Public board"}
-          {board.description ? ` · ${board.description}` : ""}
-        </p>
-      </div>
-    </Link>
-  );
-}
-
 function CastRow({ person, onSelect }) {
   const photo = person.profile_path
     ? `https://image.tmdb.org/t/p/w92${person.profile_path}`
@@ -154,10 +129,8 @@ const Search = () => {
 
   const [movieData, setMovieData] = useState([]);
   const [collections, setCollections] = useState([]);
-  const [boards, setBoards] = useState([]);
   const [castCrew, setCastCrew] = useState([]);
   const [profiles, setProfiles] = useState([]);
-  const [hashtags, setHashtags] = useState([]);
   const [loading, setLoading] = useState(false);
   const [tabLoading, setTabLoading] = useState(false);
   const [moviePage, setMoviePage] = useState(1);
@@ -165,9 +138,8 @@ const Search = () => {
   const [resultTotal, setResultTotal] = useState(0);
   const [browseThemes, setBrowseThemes] = useState(SEARCH_THEMES);
 
-  const canSearch = query.trim().length >= 2 || query.trim().startsWith("#");
+  const canSearch = query.trim().length >= 2;
   const showRecent = !canSearch;
-  const isHashtagQuery = query.trim().startsWith("#") || activeTab === "tags";
 
   useEffect(() => {
     setQuery(urlQuery);
@@ -200,35 +172,14 @@ const Search = () => {
     [navigate],
   );
 
-  // Live content / hashtag search as the user types
+  // Live content search as the user types
   useEffect(() => {
     const q = query.trim();
-    if (q.startsWith("#") || activeTab === "tags") {
-      const tagQ = q.replace(/^#/, "");
-      const id = ++reqId.current;
-      setLoading(true);
-      const timer = setTimeout(async () => {
-        try {
-          const rows = await searchHashtags(tagQ, { limit: 24 });
-          if (id !== reqId.current) return;
-          setHashtags(rows);
-          setMovieData([]);
-        } catch {
-          if (id === reqId.current) setHashtags([]);
-        } finally {
-          if (id === reqId.current) setLoading(false);
-        }
-      }, 120);
-      return () => clearTimeout(timer);
-    }
-
     if (q.length < 2) {
       setMovieData([]);
       setCollections([]);
-      setBoards([]);
       setCastCrew([]);
       setProfiles([]);
-      setHashtags([]);
       setLoading(false);
       return undefined;
     }
@@ -245,8 +196,6 @@ const Search = () => {
         setMovieData(rows);
         setResultTotal(Number(contentRes.total) || rows.length);
         setHasMore(rows.length >= 30);
-        const tagRows = await searchHashtags(q, { limit: 6 });
-        if (id === reqId.current) setHashtags(tagRows);
       } catch (err) {
         console.error("Search failed:", err);
         if (id === reqId.current) setMovieData([]);
@@ -261,7 +210,7 @@ const Search = () => {
   // Lazy-load secondary tabs only when opened
   useEffect(() => {
     const q = query.trim();
-    if (q.length < 2 || activeTab === "content" || activeTab === "tags") return undefined;
+    if (q.length < 2 || activeTab === "content") return undefined;
 
     let cancelled = false;
     setTabLoading(true);
@@ -271,9 +220,6 @@ const Search = () => {
         if (activeTab === "collections") {
           const data = await searchPublicCollections(q, 20);
           if (!cancelled) setCollections(data);
-        } else if (activeTab === "boards") {
-          const data = await searchPublicBoards(q, 20);
-          if (!cancelled) setBoards(data);
         } else if (activeTab === "users") {
           const data = await searchProfiles(q, 20);
           if (!cancelled) setProfiles(data);
@@ -345,12 +291,9 @@ const Search = () => {
   };
 
   const showSpinner =
-    ((activeTab === "content" || activeTab === "tags" || isHashtagQuery) &&
-      loading &&
-      !(isHashtagQuery || activeTab === "tags" ? hashtags.length : movieData.length)) ||
-    (activeTab !== "content" && activeTab !== "tags" && tabLoading &&
+    (activeTab === "content" && loading && !movieData.length) ||
+    (activeTab !== "content" && tabLoading &&
       ((activeTab === "collections" && !collections.length) ||
-        (activeTab === "boards" && !boards.length) ||
         (activeTab === "cast" && !castCrew.length) ||
         (activeTab === "users" && !profiles.length)));
 
@@ -376,7 +319,7 @@ const Search = () => {
               type="text"
               value={query}
               onChange={(e) => pushQuery(e.target.value)}
-              placeholder="Search movies, #hashtags, actors…"
+              placeholder="Search movies, shows, actors…"
               className="search-input-bar w-full bg-[#1a1a1a] border border-white/[0.08] rounded-2xl pl-14 pr-14 py-4 sm:py-5 text-base sm:text-lg text-white placeholder:text-white/35 focus:outline-none focus:border-white/20 transition-colors"
               autoComplete="off"
               spellCheck={false}
@@ -509,54 +452,8 @@ const Search = () => {
                 </div>
               )}
 
-              {(isHashtagQuery || activeTab === "tags") && !showSpinner && (
-                <section className="mb-8">
-                  <p className="text-xs text-white/35 mb-4 uppercase tracking-wider">
-                    Hashtags
-                  </p>
-                  <div className="space-y-2">
-                    {hashtags.map((tag) => (
-                      <Link
-                        key={tag.id || tag.slug}
-                        to={`/tag/${tag.slug}`}
-                        className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-[#1a1a1a] border border-white/[0.08] hover:border-orange-500/40 transition-colors"
-                      >
-                        <span>
-                          <span className="text-orange-400 font-semibold">#{tag.display_name}</span>
-                          {tag.category && tag.category !== "general" && (
-                            <span className="ml-2 text-[10px] uppercase text-white/30">{tag.category}</span>
-                          )}
-                        </span>
-                        <span className="text-xs text-white/35">
-                          {tag.posts_count || 0} posts
-                        </span>
-                      </Link>
-                    ))}
-                    {!hashtags.length && (
-                      <p className="text-sm text-white/35 py-8">No matching hashtags. Try #SciFi or browse <Link to="/tags" className="text-orange-400">all tags</Link>.</p>
-                    )}
-                  </div>
-                </section>
-              )}
-
-              {activeTab === "content" && !isHashtagQuery && !showSpinner && (
+              {activeTab === "content" && !showSpinner && (
                 <section>
-                  {hashtags.length > 0 && (
-                    <div className="mb-6">
-                      <p className="text-xs text-white/35 mb-3 uppercase tracking-wider">Related hashtags</p>
-                      <div className="flex flex-wrap gap-2">
-                        {hashtags.map((tag) => (
-                          <Link
-                            key={tag.id || tag.slug}
-                            to={`/tag/${tag.slug}`}
-                            className="px-3 py-1.5 rounded-full text-sm bg-white/5 border border-white/10 text-orange-300 hover:border-orange-500/40"
-                          >
-                            #{tag.display_name}
-                          </Link>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                   {movieData.length > 0 ? (
                     <>
                       <p className="text-xs text-white/35 mb-4 uppercase tracking-wider">
@@ -611,16 +508,6 @@ const Search = () => {
                     collections.map((c) => <CollectionRow key={c.id} collection={c} />)
                   ) : (
                     <EmptyState icon="📁" title="No public lists" subtitle="Collections must be public to appear here." />
-                  )}
-                </section>
-              )}
-
-              {activeTab === "boards" && !showSpinner && (
-                <section className="divide-y divide-white/[0.06] rounded-xl border border-white/[0.06] overflow-hidden bg-[#111]/50">
-                  {boards.length > 0 ? (
-                    boards.map((b) => <BoardRow key={b.id} board={b} />)
-                  ) : (
-                    <EmptyState icon="🎬" title="No public boards" subtitle="Boards must be public to appear here." />
                   )}
                 </section>
               )}

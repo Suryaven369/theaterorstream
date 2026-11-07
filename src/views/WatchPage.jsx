@@ -8,16 +8,17 @@ import {
     getFamilyRecommendations,
     getMoodRecommendations,
     getTasteDashboard,
-    getOnePerfectMovie,
     getDiscoverySection,
+    getStreamingServices,
+    getRegionProviders,
 } from '../lib/recommendationApi';
 import { DISCOVERY_MOODS } from '../constants/discoveryTaste';
-import { OTT_PROVIDERS } from '../constants/searchCategories';
+import { REGIONS } from '../constants/regions';
 import SpotlightHero from '../components/discover/SpotlightHero';
 import MoodPills from '../components/discover/MoodPills';
 import RecommendationRow from '../components/discover/RecommendationRow';
 import TasteDashboardPanel from '../components/discover/TasteDashboardPanel';
-import OnePerfectTonight from '../components/discover/OnePerfectTonight';
+import TonightPicker from '../components/discover/TonightPicker';
 import FollowingFeed from '../components/discover/FollowingFeed';
 import SignInGate from '../components/SignInGate';
 import { useAuth } from '../context/AuthContext';
@@ -25,7 +26,9 @@ import {
     getWatchSessionCache,
     setWatchSessionCache,
     removeFromWatchSessionCache,
+    sharedWatchRequest,
 } from '../lib/watchSessionCache';
+import { getUserRegionCode } from '../lib/userRegion';
 
 const initialRow = { items: [], loading: true };
 const readyRow = (items = [], meta = {}) => ({ items, loading: false, meta });
@@ -34,16 +37,16 @@ const WATCH_RAIL =
     'w-full max-w-[842px] sm:max-w-[1080px] lg:max-w-[1170px]';
 
 const MOOD_IDS = new Set(DISCOVERY_MOODS.map((m) => m.id));
-const OTT_IDS = new Set(OTT_PROVIDERS.map((p) => String(p.id)));
 
 function parseMoodParam(raw) {
     return raw && MOOD_IDS.has(raw) ? raw : null;
 }
 
+/** '' (any), 'my' (the user's services) or a TMDB provider id. */
 function parseOttParam(raw) {
     if (!raw) return '';
     if (raw === 'my') return 'my';
-    return OTT_IDS.has(String(raw)) ? String(raw) : '';
+    return /^\d{1,6}$/.test(String(raw)) ? String(raw) : '';
 }
 
 /**
@@ -110,132 +113,96 @@ export default function WatchPage({ embedded = false }) {
         return mood ? { items: [], loading: true, mood, ott } : null;
     });
 
+    // The user's streaming services + the services available in their country.
+    const [streaming, setStreaming] = useState(() => cached?.streaming ?? null);
+    const [regionProviders, setRegionProviders] = useState(() => cached?.regionProviders ?? []);
+
+    useEffect(() => {
+        if (!isAuthenticated || !userId) return undefined;
+        const hit = getWatchSessionCache(userId);
+        if (hit?.streaming) {
+            setStreaming(hit.streaming);
+            setRegionProviders(hit.regionProviders || []);
+            return undefined;
+        }
+        let alive = true;
+        sharedWatchRequest(`${userId}:streaming`, async () => {
+            const data = await getStreamingServices();
+            const fallback = { region: getUserRegionCode(), services: [], hasServices: false };
+            const setup = data ? { ...data, region: data.hasServices ? data.region : getUserRegionCode() } : fallback;
+            const list = await getRegionProviders(setup.region);
+            const result = { streaming: setup, regionProviders: (list || []).slice(0, 15) };
+            if (data) setWatchSessionCache(userId, result);
+            return result;
+        }).then((result) => {
+            if (!alive) return;
+            setStreaming(result.streaming);
+            setRegionProviders(result.regionProviders);
+        });
+        return () => { alive = false; };
+    }, [isAuthenticated, userId]);
+
     useEffect(() => {
         if (!isAuthenticated || !userId) return undefined;
 
-        // Tab switch: reuse session cache — no re-analysis.
-        // Require core rows to be ready so a mid-fetch tab-away doesn't freeze empties.
-        // Skip cache when forcing a reload after an API failure.
-        const hit = reloadKey === 0 ? getWatchSessionCache(userId) : null;
-        const cacheReady = hit?.forYou && !hit.forYou.loading
-            && hit?.tonight && !hit.tonight.loading
-            && hit?.trending && !hit.trending.loading
-            && (hit.forYou.items?.length > 0 || hit.tonight.items?.length > 0 || hit.trending.items?.length > 0);
-        if (cacheReady) {
-            setForYou(hit.forYou);
-            setTonight(hit.tonight);
-            setTrending(hit.trending);
-            setFamily(hit.family?.loading === false ? hit.family : readyRow());
-            setBecauseLoved(hit.becauseLoved?.loading === false ? hit.becauseLoved : readyRow());
-            setHiddenGems(hit.hiddenGems?.loading === false ? hit.hiddenGems : readyRow());
-            setOutsideComfort(hit.outsideComfort?.loading === false ? hit.outsideComfort : readyRow());
-            setPerfect(hit.perfect?.loading === false
-                ? hit.perfect
-                : { movie: null, loading: false });
-            if (hit.dashboard) {
-                setDashboard(hit.dashboard);
-                setDashLoading(false);
-            }
-            return undefined;
-        }
-
+        // Load each row once per session:
+        //  - a finished row comes from the session cache (no request at all);
+        //  - a row still loading (StrictMode remount, tab switch mid-load, auth
+        //    refresh) attaches to the request already in flight;
+        //  - only missing rows hit the API. "Retry" (reloadKey) starts fresh.
         let alive = true;
-        const payload = {};
-        setRailError(null);
-        setForYou(initialRow);
-        setTonight(initialRow);
-        setTrending(initialRow);
+        const hit = reloadKey === 0 ? getWatchSessionCache(userId) : null;
+        if (reloadKey > 0) setRailError(null);
 
-        const save = () => {
-            if (!alive) return;
-            setWatchSessionCache(userId, {
-                forYou: payload.forYou,
-                tonight: payload.tonight,
-                trending: payload.trending,
-                family: payload.family,
-                becauseLoved: payload.becauseLoved,
-                hiddenGems: payload.hiddenGems,
-                outsideComfort: payload.outsideComfort,
-                perfect: payload.perfect,
-                dashboard: payload.dashboard,
+        const rowFrom = (r, withMeta = false) => readyRow(r?.data || [], withMeta ? (r?.meta || {}) : {});
+        const rows = [
+            { key: 'forYou', set: setForYou, core: true, fetch: () => getForYouRecommendations({ limit: 12 }), map: (r) => rowFrom(r, true) },
+            { key: 'tonight', set: setTonight, core: true, fetch: () => getTonightRecommendations({ limit: 6 }), map: (r) => rowFrom(r, true) },
+            { key: 'trending', set: setTrending, core: true, fetch: () => getTrendingPersonalized({ limit: 6 }), map: (r) => rowFrom(r) },
+            { key: 'family', set: setFamily, fetch: () => getFamilyRecommendations({ limit: 6 }), map: (r) => rowFrom(r) },
+            { key: 'becauseLoved', set: setBecauseLoved, fetch: () => getDiscoverySection('because-you-loved', { limit: 6 }), map: (r) => rowFrom(r, true) },
+            { key: 'hiddenGems', set: setHiddenGems, fetch: () => getDiscoverySection('hidden-gems', { limit: 6 }), map: (r) => rowFrom(r) },
+            { key: 'outsideComfort', set: setOutsideComfort, fetch: () => getDiscoverySection('outside-comfort-zone', { limit: 6 }), map: (r) => rowFrom(r) },
+            {
+                key: 'dashboard',
+                set: (d) => { setDashboard(d); setDashLoading(false); },
+                fetch: () => getTasteDashboard(),
+                map: (d) => d,
+                isError: (d) => !d,
+                isReady: (v) => v != null,
+                pending: undefined,
+            },
+        ];
+
+        rows.forEach((row) => {
+            const cachedRow = hit?.[row.key];
+            const ready = row.isReady
+                ? row.isReady(cachedRow)
+                : (cachedRow && cachedRow.loading === false && !cachedRow.meta?.error);
+            if (ready) {
+                row.set(cachedRow);
+                return;
+            }
+            if (row.pending !== undefined) row.set(row.pending);
+            else if (row.key !== 'dashboard') row.set(initialRow);
+
+            sharedWatchRequest(`${userId}:${row.key}:${reloadKey}`, row.fetch).then((r) => {
+                const failed = row.isError ? row.isError(r) : !!r?.error;
+                let value;
+                if (!failed) value = row.map(r);
+                else if (row.key === 'perfect') value = { movie: null, loading: false };
+                else if (row.key !== 'dashboard') value = readyRow([], { error: r?.error || 'failed' });
+                // Cache successes even if this mount is gone — the next mount reuses them.
+                if (!failed) setWatchSessionCache(userId, { [row.key]: value });
+                if (!alive) return;
+                if (row.key === 'dashboard') {
+                    setDashboard(failed ? null : value);
+                    setDashLoading(false);
+                } else {
+                    row.set(value);
+                }
+                if (failed && row.core && r?.error) setRailError(r.error);
             });
-        };
-
-        const noteError = (err) => {
-            if (!alive || !err) return;
-            setRailError(err);
-        };
-
-        getForYouRecommendations({ limit: 12 }).then((r) => {
-            if (!alive) return;
-            if (r.error) {
-                noteError(r.error);
-                setForYou(readyRow([], { error: r.error }));
-                return;
-            }
-            payload.forYou = readyRow(r.data || [], r.meta || {});
-            setForYou(payload.forYou);
-            save();
-        });
-        getTonightRecommendations({ limit: 6 }).then((r) => {
-            if (!alive) return;
-            if (r.error) {
-                noteError(r.error);
-                setTonight(readyRow([], { error: r.error }));
-                return;
-            }
-            payload.tonight = readyRow(r.data || []);
-            setTonight(payload.tonight);
-            save();
-        });
-        getTrendingPersonalized({ limit: 6 }).then((r) => {
-            if (!alive) return;
-            if (r.error) {
-                noteError(r.error);
-                setTrending(readyRow([], { error: r.error }));
-                return;
-            }
-            payload.trending = readyRow(r.data || []);
-            setTrending(payload.trending);
-            save();
-        });
-        getFamilyRecommendations({ limit: 6 }).then((r) => {
-            if (!alive) return;
-            if (r.error) return;
-            payload.family = readyRow(r.data || []);
-            setFamily(payload.family);
-            save();
-        });
-        getTasteDashboard().then((d) => {
-            if (!alive) return;
-            payload.dashboard = d;
-            setDashboard(d);
-            setDashLoading(false);
-            save();
-        });
-        getOnePerfectMovie().then((r) => {
-            if (!alive) return;
-            payload.perfect = { movie: r?.movie || null, loading: false };
-            setPerfect(payload.perfect);
-            save();
-        });
-        getDiscoverySection('because-you-loved', { limit: 6 }).then((r) => {
-            if (!alive) return;
-            payload.becauseLoved = readyRow(r.data || [], r.meta || {});
-            setBecauseLoved(payload.becauseLoved);
-            save();
-        });
-        getDiscoverySection('hidden-gems', { limit: 6 }).then((r) => {
-            if (!alive) return;
-            payload.hiddenGems = readyRow(r.data || []);
-            setHiddenGems(payload.hiddenGems);
-            save();
-        });
-        getDiscoverySection('outside-comfort-zone', { limit: 6 }).then((r) => {
-            if (!alive) return;
-            payload.outsideComfort = readyRow(r.data || []);
-            setOutsideComfort(payload.outsideComfort);
-            save();
         });
 
         return () => { alive = false; };
@@ -303,19 +270,22 @@ export default function WatchPage({ embedded = false }) {
         let alive = true;
         setMoodRow({ items: [], loading: true, mood: activeMood, ott: moodOtt });
 
-        const opts = { limit: 12, refresh: true };
+        // Server caches mood rows per mood + OTT, so no forced refresh here.
+        const opts = { limit: 12 };
         if (moodOtt === 'my') {
             opts.ottMode = true;
         } else if (moodOtt) {
+            // Region comes from the user's saved services on the server.
             opts.ottMode = false;
             opts.providerId = moodOtt;
-            opts.watchRegion = 'IN';
         } else {
             opts.ottMode = false;
         }
 
-        getMoodRecommendations(activeMood, opts).then((r) => {
-            if (!alive) return;
+        sharedWatchRequest(
+            `${userId}:mood:${activeMood}:${moodOtt}`,
+            () => getMoodRecommendations(activeMood, opts),
+        ).then((r) => {
             const row = {
                 items: r.data || [],
                 loading: false,
@@ -323,7 +293,7 @@ export default function WatchPage({ embedded = false }) {
                 ott: moodOtt,
                 error: r.error || null,
             };
-            setMoodRow(row);
+            if (alive) setMoodRow(row);
             // Only persist successful non-empty rows so empties can retry next visit.
             if (row.items.length > 0) {
                 setWatchSessionCache(userId, {
@@ -331,7 +301,7 @@ export default function WatchPage({ embedded = false }) {
                     moodOtt,
                     moodRow: row,
                 });
-            } else {
+            } else if (alive) {
                 setWatchSessionCache(userId, {
                     activeMood,
                     moodOtt,
@@ -372,9 +342,18 @@ export default function WatchPage({ embedded = false }) {
     const heroPicks = (forYou.items.length ? forYou.items : trending.items).slice(0, 6);
     const forYouRest = forYou.items.length > 6 ? forYou.items.slice(6) : forYou.items;
     const activeMoodMeta = DISCOVERY_MOODS.find((m) => m.id === activeMood);
-    const moodOttLabel = moodOtt === 'my'
-        ? 'on your streaming'
-        : (OTT_PROVIDERS.find((p) => String(p.id) === String(moodOtt))?.name || null);
+    const userServices = streaming?.services || [];
+    const hasServices = !!streaming?.hasServices;
+    const otherProviders = regionProviders.filter(
+        (p) => !userServices.some((s) => String(s.id) === String(p.id)),
+    );
+    const providerName = (id) => (
+        userServices.find((p) => String(p.id) === String(id))?.name
+        || regionProviders.find((p) => String(p.id) === String(id))?.name
+        || null
+    );
+    const moodOttLabel = moodOtt === 'my' ? 'your streaming services' : providerName(moodOtt);
+    const regionName = REGIONS.find((r) => r.code === streaming?.region)?.name || null;
 
     const heroLoading = forYou.loading && trending.loading;
     const showHero = heroLoading || heroPicks.length > 0;
@@ -412,11 +391,10 @@ export default function WatchPage({ embedded = false }) {
                 </div>
             )}
 
-            {(perfect.loading || perfect.movie) && (
-                <div className={`${personalMessage ? 'mt-3 sm:mt-4' : showHero ? 'mt-3 sm:mt-6' : embedded ? 'mt-2 sm:mt-4' : 'mt-2'}`}>
-                    <OnePerfectTonight movie={perfect.movie} loading={perfect.loading} />
-                </div>
-            )}
+            {/* Tonight: 3 taps → 3 picks (replaces the single nightly pick). */}
+            <div className={`${personalMessage ? 'mt-3 sm:mt-4' : showHero ? 'mt-3 sm:mt-6' : embedded ? 'mt-2 sm:mt-4' : 'mt-2'}`}>
+                <TonightPicker />
+            </div>
 
             <div className="mt-4 px-4 sm:mt-7 sm:px-6">
                 <FollowingFeed />
@@ -458,10 +436,24 @@ export default function WatchPage({ embedded = false }) {
                                 className="appearance-none cursor-pointer rounded-lg border border-white/[0.1] bg-[#1a1a1a] py-1.5 pl-3 pr-8 text-xs text-white/85 hover:border-white/20 focus:border-white/30 focus:outline-none sm:text-sm"
                             >
                                 <option value="">Any OTT</option>
-                                <option value="my">My streaming services</option>
-                                {OTT_PROVIDERS.map((p) => (
-                                    <option key={p.id} value={String(p.id)}>{p.name}</option>
-                                ))}
+                                {hasServices && <option value="my">My streaming services</option>}
+                                {userServices.length > 0 && (
+                                    <optgroup label="Your services">
+                                        {userServices.map((p) => (
+                                            <option key={`mine-${p.id}`} value={String(p.id)}>{p.name}</option>
+                                        ))}
+                                    </optgroup>
+                                )}
+                                {otherProviders.length > 0 && (
+                                    <optgroup label={regionName ? `Popular in ${regionName}` : 'Popular services'}>
+                                        {otherProviders.map((p) => (
+                                            <option key={p.id} value={String(p.id)}>{p.name}</option>
+                                        ))}
+                                    </optgroup>
+                                )}
+                                {moodOtt && moodOtt !== 'my' && !providerName(moodOtt) && (
+                                    <option value={moodOtt}>Selected service</option>
+                                )}
                             </select>
                             <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-white/40">▾</span>
                         </div>
@@ -469,6 +461,23 @@ export default function WatchPage({ embedded = false }) {
                     <MoodPills activeMood={activeMood} onSelect={handleMood} />
                 </div>
             </div>
+
+            {streaming && !hasServices && (
+                <div className="mx-4 mb-5 flex flex-col gap-3 rounded-xl border border-[var(--primary)]/20 bg-[var(--primary)]/[0.06] px-3.5 py-3 sm:mx-6 sm:mb-7 sm:flex-row sm:items-center sm:justify-between sm:px-4">
+                    <div>
+                        <p className="text-[13px] font-semibold text-white sm:text-sm">Which streaming services do you have?</p>
+                        <p className="mt-0.5 text-[12px] text-white/55 sm:text-[13px]">
+                            Add them and every pick shows what you can actually watch tonight.
+                        </p>
+                    </div>
+                    <Link
+                        to="/settings/taste#services"
+                        className="btn-primary min-h-[40px] shrink-0 self-start text-sm sm:self-auto"
+                    >
+                        Add my services
+                    </Link>
+                </div>
+            )}
 
             {!showHero && !forYou.loading && !forYouRest.length && !railError && (
                 <div className="mx-4 mb-5 overflow-hidden rounded-xl border border-white/8 bg-gradient-to-br from-[var(--bg-elevated)] to-[var(--bg-card)] p-3.5 sm:mx-6 sm:mb-8 sm:rounded-2xl sm:p-6">
@@ -517,12 +526,19 @@ export default function WatchPage({ embedded = false }) {
                 />
 
                 <RecommendationRow
-                    heading="Tonight on your streaming"
+                    heading={hasServices ? 'Tonight on your streaming' : 'Tonight’s picks'}
+                    subtitle={hasServices
+                        ? (tonight.meta?.relaxedFilters?.includes('ott')
+                            ? 'Few matches on your services — showing the best of the rest too'
+                            : 'Under 2 hours, streaming on your services')
+                        : 'Under 2 hours'}
                     icon={<FaMoon />}
                     accent="#8b5cf6"
                     items={tonight.items}
                     loading={tonight.loading}
-                    emptyHint="No matches on your linked services yet — rate more titles or check back later."
+                    emptyHint={hasServices
+                        ? 'No matches on your services yet — rate more titles or check back later.'
+                        : 'Rate a few titles to unlock tonight’s picks.'}
                     onDismiss={handleDismiss}
                 />
 
@@ -578,7 +594,25 @@ export default function WatchPage({ embedded = false }) {
                     onDismiss={handleDismiss}
                 />
 
-                <TasteDashboardPanel dashboard={dashboard} loading={dashLoading} />
+                {/* Phones: one tap to the full Taste Map instead of a long panel. */}
+                <div className="px-4 lg:hidden">
+                    <Link
+                        to="/taste-map"
+                        className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3.5 active:bg-white/[0.06]"
+                    >
+                        <div className="min-w-0">
+                            <p className="text-[15px] font-semibold text-white">Your Taste Map</p>
+                            <p className="mt-0.5 line-clamp-1 text-[12px] text-white/50">
+                                {(dashboard?.favoriteGenres || []).slice(0, 3).map((g) => g.name).join(' · ')
+                                    || 'See what your ratings say about you'}
+                            </p>
+                        </div>
+                        <span className="shrink-0 text-xl text-white/40" aria-hidden>›</span>
+                    </Link>
+                </div>
+                <div className="hidden lg:block">
+                    <TasteDashboardPanel dashboard={dashboard} loading={dashLoading} />
+                </div>
             </div>
             </div>
         </div>

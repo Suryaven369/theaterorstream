@@ -3,7 +3,6 @@ import https from 'node:https';
 import http from 'node:http';
 import { getSupabaseAdmin } from './supabase-admin.js';
 import { fetchTmdbApi } from './tmdb-server.js';
-import { analyzeArticle as analyzeArticleKeywords } from './news-keywords.js';
 import { extractTrailerTitleYear, isEligibleTrailerRelease } from './trailer-eligibility.js';
 
 export { extractTrailerTitleYear, isEligibleTrailerRelease };
@@ -827,7 +826,9 @@ export async function refreshAllRssSources({ force = false, recencyMinutes = 8 }
 
     if (error) throw error;
 
-    const all = sources || [];
+    // Trailer + news sources. News feeds the Feed tab's 3 "Latest news" cards
+    // (filtered to real stories there); Google Trends is skipped as it isn't news.
+    const all = (sources || []).filter((s) => !/google trends/i.test(s.name || ''));
     // Skip sources refreshed in the last few minutes — a re-click then only hits
     // genuinely-stale feeds (near-instant), while the daily cron still does them
     // all. `force` overrides. This is the big win with many (60+) sources.
@@ -1046,47 +1047,7 @@ async function finalizeArticleApproval(supabase, article, { regenerateOnly = fal
     };
     if (!regenerateOnly) updates.status = 'approved';
 
-    // Run keyword analysis for news intelligence (non-blocking, best-effort)
-    try {
-        const keywordAnalysis = await analyzeArticleKeywords(
-            article.title,
-            article.summary || bodyHtml
-        );
-        updates.positive_keyword_score = keywordAnalysis.positiveScore;
-        updates.negative_keyword_score = keywordAnalysis.negativeScore;
-        
-        // Log the analysis
-        await supabase.from('news_processing_logs').insert({
-            article_id: article.id,
-            step: 'keyword_filter',
-            status: 'success',
-            message: keywordAnalysis.recommendation.reason,
-            metadata_json: {
-                positive_score: keywordAnalysis.positiveScore,
-                negative_score: keywordAnalysis.negativeScore,
-                action: keywordAnalysis.recommendation.action,
-                confidence: keywordAnalysis.recommendation.confidence,
-                matched_negative: keywordAnalysis.matchedNegative?.slice(0, 10) || [],
-                matched_positive: keywordAnalysis.matchedPositive?.slice(0, 10) || [],
-            },
-        }).then(() => {}, () => {}); // Silent fail for logging
-    } catch (kwErr) {
-        console.warn('[rss] Keyword analysis failed (non-fatal):', kwErr.message);
-    }
-
-    const { isTwitterFeedArticle, extractTwitterHandle, normalizeTweetText } = await import('../../src/lib/twitterRss.js');
-    if (isTwitterFeedArticle({ link: article.link, sourceName: article.source_name })) {
-        const handle = extractTwitterHandle(article.link, article.source_name);
-        const tweet = normalizeTweetText({
-            title: article.title,
-            summary: article.summary,
-            bodyHtml,
-            handle,
-        });
-        if (tweet) updates.summary = tweet;
-        updates.summary_items = null;
-        // Keep RSS media; do not scrape flaky Nitter HTML pages.
-    } else {
+    {
         if (article.link && bodyNeedsEnrichment(bodyHtml)) {
             const { ogImage, fullBodyHtml } = await fetchArticlePageData(article.link);
             if (fullBodyHtml && fullBodyHtml.length > bodyHtml.length) {

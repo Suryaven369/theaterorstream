@@ -1,6 +1,10 @@
+import { watchProviderFieldsFromDetail } from './watch-providers-server.js';
+
 export function mapFullTmdbToLibraryRecord(movieData, mediaType) {
     const tmdbId = String(movieData.id);
     const genreIds = movieData.genres?.map((g) => g.id).filter(Boolean) || [];
+    // Present when the detail call appended watch/providers (sync + on-demand import).
+    const providerFields = watchProviderFieldsFromDetail(movieData) || {};
 
     return {
         tmdb_id: tmdbId,
@@ -46,6 +50,7 @@ export function mapFullTmdbToLibraryRecord(movieData, mediaType) {
         revenue: movieData.revenue,
         belongs_to_collection: movieData.belongs_to_collection,
         adult: movieData.adult || false,
+        ...providerFields,
         is_active: true,
         synced_at: new Date().toISOString(),
     };
@@ -69,8 +74,19 @@ export function mapListItemToLibraryRecord(item, mediaType) {
     };
 }
 
+/** Provider data older than this triggers a full refresh during sync. */
+const PROVIDER_REFRESH_DAYS = 7;
+
 export function shouldRefreshFull(existing, listItem) {
     if (!existing) return true;
+    // Keep OTT availability current for anything the scan touches.
+    if ('watch_providers_synced_at' in existing) {
+        const synced = existing.watch_providers_synced_at;
+        if (!synced || Date.now() - new Date(synced).getTime() > PROVIDER_REFRESH_DAYS * 86400000) return true;
+    }
+    // Release date / status move as titles come out; refresh recent + upcoming titles.
+    const release = listItem.release_date || listItem.first_air_date;
+    if (release && existing.release_date !== release) return true;
     const popDelta = Math.abs((existing.popularity || 0) - (listItem.popularity || 0));
     const voteDelta = Math.abs((existing.vote_average || 0) - (listItem.vote_average || 0));
     return popDelta > 5 || voteDelta > 0.5;

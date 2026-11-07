@@ -195,25 +195,6 @@ export async function getTrailersFromEdge(options = {}) {
 }
 
 /**
- * Get admin-curated news articles (DB-backed, sourced from RSS feeds) for the
- * public Home feed.
- */
-export async function getArticlesFromEdge(options = {}) {
-    const params = new URLSearchParams();
-    if (options.limit != null) params.set('limit', String(options.limit));
-    if (options.offset != null) params.set('offset', String(options.offset));
-    if (options.fresh) params.set('_', String(Date.now()));
-
-    const payload = await fetchFromEdge(
-        `${API_BASE}/articles?${params.toString()}`,
-        async () => ({ data: [], total: 0 }),
-        { fresh: !!options.fresh },
-    );
-
-    return payload.data || [];
-}
-
-/**
  * Accurate Parent Guide + Movie Vibes (TMDB certification + LLM analysis).
  * @param {string|number} tmdbId
  * @param {'movie'|'tv'} mediaType

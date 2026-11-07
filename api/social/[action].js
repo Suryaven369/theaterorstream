@@ -1,7 +1,6 @@
 import { requireUser } from '../_lib/user-auth.js';
 import { readJsonBody } from '../_lib/read-body.js';
 import {
-    checkAndAwardBadges,
     recordDecisionPick,
     createSocialReview,
     toggleReviewLike,
@@ -41,11 +40,6 @@ export default async function handler(req, res) {
             return res.status(405).json({ error: 'Method not allowed' });
         }
 
-        if (action === 'check-badges') {
-            const result = await checkAndAwardBadges(auth.user.id);
-            return res.status(200).json({ ok: true, ...result });
-        }
-
         if (action === 'decision-pick') {
             const body = await readJsonBody(req);
             if (!body.tmdb_id || !body.title) {
@@ -57,8 +51,7 @@ export default async function handler(req, res) {
 
         if (action === 'streak-update') {
             const result = await updateUserStreak(auth.user.id);
-            const badges = await checkAndAwardBadges(auth.user.id);
-            return res.status(200).json({ ok: true, ...result, badges });
+            return res.status(200).json({ ok: true, ...result });
         }
 
         if (action === 'create-review') {
@@ -146,7 +139,6 @@ export default async function handler(req, res) {
         return res.status(404).json({
             error: 'Unknown social action',
             allowed: [
-                'check-badges',
                 'decision-pick',
                 'streak-update',
                 'streak',

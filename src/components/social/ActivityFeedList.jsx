@@ -11,7 +11,11 @@ function formatTime(iso) {
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-export default function ActivityFeedList({ items = [], showUser = false }) {
+/** Activity types from features that were removed (blogs, boards, badges). */
+const HIDDEN_EVENT_TYPES = new Set(['blog_post', 'board_created', 'badge']);
+
+export default function ActivityFeedList({ items: rawItems = [], showUser = false }) {
+    const items = rawItems.filter((item) => !HIDDEN_EVENT_TYPES.has(item?.event_type));
     if (!items.length) {
         return (
             <div className="text-center py-12">

@@ -1,17 +1,25 @@
 import { getSupabaseAdmin } from './supabase-admin.js';
 import { embedTextWithProvider, buildUserTasteDocument, buildMovieDocument } from './embedding-server.js';
-import { getBehavioralSignals, genreSignalToWeights } from './events-server.js';
 import { isLlmEnabled, summarizeTaste } from './llm-server.js';
 import { computeUserDnaPreferences } from './movie-dna-server.js';
+import { ensureLibraryCardsForCandidates } from './content-server.js';
+import {
+    buildFilmSignals,
+    computeGenreWeights,
+    computeMoodPreferences,
+    computeAxisPreferences,
+    computePreferredDecades,
+    computePreferredLanguages,
+    computeRuntimeRange,
+    computeLearnedPeople,
+    topLovedTitles,
+} from './taste-compute.js';
 
 const AXIS_KEYS = [
     'acting', 'screenplay', 'sound', 'direction',
     'entertainment', 'pacing', 'cinematography',
 ];
 
-const HIGH_RATING = 7;
-const LOW_RATING = 4;
-const LOOKBACK_DAYS_DEFAULT = 90;
 
 const GENRE_NAMES = {
     28: 'Action', 12: 'Adventure', 16: 'Animation', 35: 'Comedy', 80: 'Crime',
@@ -21,18 +29,23 @@ const GENRE_NAMES = {
 };
 
 function generateTasteSummaryText(profile) {
+    const join = (xs) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} & ${xs[xs.length - 1]}`);
     const topGenres = Object.entries(profile?.genre_weights || {})
+        .filter(([, w]) => Number(w) > 0)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 3)
-        .map(([id]) => GENRE_NAMES[id] || `Genre ${id}`);
-
-    const moods = Object.keys(profile?.mood_preferences || {}).slice(0, 2);
-    const decades = (profile?.preferred_decades || []).slice(0, 2);
-    const parts = [];
-    if (topGenres.length) parts.push(`Loves ${topGenres.join(', ')}`);
-    if (moods.length) parts.push(`with ${moods.join(' & ')} vibes`);
-    if (decades.length) parts.push(`from the ${decades.join(' & ')}s`);
-    return parts.length ? `${parts.join('. ')}.` : null;
+        .map(([id]) => GENRE_NAMES[id])
+        .filter(Boolean);
+    if (!topGenres.length) return null;
+    const moods = Object.entries(profile?.mood_preferences || {})
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 2)
+        .map(([m]) => m.replace(/_/g, '-'));
+    const decades = (profile?.preferred_decades || []).slice(0, 2).map((d) => `${d}s`);
+    let text = `Loves ${join(topGenres)}`;
+    if (moods.length) text += ` with ${join(moods)} vibes`;
+    if (decades.length) text += `, mostly from the ${join(decades)}`;
+    return `${text}.`;
 }
 
 export function computeOverallFromRatingRow(row) {
@@ -57,173 +70,6 @@ export function extractGenreIds(movie) {
     return [];
 }
 
-function normalizeWeights(scores) {
-    const entries = Object.entries(scores);
-    if (!entries.length) return {};
-
-    const max = Math.max(...entries.map(([, v]) => v), 0.001);
-    const min = Math.min(...entries.map(([, v]) => v), 0);
-    const span = max - min || 1;
-
-    return Object.fromEntries(
-        entries.map(([id, value]) => [id, Math.round(((value - min) / span) * 100) / 100]),
-    );
-}
-
-/** Keep positive + negative genre affinity (likes vs low ratings / dislikes). */
-function normalizeSignedWeights(scores) {
-    const entries = Object.entries(scores).filter(([, v]) => Number(v) !== 0);
-    if (!entries.length) return {};
-    const maxAbs = Math.max(...entries.map(([, v]) => Math.abs(Number(v) || 0)), 0.001);
-    return Object.fromEntries(
-        entries.map(([id, value]) => [id, Math.round((Number(value) / maxAbs) * 100) / 100]),
-    );
-}
-
-function mergeGenreWeights(declared = {}, computed = {}, hasRatings) {
-    const ids = new Set([...Object.keys(declared), ...Object.keys(computed)]);
-    const merged = {};
-
-    ids.forEach((id) => {
-        const d = Number(declared[id]) || 0;
-        const c = Number(computed[id]) || 0;
-        merged[id] = hasRatings ? Math.round((0.3 * d + 0.7 * c) * 100) / 100 : d || c;
-    });
-
-    return merged;
-}
-
-/**
- * Blend rating-derived and behaviour-derived genre weights (both 0..1).
- * Behaviour leads slightly because it captures intent ratings can't (e.g. the
- * trailers a user replays but never logs).
- */
-function blendGenreSources(ratingGenres, behavioralGenres, ratingShare = 0.55) {
-    const ids = new Set([...Object.keys(ratingGenres), ...Object.keys(behavioralGenres)]);
-    if (!ids.size) return {};
-    const bShare = 1 - ratingShare;
-    const blended = {};
-    ids.forEach((id) => {
-        const r = Number(ratingGenres[id]) || 0;
-        const b = Number(behavioralGenres[id]) || 0;
-        blended[id] = Math.round((ratingShare * r + bShare * b) * 100) / 100;
-    });
-    return blended;
-}
-
-function computeGenreWeightsFromRatings(ratings, movieByTmdbId) {
-    const raw = {};
-
-    ratings.forEach((rating) => {
-        const overall = computeOverallFromRatingRow(rating);
-        if (overall == null) return;
-
-        const movie = movieByTmdbId.get(String(rating.movie_id));
-        const genreIds = extractGenreIds(movie);
-        if (!genreIds.length) return;
-
-        let signal;
-        if (overall >= HIGH_RATING) signal = overall / 10;
-        else if (overall <= LOW_RATING) signal = -0.35;
-        else signal = 0.15;
-
-        genreIds.forEach((genreId) => {
-            raw[genreId] = (raw[genreId] || 0) + signal;
-        });
-    });
-
-    // Keep negative signals from low ratings so scoring can demote those genres.
-    return normalizeSignedWeights(raw);
-}
-
-function computeAxisPreferences(ratings) {
-    const sums = {};
-    const weights = {};
-
-    ratings.forEach((rating) => {
-        const overall = computeOverallFromRatingRow(rating);
-        if (overall == null || overall < 5) return;
-
-        const weight = overall - 4;
-        AXIS_KEYS.forEach((key) => {
-            const value = rating[key];
-            if (value == null || Number.isNaN(Number(value))) return;
-            sums[key] = (sums[key] || 0) + Number(value) * weight;
-            weights[key] = (weights[key] || 0) + weight;
-        });
-    });
-
-    const prefs = {};
-    AXIS_KEYS.forEach((key) => {
-        if (weights[key]) {
-            prefs[key] = Math.round((sums[key] / weights[key]) * 100) / 100;
-        }
-    });
-
-    return prefs;
-}
-
-function percentile(sorted, p) {
-    if (!sorted.length) return null;
-    const idx = Math.floor((sorted.length - 1) * p);
-    return sorted[idx];
-}
-
-function computeRuntimeRange(ratings, movieByTmdbId) {
-    const runtimes = ratings
-        .map((r) => {
-            const overall = computeOverallFromRatingRow(r);
-            if (overall == null || overall < HIGH_RATING) return null;
-            const runtime = movieByTmdbId.get(String(r.movie_id))?.runtime;
-            return runtime > 0 ? runtime : null;
-        })
-        .filter((v) => v != null)
-        .sort((a, b) => a - b);
-
-    if (runtimes.length < 2) return null;
-
-    const low = percentile(runtimes, 0.25);
-    const high = percentile(runtimes, 0.75);
-    if (low == null || high == null || low >= high) return null;
-
-    return `[${Math.floor(low)},${Math.ceil(high)})`;
-}
-
-function computePreferredDecades(ratings, movieByTmdbId) {
-    const decades = new Set();
-
-    ratings.forEach((rating) => {
-        const overall = computeOverallFromRatingRow(rating);
-        if (overall == null || overall < HIGH_RATING) return;
-
-        const movie = movieByTmdbId.get(String(rating.movie_id));
-        const date = movie?.release_date || movie?.first_air_date;
-        if (!date) return;
-
-        const year = parseInt(String(date).slice(0, 4), 10);
-        if (!Number.isNaN(year) && year >= 1900) {
-            decades.add(Math.floor(year / 10) * 10);
-        }
-    });
-
-    return [...decades].sort((a, b) => a - b);
-}
-
-function computePreferredLanguages(ratings, movieByTmdbId) {
-    const counts = {};
-
-    ratings.forEach((rating) => {
-        const lang = movieByTmdbId.get(String(rating.movie_id))?.original_language;
-        if (!lang) return;
-        counts[lang] = (counts[lang] || 0) + 1;
-    });
-
-    return Object.entries(counts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(([lang]) => lang);
-}
-
 function vectorToPgLiteral(vector) {
     if (!vector?.length) return null;
     return `[${vector.join(',')}]`;
@@ -241,153 +87,134 @@ export async function invalidateRecommendationCache(supabase, userId) {
     }
 }
 
-/** Genre affinity from hearted titles — treated like a high rating for taste. */
-function computeGenreWeightsFromLikes(likedTmdbIds, movieByTmdbId) {
-    const raw = {};
-    (likedTmdbIds || []).forEach((id) => {
-        const movie = movieByTmdbId.get(String(id));
-        const genreIds = extractGenreIds(movie);
-        if (!genreIds.length) return;
-        genreIds.forEach((genreId) => {
-            raw[genreId] = (raw[genreId] || 0) + 0.85;
-        });
-    });
-    return normalizeWeights(raw);
-}
-
 /**
- * Rebuild user_taste_profiles from ratings, logs, and library metadata.
+ * Rebuild user_taste_profiles from the user's FULL history: every rating,
+ * diary-log rating, like and dislike (recency-weighted), judged against the
+ * user's own rating scale. See taste-compute.js for the math.
  * @param {string} userId
- * @param {{ includeEmbedding?: boolean, lookbackDays?: number }} options
+ * @param {{ includeEmbedding?: boolean }} options
  */
 export async function rebuildUserTasteProfile(userId, options = {}) {
-    const {
-        includeEmbedding = false,
-        lookbackDays = LOOKBACK_DAYS_DEFAULT,
-    } = options;
-
+    const { includeEmbedding = false } = options;
     const supabase = getSupabaseAdmin();
-    const since = new Date();
-    since.setDate(since.getDate() - lookbackDays);
-    const sinceIso = since.toISOString();
 
-    const { data: existing, error: profileError } = await supabase
-        .from('user_taste_profiles')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
+    const [
+        { data: existing, error: profileError },
+        { data: ratings, error: ratingsError },
+        { data: logs },
+        { data: likedRows },
+        { data: dislikeRows },
+    ] = await Promise.all([
+        supabase.from('user_taste_profiles').select('*').eq('user_id', userId).maybeSingle(),
+        supabase.from('ratings').select('*').eq('user_id', userId)
+            .order('updated_at', { ascending: false }).limit(2000),
+        supabase.from('movie_logs').select('tmdb_id, rating, created_at, watched_on')
+            .eq('user_id', userId).limit(3000),
+        supabase.from('user_liked_movies').select('movie_id, liked_at')
+            .eq('user_id', userId).limit(2000),
+        supabase.from('user_events').select('tmdb_id, created_at')
+            .eq('user_id', userId).eq('event_type', 'movie_disliked').limit(500),
+    ]);
 
-    if (profileError) {
-        throw new Error(profileError.message);
-    }
-
-    const { data: ratings, error: ratingsError } = await supabase
-        .from('ratings')
-        .select('*')
-        .eq('user_id', userId)
-        .gte('updated_at', sinceIso)
-        .order('updated_at', { ascending: false });
-
-    if (ratingsError) {
-        throw new Error(ratingsError.message);
-    }
+    if (profileError) throw new Error(profileError.message);
+    if (ratingsError) throw new Error(ratingsError.message);
 
     const ratingRows = ratings || [];
 
-    // Likes are taste signals; watches/logs are NOT (seen ≠ loved).
-    const { data: likedRows } = await supabase
-        .from('user_liked_movies')
-        .select('movie_id')
-        .eq('user_id', userId)
-        .limit(300);
-    const likedTmdbIds = (likedRows || []).map((r) => String(r.movie_id));
+    // Quiz answers: loved films act as likes, disliked films as dislikes.
+    const quiz = existing?.onboarding_step_data?.quiz || null;
+    const quizAt = quiz?.savedAt || existing?.updated_at || null;
+    const allLikes = [...(likedRows || [])];
+    const likedSeen = new Set(allLikes.map((r) => String(r.movie_id)));
+    (quiz?.lovedIds || []).forEach((id) => {
+        if (!likedSeen.has(String(id))) allLikes.push({ movie_id: String(id), liked_at: quizAt });
+    });
+    const allDislikes = [
+        ...(dislikeRows || []),
+        ...(quiz?.dislikedIds || []).map((id) => ({ tmdb_id: String(id), created_at: quizAt })),
+    ];
+    const likedTmdbIds = allLikes.map((r) => String(r.movie_id));
 
     const tmdbIds = [...new Set([
         ...ratingRows.map((r) => String(r.movie_id)),
+        ...(logs || []).filter((l) => l.rating != null).map((l) => String(l.tmdb_id)),
         ...likedTmdbIds,
+        ...allDislikes.map((d) => String(d.tmdb_id)).filter(Boolean),
     ])];
 
-    let movieByTmdbId = new Map();
-    if (tmdbIds.length) {
+    // Quiz picks may not be in the library yet — import them so genres/keywords are known.
+    if (quiz) {
+        try {
+            const quizIds = [...(quiz.lovedIds || []), ...(quiz.dislikedIds || [])];
+            await ensureLibraryCardsForCandidates(
+                quizIds.map((id) => ({ id: String(id), media_type: 'movie' })),
+                { maxImport: 25 },
+            );
+        } catch (err) {
+            console.warn('[rebuild] quiz title import failed:', err.message);
+        }
+    }
+
+    const movieById = new Map();
+    for (let i = 0; i < tmdbIds.length; i += 300) {
+        // eslint-disable-next-line no-await-in-loop
         const { data: movies, error: moviesError } = await supabase
             .from('movies_library')
-            .select('tmdb_id, genres, genre_ids, runtime, release_date, first_air_date, original_language, title, overview, mood_tags')
-            .in('tmdb_id', tmdbIds);
-
-        if (moviesError) {
-            throw new Error(moviesError.message);
-        }
-
-        movieByTmdbId = new Map((movies || []).map((m) => [String(m.tmdb_id), m]));
+            .select('tmdb_id, title, overview, genres, genre_ids, runtime, release_date, first_air_date, original_language, mood_tags, keywords, credits')
+            .in('tmdb_id', tmdbIds.slice(i, i + 300));
+        if (moviesError) throw new Error(moviesError.message);
+        (movies || []).forEach((m) => movieById.set(String(m.tmdb_id), m));
     }
 
-    const [
-        { count: logCount, error: logError },
-        { count: totalRatingCount, error: totalRatingsError },
-    ] = await Promise.all([
-        supabase
-            .from('movie_logs')
-            .select('*', { count: 'exact', head: true })
-            .eq('user_id', userId),
-        supabase
-            .from('ratings')
-            .select('*', { count: 'exact', head: true })
-            .eq('user_id', userId),
-    ]);
+    const { films, stats } = buildFilmSignals({
+        ratings: ratingRows,
+        logs: logs || [],
+        likes: allLikes,
+        dislikes: allDislikes,
+        movieById,
+    });
 
-    if (logError) throw new Error(logError.message);
-    if (totalRatingsError) throw new Error(totalRatingsError.message);
+    const { count: logCount } = await supabase
+        .from('movie_logs')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId);
 
-    const ratingGenres = computeGenreWeightsFromRatings(ratingRows, movieByTmdbId);
-    const likeGenres = computeGenreWeightsFromLikes(likedTmdbIds, movieByTmdbId);
+    // Learned weights from behaviour. Manual Settings prefs live separately in
+    // manual_genre_weights and are applied as a floor at scoring time — never
+    // blended in here (the old 30% blend with the previous result compounded
+    // stale taste forever).
+    const learnedGenres = computeGenreWeights(films);
+    const enoughSignal = stats.filmCount >= 5;
+    const manualGenres = existing?.manual_genre_weights || {};
+    const genreWeights = enoughSignal || !Object.keys(manualGenres).length
+        ? learnedGenres
+        : (() => {
+            // Cold start: lean on the user's declared genres until they rate more.
+            const merged = { ...learnedGenres };
+            Object.keys(manualGenres).forEach((id) => {
+                merged[id] = Math.max(Number(merged[id]) || 0, 0.6);
+            });
+            return merged;
+        })();
 
-    // Behavioural genre signal is likes + ratings only (see TASTE_SIGNAL_EVENTS).
-    let behavioralGenres = {};
-    try {
-        const signals = await getBehavioralSignals(userId);
-        behavioralGenres = genreSignalToWeights(signals.genreSignal || {});
-    } catch (err) {
-        console.warn('behavioral signals unavailable during rebuild:', err.message);
-    }
+    const learnedMoods = computeMoodPreferences(films);
+    const moodPreferences = Object.keys(learnedMoods).length >= 2
+        ? learnedMoods
+        : (existing?.mood_preferences || {});
 
-    const computedGenres = blendGenreSources(
-        blendGenreSources(ratingGenres, likeGenres),
-        behavioralGenres,
-    );
-    const declaredGenres = existing?.genre_weights || {};
-    const hasSignal = ratingRows.length > 0
-        || likedTmdbIds.length > 0
-        || Object.keys(behavioralGenres).length > 0;
-    const genreWeights = mergeGenreWeights(declaredGenres, computedGenres, hasSignal);
-
-    const axisFromRatings = computeAxisPreferences(ratingRows);
     const axisPreferences = {
         ...(existing?.axis_preferences || {}),
-        ...axisFromRatings,
+        ...computeAxisPreferences(ratingRows, stats.mean),
     };
-
-    const overalls = ratingRows
-        .map(computeOverallFromRatingRow)
-        .filter((v) => v != null);
-
-    const avgRatingGiven = overalls.length
-        ? Math.round((overalls.reduce((a, b) => a + b, 0) / overalls.length) * 100) / 100
-        : existing?.avg_rating_given ?? null;
-
-    const runtimeRange = computeRuntimeRange(ratingRows, movieByTmdbId)
-        ?? existing?.preferred_runtime_range
-        ?? null;
-
-    const preferredDecades = computePreferredDecades(ratingRows, movieByTmdbId);
-    const preferredLanguages = computePreferredLanguages(ratingRows, movieByTmdbId);
+    const preferredDecades = computePreferredDecades(films);
+    const preferredLanguages = computePreferredLanguages(films);
+    const runtimeRange = computeRuntimeRange(films) ?? existing?.preferred_runtime_range ?? null;
+    const learnedPeople = computeLearnedPeople(films);
 
     // Aggregate Taste DNA from loved ratings + likes (not mere watches).
     let dnaPreferences = existing?.dna_preferences || {};
     try {
-        const dna = await computeUserDnaPreferences(userId, {
-            ratings: ratingRows,
-            likedTmdbIds,
-        });
+        const dna = await computeUserDnaPreferences(userId, { ratings: ratingRows, likedTmdbIds });
         if (Object.keys(dna).length) dnaPreferences = dna;
     } catch (err) {
         console.warn('dna preferences compute failed:', err.message);
@@ -397,59 +224,49 @@ export async function rebuildUserTasteProfile(userId, options = {}) {
     const updatePayload = {
         user_id: userId,
         genre_weights: genreWeights,
+        mood_preferences: moodPreferences,
         dna_preferences: dnaPreferences,
         axis_preferences: axisPreferences,
-        avg_rating_given: avgRatingGiven,
-        rating_count: totalRatingCount ?? ratingRows.length,
+        avg_rating_given: stats.ratedCount ? stats.mean : (existing?.avg_rating_given ?? null),
+        rating_count: stats.ratedCount,
         log_count: logCount || 0,
         preferred_runtime_range: runtimeRange,
-        preferred_decades: preferredDecades.length
-            ? preferredDecades
-            : (existing?.preferred_decades || []),
-        preferred_languages: preferredLanguages.length
-            ? preferredLanguages
-            : (existing?.preferred_languages || []),
+        preferred_decades: preferredDecades.length ? preferredDecades : (existing?.preferred_decades || []),
+        preferred_languages: preferredLanguages.length ? preferredLanguages : (existing?.preferred_languages || []),
+        learned_people: learnedPeople,
+        taste_stats: { ...stats, computedAt: now },
         profile_version: (existing?.profile_version || 0) + 1,
         last_computed_at: now,
         updated_at: now,
     };
 
-    // Taste summary: prefer an LLM-written sentence, fall back to the template,
-    // then to whatever we had before. Runs in the weekly cron (cheap, 1×/user).
-    const templatedSummary = generateTasteSummaryText({ ...existing, ...updatePayload });
-    let tasteSummary = templatedSummary || existing?.taste_summary || null;
+    const topGenreNames = Object.entries(genreWeights)
+        .filter(([, w]) => w > 0)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 4)
+        .map(([id]) => GENRE_NAMES[id])
+        .filter(Boolean);
 
-    if (isLlmEnabled()) {
-        const topGenreNames = Object.entries(genreWeights)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 4)
-            .map(([id]) => GENRE_NAMES[id])
-            .filter(Boolean);
-
-        const lovedTitles = [
-            ...ratingRows
-                .filter((r) => {
-                    const o = computeOverallFromRatingRow(r);
-                    return o != null && o >= HIGH_RATING;
-                })
-                .map((r) => movieByTmdbId.get(String(r.movie_id))?.title),
-            ...likedTmdbIds.map((id) => movieByTmdbId.get(String(id))?.title),
-        ].filter(Boolean);
-
+    // Taste summary: LLM sentence grounded in the real top genres, moods,
+    // directors and best-loved titles; template fallback.
+    let tasteSummary = generateTasteSummaryText({ ...existing, ...updatePayload }) || existing?.taste_summary || null;
+    if (isLlmEnabled() && enoughSignal) {
         const llmSummary = await summarizeTaste({
             genres: topGenreNames,
-            moods: Object.keys(existing?.mood_preferences || {}),
+            moods: Object.keys(moodPreferences).slice(0, 3),
             decades: preferredDecades,
-            lovedTitles,
+            lovedTitles: [
+                ...topLovedTitles(films, 8),
+                ...learnedPeople.directors.slice(0, 2).map((d) => `films by ${d.name}`),
+            ],
         });
         if (llmSummary) tasteSummary = llmSummary;
     }
-
     updatePayload.taste_summary = tasteSummary;
 
     if (includeEmbedding) {
         const profileForEmbed = { ...existing, ...updatePayload };
-        const doc = buildUserTasteDocument(profileForEmbed, ratingRows, movieByTmdbId);
+        const doc = buildUserTasteDocument(profileForEmbed, ratingRows, movieById);
         const { vector, provider } = await embedTextWithProvider(doc, 'query');
         const literal = vectorToPgLiteral(vector);
         if (literal) {
@@ -458,15 +275,19 @@ export async function rebuildUserTasteProfile(userId, options = {}) {
         }
     }
 
-    const { data: updated, error: updateError } = await supabase
+    const save = (payload) => supabase
         .from('user_taste_profiles')
-        .upsert(updatePayload, { onConflict: 'user_id' })
+        .upsert(payload, { onConflict: 'user_id' })
         .select('user_id, profile_version, last_computed_at, rating_count, log_count')
         .single();
 
-    if (updateError) {
-        throw new Error(updateError.message);
+    let { data: updated, error: updateError } = await save(updatePayload);
+    if (updateError && /learned_people|taste_stats/.test(updateError.message || '')) {
+        // Migration 20261107000000 not applied yet — save everything else.
+        const { learned_people: _p, taste_stats: _s, ...rest } = updatePayload;
+        ({ data: updated, error: updateError } = await save(rest));
     }
+    if (updateError) throw new Error(updateError.message);
 
     await invalidateRecommendationCache(supabase, userId);
 
@@ -474,11 +295,39 @@ export async function rebuildUserTasteProfile(userId, options = {}) {
         userId,
         profile: updated,
         ratingsProcessed: ratingRows.length,
+        filmsUsed: stats.filmCount,
         embeddingUpdated: !!updatePayload.embedding,
     };
 }
 
-/** Rebuild profiles that are stale or never computed. */
+/**
+ * True when the user has rated / liked / logged / disliked anything since the
+ * profile was last computed (so the Taste Map would show stale data).
+ */
+export async function isTasteProfileStale(userId) {
+    const supabase = getSupabaseAdmin();
+    const { data: profile } = await supabase
+        .from('user_taste_profiles')
+        .select('last_computed_at')
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (!profile?.last_computed_at) return true;
+    const since = profile.last_computed_at;
+    const newer = async (query) => {
+        const { count } = await query;
+        return (count || 0) > 0;
+    };
+    const head = { count: 'exact', head: true };
+    const checks = await Promise.all([
+        newer(supabase.from('ratings').select('id', head).eq('user_id', userId).gt('updated_at', since)),
+        newer(supabase.from('user_liked_movies').select('id', head).eq('user_id', userId).gt('liked_at', since)),
+        newer(supabase.from('movie_logs').select('id', head).eq('user_id', userId).gt('created_at', since)),
+        newer(supabase.from('user_events').select('id', head).eq('user_id', userId)
+            .eq('event_type', 'movie_disliked').gt('created_at', since)),
+    ]);
+    return checks.some(Boolean);
+}
+
 export async function rebuildStaleTasteProfiles({ limit = 25, includeEmbedding = false } = {}) {
     const supabase = getSupabaseAdmin();
     const staleBefore = new Date();
@@ -486,8 +335,8 @@ export async function rebuildStaleTasteProfiles({ limit = 25, includeEmbedding =
 
     const { data: profiles, error } = await supabase
         .from('user_taste_profiles')
-        .select('user_id, last_computed_at, onboarding_completed_at')
-        .not('onboarding_completed_at', 'is', null)
+        // Everyone with a profile — users who skipped onboarding need fresh taste too.
+        .select('user_id, last_computed_at')
         .or(`last_computed_at.is.null,last_computed_at.lt.${staleBefore.toISOString()}`)
         .order('last_computed_at', { ascending: true, nullsFirst: true })
         .limit(limit);
@@ -515,9 +364,10 @@ export async function backfillMovieEmbeddings({ limit = 20 } = {}) {
 
     const { data: movies, error } = await supabase
         .from('movies_library')
-        .select('tmdb_id, title, overview, genres, genre_ids, mood_tags, original_language')
+        .select('tmdb_id, media_type, title, tagline, overview, genres, genre_ids, keywords, credits, mood_tags, original_language, release_date, first_air_date')
         .eq('is_active', true)
-        .is('embedding', null)
+        // Missing, or from an older provider — everything should be in one vector space.
+        .or('embedding.is.null,embedding_provider.is.null,embedding_provider.neq.openai')
         .order('synced_at', { ascending: false, nullsFirst: false })
         .limit(limit);
 
@@ -540,7 +390,8 @@ export async function backfillMovieEmbeddings({ limit = 20 } = {}) {
             const { error: updateError } = await supabase
                 .from('movies_library')
                 .update({ embedding: literal, embedding_provider: provider })
-                .eq('tmdb_id', movie.tmdb_id);
+                .eq('tmdb_id', movie.tmdb_id)
+                .eq('media_type', movie.media_type || 'movie');
 
             if (updateError) {
                 results.push({ tmdbId: movie.tmdb_id, ok: false, error: updateError.message });

@@ -76,10 +76,11 @@ export default function SpotlightHero({ movies, movie, loading, onDismiss = null
     const slug = generateSlugWithId(title, tmdbId, year);
     const to = `${mediaType === 'tv' ? '/tv' : '/movies'}/${slug}`;
 
-    const backdrop = resolveTmdbImageUrl(
-        active.backdrop_path || active.poster_path,
-        { baseUrl: reduxImageURL, size: 'original' },
-    );
+    // Wide backdrop at w1280 (sharp at banner width, ~300KB). Poster fallback
+    // only when a title has no backdrop.
+    const backdrop = active.backdrop_path
+        ? resolveTmdbImageUrl(active.backdrop_path, { baseUrl: reduxImageURL, size: 'w1280' })
+        : resolveTmdbImageUrl(active.poster_path, { baseUrl: reduxImageURL, size: 'w780' });
     const matchPct = typeof active.score === 'number' ? Math.round(active.score * 100) : null;
     const rating = Number(active.vote_average || 0);
 

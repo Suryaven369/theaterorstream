@@ -27,7 +27,6 @@ function relDate(dateStr, upcoming) {
  */
 export default function FollowingFeed() {
     const [items, setItems] = useState([]);
-    const [boardUpdates, setBoardUpdates] = useState([]);
     const [followCount, setFollowCount] = useState(null);
     const [loading, setLoading] = useState(true);
 
@@ -36,7 +35,6 @@ export default function FollowingFeed() {
         getFollowingFeed(30).then((r) => {
             if (!alive) return;
             setItems(r.items || []);
-            setBoardUpdates(r.boardUpdates || []);
             setFollowCount(r.followCount ?? 0);
             setLoading(false);
         });
@@ -66,54 +64,17 @@ export default function FollowingFeed() {
                     <FaUserPlus />
                 </div>
                 <div className="min-w-0">
-                    <h3 className="text-[13px] font-semibold text-white sm:text-sm">Follow directors, genres & boards</h3>
+                    <h3 className="text-[13px] font-semibold text-white sm:text-sm">Follow directors, actors & genres</h3>
                     <p className="text-[11px] text-white/45 sm:text-xs">Their new titles show up here.</p>
                 </div>
             </section>
         );
     }
 
-    if (!items.length && !boardUpdates.length) return null;
-
-    const eventLabel = (type, payload) => {
-        if (type === 'item_added') return `Added ${payload?.title || 'a title'}`;
-        if (type === 'items_reordered') return 'Reordered titles';
-        if (type === 'created') return 'Created this board';
-        if (type === 'commented') return 'New comment';
-        if (type === 'description_updated') return 'Updated description';
-        return 'Board update';
-    };
+    if (!items.length) return null;
 
     return (
         <section className="mb-3 space-y-4 sm:mb-8 sm:space-y-8">
-            {boardUpdates.length > 0 && (
-                <div>
-                    <div className="mb-1.5 flex items-center gap-1.5 sm:mb-3 sm:gap-2.5">
-                        <span className="text-sm sm:text-lg">🎬</span>
-                        <div className="min-w-0">
-                            <h2 className="text-[15px] font-bold tracking-tight text-white sm:text-xl">Board Updates</h2>
-                            <p className="text-[10px] text-white/40 sm:text-xs">From boards you follow</p>
-                        </div>
-                    </div>
-                    <div
-                        className="flex gap-2 overflow-x-auto overscroll-x-contain pb-0.5 scrollbar-hide snap-x snap-mandatory sm:gap-3 sm:pb-2"
-                        style={{ WebkitOverflowScrolling: 'touch' }}
-                    >
-                        {boardUpdates.slice(0, 12).map((u) => (
-                            <Link
-                                key={u.id}
-                                to={u.board?.path || '/boards'}
-                                className="shrink-0 w-[200px] snap-start rounded-xl border border-white/10 bg-[#141414] p-3 hover:border-amber-500/30 transition sm:w-[220px]"
-                            >
-                                <p className="text-[10px] uppercase tracking-wider text-amber-400/80 mb-1">Board</p>
-                                <p className="text-sm font-semibold text-white line-clamp-1">{u.board?.title}</p>
-                                <p className="text-xs text-white/45 mt-1 line-clamp-2">{eventLabel(u.event_type, u.payload)}</p>
-                            </Link>
-                        ))}
-                    </div>
-                </div>
-            )}
-
             {items.length > 0 && (
                 <div>
                     <div className="mb-1.5 flex items-center gap-1.5 sm:mb-3 sm:gap-2.5">

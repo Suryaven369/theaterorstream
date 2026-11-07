@@ -1,12 +1,10 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useParams, Link, useLocation } from "react-router-dom";
 
-import useReviewAnalysis from "../hooks/useReviewAnalysis";
 import { useSelector, useDispatch } from "react-redux";
 import { cacheMovieDetails } from "../store/movieSlice";
 import moment from "moment";
 import VideoPlay from "../components/VideoPlay";
-import ReviewAnalysis from "../components/ReviewAnalysis";
 import TOSRating from "../components/TOSRating";
 import { FaStar, FaClock, FaCalendar, FaPlay } from "react-icons/fa";
 import { IoArrowBack } from "react-icons/io5";
@@ -33,6 +31,8 @@ import SimilarMoviesSection from "../components/discover/SimilarMoviesSection";
 import { getTitleAnalysisFromEdge } from "../lib/contentEdgeApi";
 import { mergeParentGuides } from "../lib/parentGuide";
 import SeoHead from "../components/SeoHead";
+import { useUserRegion } from "../lib/userRegion";
+import TosVerdictCard from "../components/TosVerdictCard";
 
 const DETAILS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
@@ -124,6 +124,7 @@ const Details = () => {
   const params = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const userRegion = useUserRegion();
   const { isAuthenticated, user, profile } = useAuth();
   const dispatch = useDispatch();
   const movieDetailsCache = useSelector((state) => state.movieData.movieDetailsCache);
@@ -275,14 +276,15 @@ const Details = () => {
   const [ratingsKey, setRatingsKey] = useState(0);
   const [userShareReview, setUserShareReview] = useState(null);
 
-  const { analysis, loading: analysisLoading } = useReviewAnalysis(movieId);
 
   const handlePlayVideo = (data) => {
     setPlayVideoId(data);
     setPlayVideo(true);
   };
 
-  const duration = (data?.runtime / 60)?.toFixed(1)?.split(".");
+  // [hours, minutes] — the old toFixed(1) split turned 148 min into "2h 5m".
+  const runtimeMin = Number(data?.runtime || data?.episode_run_time?.[0]) || 0;
+  const duration = runtimeMin > 0 ? [String(Math.floor(runtimeMin / 60)), String(runtimeMin % 60)] : null;
   const director = castData?.crew?.find((el) => el?.job === "Director");
   const crewPeople = useMemo(
     () => mergeCrewPeople(castData?.crew).slice(0, 6),
@@ -505,7 +507,7 @@ const Details = () => {
         />
       )}
       {/* Hero Backdrop - Extended height */}
-      <div className="relative h-[55vh] md:h-[65vh] lg:h-[75vh]">
+      <div className="relative h-[42vh] md:h-[65vh] lg:h-[75vh]">
         <div className="absolute inset-0">
           {backdropSrc && (
             <img
@@ -548,12 +550,14 @@ const Details = () => {
       </div>
 
       {/* Content — extra left room on ~15" laptop widths */}
-      <div className="container mx-auto px-4 sm:px-6 md:pl-16 md:pr-10 lg:pl-24 lg:pr-14 xl:pl-28 xl:pr-16 2xl:px-12 -mt-28 sm:-mt-40 md:-mt-48 lg:-mt-64 relative z-10">
+      <div className="container mx-auto px-4 sm:px-6 md:pl-16 md:pr-10 lg:pl-24 lg:pr-14 xl:pl-28 xl:pr-16 2xl:px-12 -mt-24 sm:-mt-40 md:-mt-48 lg:-mt-64 relative z-10">
         <div className="flex flex-col md:flex-row gap-6 md:gap-10 lg:gap-16">
           {/* Left Column - Poster, Vibe Chart, Actions */}
           <div className="flex-shrink-0 w-full md:w-56 lg:w-72">
+            {/* Phones: poster + title side by side, like a native app. */}
+            <div className="flex items-end gap-4 md:block">
             {/* Poster */}
-            <div className="w-40 sm:w-48 md:w-full mx-auto md:mx-0 rounded-2xl overflow-hidden shadow-2xl">
+            <div className="w-28 shrink-0 sm:w-40 md:w-full md:mx-0 rounded-xl md:rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10">
               {posterSrc ? (
                 <img
                   src={posterSrc}
@@ -565,6 +569,24 @@ const Details = () => {
                   No image
                 </div>
               )}
+            </div>
+            <div className="min-w-0 flex-1 pb-1 md:hidden">
+              <h1 className="text-2xl font-bold leading-tight text-white line-clamp-3">
+                {data?.title || data?.name}
+              </h1>
+              <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-white/55">
+                {(data?.release_date || data?.first_air_date) && (
+                  <span>{String(data?.release_date || data?.first_air_date).slice(0, 4)}</span>
+                )}
+                {duration && <span>· {duration[0]}h {duration[1]}m</span>}
+                {Number(data?.vote_average) > 0 && (
+                  <span className="inline-flex items-center gap-1 text-yellow-400">
+                    · <FaStar className="text-[11px]" /> {Number(data.vote_average).toFixed(1)}
+                  </span>
+                )}
+              </p>
+              {director && <p className="mt-1 line-clamp-1 text-[12px] text-white/40">Directed by {director.name}</p>}
+            </div>
             </div>
 
             {/* Vibe Chart - RIGHT BELOW POSTER */}
@@ -625,7 +647,7 @@ const Details = () => {
           {/* Right Column - Details */}
           <div className="flex-1 pt-4 lg:pt-12 md:pl-4 lg:pl-8 xl:pl-10 min-w-0">
             {/* Title */}
-            <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-2">
+            <h1 className="hidden md:block text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-2">
               {data?.title || data?.name}
             </h1>
 
@@ -685,12 +707,15 @@ const Details = () => {
               </div>
             )}
 
+            {/* TOS verdict: Theater / Wait for OTT / Skip */}
+            <TosVerdictCard tmdbId={movieId} mediaType={mediaType} />
+
             {/* Where to watch (live OTT availability from TMDB) */}
             <div className="mb-5">
               <StreamingProviders
                 tmdbId={movieId}
                 mediaType={mediaType}
-                region="IN"
+                region={userRegion}
               />
             </div>
 
@@ -701,7 +726,7 @@ const Details = () => {
                 {Number(data?.vote_average).toFixed(1)}
               </span>
 
-              {duration && duration[0] !== "NaN" && (
+              {duration && (
                 <span className="flex items-center gap-2 text-white/50 text-sm">
                   <FaClock className="text-white/30" />
                   {duration[0]}h {duration[1]}m
@@ -853,9 +878,6 @@ const Details = () => {
                 </div>
               </div>
             )}
-
-            {/* Review Analysis */}
-            <ReviewAnalysis analysis={analysis} loading={analysisLoading} />
           </div>
 
           {/* Right Column - TOS Rating (desktop only, vertical) */}

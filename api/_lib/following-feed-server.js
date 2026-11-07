@@ -3,6 +3,7 @@
 // Aggregates per-entity TMDB queries, dedupes, tags each item with WHY it's
 // shown, and sorts upcoming-soonest → newest.
 import { fetchTmdbApi } from './tmdb-server.js';
+import { loadSeenSet } from './recommendation-server.js';
 import { getSupabaseAdmin } from './supabase-admin.js';
 
 const DAY = 86_400_000;
@@ -107,75 +108,26 @@ export async function getFollowingFeed(userId, { limit = 30 } = {}) {
         .from('entity_follows')
         .select('target_type, target_id, target_label')
         .eq('user_id', userId)
-        .in('target_type', ['genre', 'director', 'actor', 'franchise', 'creator', 'board'])
+        .in('target_type', ['genre', 'director', 'actor', 'franchise', 'creator'])
         .order('created_at', { ascending: false })
         .limit(MAX_ENTITIES);
 
     if (error || !follows?.length) {
-        return { items: [], followCount: 0, boardUpdates: [], generatedAt: new Date().toISOString() };
+        return { items: [], followCount: 0, generatedAt: new Date().toISOString() };
     }
 
-    const entityFollows = follows.filter((f) => f.target_type !== 'board');
-    const boardFollows = follows.filter((f) => f.target_type === 'board');
+    const entityFollows = follows;
 
-    const raw = await mapWithConcurrency(entityFollows, 4, fetchForEntity);
-
-    // Board activity for followed boards
-    let boardUpdates = [];
-    if (boardFollows.length) {
-        const boardIds = boardFollows.map((f) => f.target_id);
-        const { data: activity } = await supabase
-            .from('board_activity')
-            .select('id, board_id, actor_id, event_type, payload, created_at')
-            .in('board_id', boardIds)
-            .order('created_at', { ascending: false })
-            .limit(20);
-
-        const { data: boards } = await supabase
-            .from('boards')
-            .select('id, title, slug, cover_image, user_id, is_public, items_count')
-            .in('id', boardIds)
-            .eq('is_public', true);
-
-        const boardMap = new Map((boards || []).map((b) => [b.id, b]));
-        const ownerIds = [...new Set((boards || []).map((b) => b.user_id))];
-        let profiles = [];
-        if (ownerIds.length) {
-            const { data } = await supabase
-                .from('user_profiles')
-                .select('id, username, display_name')
-                .in('id', ownerIds);
-            profiles = data || [];
-        }
-        const profileMap = new Map(profiles.map((p) => [p.id, p]));
-
-        boardUpdates = (activity || [])
-            .map((a) => {
-                const board = boardMap.get(a.board_id);
-                if (!board) return null;
-                const owner = profileMap.get(board.user_id);
-                const label = boardFollows.find((f) => f.target_id === a.board_id)?.target_label || board.title;
-                return {
-                    kind: 'board_activity',
-                    id: a.id,
-                    event_type: a.event_type,
-                    payload: a.payload,
-                    created_at: a.created_at,
-                    board: {
-                        ...board,
-                        username: owner?.username || null,
-                        path: owner?.username ? `/${owner.username}/boards/${board.slug}` : `/boards/${board.slug}`,
-                    },
-                    reason: { type: 'board', id: board.id, label, text: `Update on ${label}` },
-                };
-            })
-            .filter(Boolean);
-    }
+    const [raw, seen] = await Promise.all([
+        mapWithConcurrency(entityFollows, 4, fetchForEntity),
+        loadSeenSet(supabase, userId).catch(() => new Set()),
+    ]);
 
     // Dedupe by media+id, merging the reasons (a title can match several follows).
     const byKey = new Map();
     for (const c of raw) {
         if (!c.tmdb_id || !c.title || !c.poster_path) continue;
+        if (seen.has(String(c.tmdb_id))) continue; // already watched / rated / liked
         const key = `${c.media_type}:${c.tmdb_id}`;
         const prev = byKey.get(key);
         if (prev) {
@@ -193,5 +145,5 @@ export async function getFollowingFeed(userId, { limit = 30 } = {}) {
         return a.upcoming ? da - db : db - da;
     }).slice(0, limit);
 
-    return { items, followCount: follows.length, boardUpdates, generatedAt: new Date().toISOString() };
+    return { items, followCount: follows.length, generatedAt: new Date().toISOString() };
 }

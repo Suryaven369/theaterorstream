@@ -8,7 +8,6 @@ import {
     searchPeople,
     fetchTrailers,
     fetchShowcaseTrailers,
-    fetchArticles,
     fetchComingSoon,
     fetchNewReleases,
     fetchPopularByPeriod,
@@ -44,6 +43,15 @@ export default async function handler(request) {
 
     try {
         const url = new URL(request.url);
+
+        // Viewer's country from Vercel's edge geolocation (no IP is stored).
+        if (segment === 'geo') {
+            const country = request.headers.get('x-vercel-ip-country') || null;
+            return new Response(JSON.stringify({ country }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store' },
+            });
+        }
 
         if (segment === 'trending') {
             const mediaType = url.searchParams.get('mediaType');
@@ -181,16 +189,6 @@ export default async function handler(request) {
                 { data, total: data.length },
                 'public, s-maxage=300, stale-while-revalidate=600',
             );
-        }
-
-        // Articles - admin-curated RSS news articles for the public Home feed
-        if (segment === 'articles') {
-            const result = await fetchArticles({
-                limit: parseInt(url.searchParams.get('limit') || '20', 10),
-                offset: parseInt(url.searchParams.get('offset') || '0', 10),
-            });
-            // CDN-friendly: Home no longer cache-busts; admin publish can wait ~2 min.
-            return jsonResponse(result, 'public, s-maxage=120, stale-while-revalidate=300');
         }
 
         // Coming soon - not yet released

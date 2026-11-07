@@ -232,12 +232,6 @@ export default function HomeComingSoonSidebar({
               Coming Soon
             </Link>
             <Link
-              to="/tags"
-              className="block px-4 py-3 text-[13px] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-subtle)]/60 hover:text-[var(--color-theater)] transition-colors"
-            >
-              Explore Hashtags
-            </Link>
-            <Link
               to="/search"
               className="block px-4 py-3 text-[13px] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-subtle)]/60 hover:text-[var(--color-theater)] transition-colors"
             >

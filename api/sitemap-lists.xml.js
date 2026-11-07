@@ -59,28 +59,6 @@ export default async function handler() {
             console.error('sitemap-lists user_collections:', err);
         }
 
-        // Public boards → /boards/:slug
-        try {
-            const boards = await fetchAllRows(
-                (from, to) =>
-                    supabase
-                        .from('boards')
-                        .select('slug, updated_at')
-                        .eq('is_public', true)
-                        .not('slug', 'is', null)
-                        .order('updated_at', { ascending: false })
-                        .range(from, to),
-                { pageSize: 500, maxRows: 2000 },
-            );
-
-            for (const board of boards) {
-                if (!board.slug) continue;
-                push(`/boards/${board.slug}`, toDate(board.updated_at), 'weekly', '0.75');
-            }
-        } catch (err) {
-            console.error('sitemap-lists boards:', err);
-        }
-
         // Admin CMS collections (if present) — same /collection/:slug surface when slug exists
         try {
             const { data: cms } = await supabase

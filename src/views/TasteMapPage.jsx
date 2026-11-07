@@ -11,28 +11,19 @@ import {
 } from '../lib/supabase';
 import { requestTasteProfileRebuild, updateTasteMapControls } from '../lib/tasteProfileApi';
 import {
-    buildRecentInsights,
-    buildSpectraFromDna,
     deriveCinematicIdentity,
     tasteStatusFromCount,
 } from '../lib/tasteMapHelpers';
 import TasteMapHeader from '../components/taste-map/TasteMapHeader';
 import CinematicIdentityCard from '../components/taste-map/CinematicIdentityCard';
 import StrongestTastes from '../components/taste-map/StrongestTastes';
-import TasteSpectrum from '../components/taste-map/TasteSpectrum';
-import VibeMap from '../components/taste-map/VibeMap';
 import HistoryRails from '../components/taste-map/HistoryRails';
-import CinemaWorldMap from '../components/taste-map/CinemaWorldMap';
 import {
     ContentBoundarySettings,
     DiscoveryPreferenceControl,
-    EmotionalPreferenceMap,
-    RecentTasteInsights,
     TasteCorrectionCentre,
     TasteMapEmptyState,
     TasteMapSkeleton,
-    TheatrePreferenceProfile,
-    ViewingModeProfiles,
 } from '../components/taste-map/TasteMapControls';
 
 function avgAxis(row) {
@@ -72,13 +63,8 @@ export default function TasteMapPage() {
     const [rated, setRated] = useState([]);
     const [toast, setToast] = useState(null);
     const [rebuilding, setRebuilding] = useState(false);
-    const [dismissedInsights, setDismissedInsights] = useState(() => new Set());
-    const [confirmedInsights, setConfirmedInsights] = useState(() => new Set());
-
-    const [emotions, setEmotions] = useState({ usually: [], sometimes: [], rarely: [] });
     const [discoveryLevel, setDiscoveryLevel] = useState(3);
     const [boundaries, setBoundaries] = useState({});
-    const [viewingModes, setViewingModes] = useState({});
 
     const load = useCallback(async () => {
         if (!user?.id) return;
@@ -102,16 +88,6 @@ export default function TasteMapPage() {
 
             if (dash?.discoveryLevel) setDiscoveryLevel(Number(dash.discoveryLevel) || 3);
             if (dash?.contentBoundaries) setBoundaries(dash.contentBoundaries);
-            if (dash?.viewingModes) setViewingModes(dash.viewingModes);
-            if (dash?.emotions && typeof dash.emotions === 'object') {
-                setEmotions({
-                    usually: dash.emotions.usually || [],
-                    sometimes: dash.emotions.sometimes || [],
-                    rarely: dash.emotions.rarely || [],
-                });
-            }
-            setDismissedInsights(new Set(dash?.dismissedInsights || []));
-            setConfirmedInsights(new Set(dash?.confirmedInsights || []));
         } catch (err) {
             setError(err?.message || 'Could not load Taste Map');
         } finally {
@@ -179,15 +155,6 @@ export default function TasteMapPage() {
             }),
         [dashboard],
     );
-
-    const spectra = useMemo(
-        () => buildSpectraFromDna(dashboard?.favoriteDna || []),
-        [dashboard?.favoriteDna],
-    );
-
-    const insights = useMemo(() => {
-        return buildRecentInsights(dashboard).filter((i) => !dismissedInsights.has(i.id));
-    }, [dashboard, dismissedInsights]);
 
     const hasSignal = Boolean(
         (dashboard?.favoriteGenres?.length)
@@ -276,6 +243,13 @@ export default function TasteMapPage() {
                             </div>
                         )}
 
+                        {dashboard?.tasteStats?.filmCount > 0 && (
+                            <p className="-mb-3 text-[12px] text-white/40 sm:-mb-5">
+                                Built from {dashboard.tasteStats.filmCount} films you rated, logged, liked or disliked
+                                {dashboard.tasteStats.ratedCount ? ` · your average rating is ${Number(dashboard.tasteStats.mean).toFixed(1)}, so picks are judged against your own scale` : ''}.
+                            </p>
+                        )}
+
                         <CinematicIdentityCard
                             identity={identity}
                             meta={{
@@ -327,42 +301,43 @@ export default function TasteMapPage() {
                             </div>
                         </section>
 
+                        {((dashboard?.learnedDirectors || []).length > 0 || (dashboard?.learnedActors || []).length > 0) && (
+                            <section>
+                                <h2 className="mb-2.5 text-lg font-bold text-white sm:mb-3 sm:text-xl">People you keep coming back to</h2>
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                    {[['Directors', dashboard?.learnedDirectors || []], ['Actors', dashboard?.learnedActors || []]]
+                                        .filter(([, list]) => list.length)
+                                        .map(([label, list]) => (
+                                            <div key={label} className="rounded-xl border border-white/8 bg-white/[0.02] p-3.5 sm:p-4">
+                                                <h3 className="mb-2.5 text-[10px] font-semibold uppercase tracking-wide text-white/40 sm:text-xs">{label}</h3>
+                                                <ul className="space-y-2.5">
+                                                    {list.slice(0, 5).map((p) => (
+                                                        <li key={p.id} className="flex items-center gap-3">
+                                                            {p.profile_path ? (
+                                                                <img src={`https://image.tmdb.org/t/p/w92${p.profile_path}`} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" loading="lazy" />
+                                                            ) : (
+                                                                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-sm text-white/60">{p.name?.[0]}</span>
+                                                            )}
+                                                            <div className="min-w-0">
+                                                                <p className="truncate text-sm font-medium text-white">{p.name}</p>
+                                                                <p className="truncate text-[11px] text-white/45">
+                                                                    {p.count} of your favourites{p.titles?.length ? ` · ${p.titles.slice(0, 2).join(', ')}` : ''}
+                                                                </p>
+                                                            </div>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        ))}
+                                </div>
+                            </section>
+                        )}
+
                         <HistoryRails
                             liked={liked}
                             rated={rated}
                             watched={watched}
                             disliked={dashboard?.dislikedMovies || []}
-                        />
-
-                        <TasteSpectrum spectra={spectra} />
-
-                        <VibeMap
-                            dna={dashboard?.favoriteDna || []}
-                            onFeedback={(label, vibeLabel) => saveFeatureFeedback(label, vibeLabel, `dna:${String(vibeLabel || '').toLowerCase().replace(/\s+/g, '_')}`)}
-                        />
-
-                        <EmotionalPreferenceMap
-                            usually={emotions.usually}
-                            sometimes={emotions.sometimes}
-                            rarely={emotions.rarely}
-                            onChange={(next) => {
-                                setEmotions(next);
-                                persistControls({ emotions: next });
-                            }}
-                        />
-
-                        <CinemaWorldMap
-                            languages={dashboard?.favoriteLanguages || prefs?.manual?.languages || []}
-                            decades={dashboard?.favoriteDecades || prefs?.manual?.eras || []}
-                            actors={dashboard?.favoriteActors || []}
-                            directors={dashboard?.favoriteDirectors || []}
-                            axisPreferences={dashboard?.axisPreferences || {}}
-                            runtimeRange={dashboard?.preferredRuntimeRange}
-                        />
-
-                        <TheatrePreferenceProfile
-                            dna={dashboard?.favoriteDna || []}
-                            genres={dashboard?.favoriteGenres || []}
                         />
 
                         <DiscoveryPreferenceControl
@@ -373,42 +348,11 @@ export default function TasteMapPage() {
                             }}
                         />
 
-                        <ViewingModeProfiles
-                            genres={dashboard?.favoriteGenres || []}
-                            moods={dashboard?.favoriteMoods || []}
-                            dna={dashboard?.favoriteDna || []}
-                            custom={viewingModes}
-                            onSaveNote={(id, text) => {
-                                const next = { ...viewingModes, [id]: text };
-                                setViewingModes(next);
-                                persistControls({ viewing_modes: next });
-                            }}
-                        />
-
                         <ContentBoundarySettings
                             boundaries={boundaries}
                             onChange={(next) => {
                                 setBoundaries(next);
                                 persistControls({ content_boundaries: next });
-                            }}
-                        />
-
-                        <RecentTasteInsights
-                            insights={insights}
-                            onAction={async (label, id) => {
-                                if (label.includes('Keep')) {
-                                    const next = new Set([...confirmedInsights, id]);
-                                    setConfirmedInsights(next);
-                                    await persistControls({ confirmed_insights: [...next] });
-                                    return;
-                                }
-                                if (label.includes('Remove') || label.includes('Correct')) {
-                                    const next = new Set([...dismissedInsights, id]);
-                                    setDismissedInsights(next);
-                                    await persistControls({ dismissed_insights: [...next] });
-                                    return;
-                                }
-                                flash('Updated');
                             }}
                         />
 

@@ -14,7 +14,6 @@ export default async function handler() {
         { loc: `${SITE}/sitemap-pages.xml`, lastmod },
         { loc: `${SITE}/sitemap-movies.xml`, lastmod },
         { loc: `${SITE}/sitemap-lists.xml`, lastmod },
-        { loc: `${SITE}/sitemap-community.xml`, lastmod },
     ]);
     return xmlResponse(body);
 }

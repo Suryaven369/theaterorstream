@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { resolveApiBase } from './apiBase';
+import { getUserRegionCode } from './userRegion';
 
 async function getAccessToken() {
     const { data: { session } } = await supabase.auth.getSession();
@@ -32,6 +33,8 @@ async function fetchRecommendations(path, options = {}) {
         ottMode: options.ottMode === false ? 'false' : (options.ottMode === true ? 'true' : undefined),
         providerId: options.providerId || undefined,
         watchRegion: options.watchRegion || undefined,
+        // Default country for users without saved streaming services.
+        regionHint: getUserRegionCode(),
     });
 
     const url = `${resolveApiBase()}${path}${query}`;
@@ -150,7 +153,7 @@ export async function getPersonalizedSimilar(tmdbId, options = {}) {
 
 /** One Perfect Movie Tonight — single daily pick. Returns { movie, message, day }. */
 export async function getOnePerfectMovie() {
-    const res = await sendJson('/api/recommendations/perfect-tonight', 'GET');
+    const res = await sendJson(`/api/recommendations/perfect-tonight?regionHint=${getUserRegionCode()}`, 'GET');
     return res.ok ? res : null;
 }
 
@@ -168,6 +171,108 @@ export async function updateTastePreferences(prefs) {
 /** Skip the signup taste questionnaire without wiping prefs. */
 export async function skipTasteQuestionnaire() {
     return sendJson('/api/recommendations/taste-profile', 'PUT', { questionnaireStatus: 'skipped' });
+}
+
+/** TOS verdict for a title (personal fit when signed in). Returns data or null. */
+export async function getTosVerdict(tmdbId, mediaType = 'movie') {
+    let token = null;
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        token = session?.access_token || null;
+    } catch { /* guest */ }
+    try {
+        const q = new URLSearchParams({ mediaType, regionHint: getUserRegionCode() });
+        const res = await fetch(`${resolveApiBase()}/api/recommendations/tos-verdict/${encodeURIComponent(String(tmdbId))}?${q}`, {
+            headers: { Accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        });
+        const payload = await res.json().catch(() => ({}));
+        return res.ok ? payload.data : null;
+    } catch {
+        return null;
+    }
+}
+
+/** Your watchlist ordered by fit for tonight → { items, meta }. */
+export async function getQueueByFit({ minutes = null } = {}) {
+    const q = new URLSearchParams({ regionHint: getUserRegionCode() });
+    if (minutes) q.set('minutes', String(minutes));
+    return sendJson(`/api/recommendations/queue?${q.toString()}`, 'GET', null, { timeoutMs: 45000 });
+}
+
+/** Tonight: mood + minutes + company → { picks: [3], meta }. */
+export async function getTonightPicks({ mood = 'any', minutes = null, company = 'solo' } = {}) {
+    const q = new URLSearchParams({ mood, company, regionHint: getUserRegionCode() });
+    if (minutes) q.set('minutes', String(minutes));
+    return sendJson(`/api/recommendations/tonight-picks?${q.toString()}`, 'GET', null, { timeoutMs: 45000 });
+}
+
+/** Taste quiz: search TMDB movies (server-side). Returns [{ id, title, year, lang, poster }]. */
+export async function searchQuizMovies(query, { signal } = {}) {
+    const q = String(query || '').trim();
+    if (q.length < 2) return [];
+    try {
+        const res = await fetch(`${resolveApiBase()}/api/recommendations/movie-search?q=${encodeURIComponent(q)}`, {
+            headers: { Accept: 'application/json' },
+            signal,
+        });
+        const payload = await res.json().catch(() => ({}));
+        return res.ok ? (payload.data || []) : [];
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * The user's streaming services + home region.
+ * @returns {Promise<{ region: string, providerIds: number[], services: {id,name,logo}[], hasServices: boolean } | null>}
+ */
+export async function getStreamingServices() {
+    const res = await sendJson('/api/recommendations/streaming-services', 'GET');
+    return res.ok ? res.data : null;
+}
+
+/** Replace the user's streaming services. providers: [{ id, name, logo }] */
+export async function saveStreamingServices({ region, providers }) {
+    return sendJson('/api/recommendations/streaming-services', 'PUT', { region, providers });
+}
+
+/** Streaming services available in a region, most prominent first. Public. */
+export async function getRegionProviders(region) {
+    try {
+        const response = await fetch(
+            `${resolveApiBase()}/api/recommendations/providers?region=${encodeURIComponent(region || 'IN')}`,
+            { headers: { Accept: 'application/json' } },
+        );
+        const payload = await response.json().catch(() => ({}));
+        return response.ok ? (payload.data || []) : [];
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * Feed tab: friends' films, popular new trailers, latest news.
+ * Works signed out (community row instead of friends).
+ */
+export async function getHomeFeed() {
+    let token = null;
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        token = session?.access_token || null;
+    } catch { /* guest */ }
+    try {
+        const response = await fetch(`${resolveApiBase()}/api/recommendations/home?regionHint=${getUserRegionCode()}`, {
+            headers: {
+                Accept: 'application/json',
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || `Feed failed (${response.status})`);
+        return { ok: true, ...payload };
+    } catch (error) {
+        return { ok: false, error: error.message, friends: { mode: 'community', items: [] }, trailers: [], news: [] };
+    }
 }
 
 /** Taste dashboard rollup (favorite genres/moods, evolving interests, accuracy). */

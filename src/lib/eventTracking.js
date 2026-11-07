@@ -6,6 +6,7 @@
  * like card impressions never blocks the UI or floods the API.
  */
 import { sendEvents } from './recommendationApi';
+import { markSeenInWatchCache } from './watchSessionCache.js';
 
 export const EVENT_TYPES = {
     MOVIE_VIEW: 'movie_view',
@@ -17,6 +18,8 @@ export const EVENT_TYPES = {
     MOVIE_WATCHED: 'movie_watched',
     MOVIE_LIKED: 'movie_liked',
     MOVIE_DISLIKED: 'movie_disliked',
+    MOVIE_MEH: 'movie_meh',
+    NOT_INTERESTED: 'not_interested',
     SHARED: 'shared',
     COLLECTION_ADDED: 'collection_added',
     COLLECTION_CREATED: 'collection_created',
@@ -58,8 +61,13 @@ function scheduleFlush() {
  * @param {string} eventType one of EVENT_TYPES
  * @param {{ tmdbId?: string|number, mediaType?: string, metadata?: object }} [payload]
  */
+// Events that mean "don't recommend this again".
+const SEEN_EVENTS = new Set(['movie_watched', 'movie_liked', 'movie_disliked', 'movie_meh', 'not_interested']);
+
 export function trackEvent(eventType, payload = {}) {
     if (!eventType) return;
+    const seenId = payload.tmdbId ?? payload.tmdb_id;
+    if (SEEN_EVENTS.has(eventType) && seenId != null) markSeenInWatchCache(seenId);
     queue.push({
         eventType,
         tmdbId: payload.tmdbId ?? payload.tmdb_id ?? null,

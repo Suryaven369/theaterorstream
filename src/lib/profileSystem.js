@@ -104,7 +104,7 @@ export async function getEntityFollowerCount(targetType, targetId) {
 // ===========================================================================
 // Reputation — weighted sum of contribution signals, cached on the profile.
 // ===========================================================================
-const REP_WEIGHTS = { followers: 5, reviews: 10, badges: 15, blogs: 8, publicLists: 4, ratings: 1, watched: 1 };
+const REP_WEIGHTS = { followers: 5, reviews: 10, publicLists: 4, ratings: 1, watched: 1 };
 
 export const REP_TIERS = [
     { min: 1500, name: 'Legend', color: '#f5c518', icon: '👑' },
@@ -130,11 +130,9 @@ export async function computeReputation(userId, { cache = false } = {}) {
     if (!userId) return { score: 0, tier: reputationTier(0), breakdown: {} };
     const uid = String(userId);
 
-    const [followers, reviews, badges, blogs, publicLists, ratings, watched] = await Promise.all([
+    const [followers, reviews, publicLists, ratings, watched] = await Promise.all([
         countRows('user_follows', 'following_id', uid),
         countRows('social_reviews', 'user_id', uid),
-        countRows('user_badges', 'user_id', uid),
-        countRows('blog_posts', 'user_id', uid),
         (async () => {
             const { count } = await supabase.from('user_collections')
                 .select('*', { count: 'exact', head: true }).eq('user_id', uid).eq('is_public', true);
@@ -144,7 +142,7 @@ export async function computeReputation(userId, { cache = false } = {}) {
         countRows('user_watched_movies', 'user_id', uid),
     ]);
 
-    const breakdown = { followers, reviews, badges, blogs, publicLists, ratings, watched };
+    const breakdown = { followers, reviews, publicLists, ratings, watched };
     const score = Object.entries(REP_WEIGHTS).reduce((s, [k, w]) => s + (breakdown[k] || 0) * w, 0);
 
     if (cache) {

@@ -35,10 +35,6 @@ async function postSocial(path, body) {
     }
 }
 
-export function checkBadges() {
-    return postSocial('/api/social/check-badges', {});
-}
-
 export function recordDecisionPick(movie) {
     return postSocial('/api/social/decision-pick', {
         tmdb_id: movie.tmdb_id,

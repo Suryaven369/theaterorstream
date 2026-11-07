@@ -93,25 +93,6 @@ export {
     regenerateFeedArticleSummary,
     toggleFeedArticleActive,
     deleteFeedArticle,
-    // News Intelligence System
-    updateRssSourceIntelligence,
-    getArticlesPendingClassification,
-    updateArticleClassification,
-    updateArticleKeywordScores,
-    getClassifiedArticles,
-    getStoryClusters,
-    getClusterWithArticles,
-    createStoryCluster,
-    updateStoryCluster,
-    assignArticleToCluster,
-    getTrendingClusters,
-    getKeywordDictionaries,
-    createKeyword,
-    updateKeyword,
-    deleteKeyword,
-    bulkCreateKeywords,
-    logProcessingStep,
-    getProcessingLogs,
 } from './db/rss.js';
 
 export {
@@ -158,36 +139,6 @@ export {
     getCollectionPosterPaths,
     fillMissingCollectionPosters,
 } from './db/collections.js';
-
-export {
-    BOARD_TITLE_MAX,
-    BOARD_DESCRIPTION_MAX,
-    BOARD_NOTE_MAX,
-    createBoardSlug,
-    boardPath,
-    getUserBoards,
-    createBoard,
-    getBoardBySlug,
-    updateBoard,
-    deleteBoard,
-    addBoardItem,
-    addBoardItems,
-    removeBoardItem,
-    updateBoardItem,
-    reorderBoardItems,
-    incrementBoardViews,
-    toggleBoardLike,
-    isBoardLiked,
-    getBoardComments,
-    addBoardComment,
-    deleteBoardComment,
-    exploreBoards,
-    searchPublicBoards,
-    getFollowedBoardActivity,
-    itemHref,
-    itemImageUrl,
-    stillItemId,
-} from './db/boards.js';
 
 export {
     toggleFollow,

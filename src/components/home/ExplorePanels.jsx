@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { FaFolderOpen, FaBookOpen } from 'react-icons/fa';
-import { getRecentPublicCollections, exploreBoards, boardPath, itemImageUrl, getCollectionBySlug, collectionPublicPath } from '../../lib/supabase';
-import { getRecentPublicBlogs } from '../../lib/blogs';
+import { FaFolderOpen } from 'react-icons/fa';
+import { getRecentPublicCollections, getCollectionBySlug, collectionPublicPath } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { prefetchCollectionPage } from '../../lib/pageSessionCache';
 
@@ -25,7 +24,7 @@ function posterSrc(_imageURL, path) {
   return `https://image.tmdb.org/t/p/w185${normalized}`;
 }
 
-function CollectionCover({ collection, imageURL }) {
+export function CollectionCover({ collection, imageURL }) {
   if (collection.cover_image) {
     return (
       <img
@@ -219,189 +218,6 @@ export function ExploreCollectionsPanel() {
             </Link>
           ))}
         </div>
-      )}
-    </PanelShell>
-  );
-}
-
-export function ExploreBoardsPanel() {
-  const imageURL = useSelector((s) => s.movieData.imageURL);
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [sort, setSort] = useState('trending');
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    exploreBoards({ sort, limit: 36 }).then((data) => {
-      if (!cancelled) {
-        setRows(data || []);
-        setLoading(false);
-      }
-    });
-    return () => { cancelled = true; };
-  }, [sort]);
-
-  return (
-    <PanelShell loading={false}>
-      <div className="flex gap-1.5 sm:gap-2 mb-4 sm:mb-5 overflow-x-auto scrollbar-hide -mx-1 px-1">
-        {[
-          { id: 'trending', label: 'Trending' },
-          { id: 'newest', label: 'Newest' },
-          { id: 'updated', label: 'Updated' },
-          { id: 'followed', label: 'Most followed' },
-        ].map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setSort(t.id)}
-            className={`shrink-0 px-3 py-2 sm:py-1.5 rounded-full text-xs transition-colors min-h-[36px] ${
-              sort === t.id
-                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                : 'bg-white/5 text-white/50 border border-white/10 hover:text-white'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {loading ? (
-        <div className="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-3 gap-2.5 sm:gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="aspect-[16/10] rounded-xl sm:rounded-2xl bg-white/5 animate-pulse" />
-          ))}
-        </div>
-      ) : rows.length === 0 ? (
-        <p className="text-sm text-white/40 py-12 text-center">No public boards yet.</p>
-      ) : (
-        <div className="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-3 gap-2.5 sm:gap-4">
-          {rows.map((board) => {
-            const username = board.user_profiles?.username;
-            const href = boardPath(board, username);
-            const posters = (board.board_items || []).filter((i) => i.image_path).slice(0, 4);
-            return (
-              <Link
-                key={board.id}
-                to={href}
-                state={{
-                  from: {
-                    path: '/?tab=explore&view=boards',
-                    label: 'Boards',
-                    crumbs: [
-                      { path: '/?tab=explore', label: 'Explore' },
-                      { path: '/?tab=explore&view=boards', label: 'Boards' },
-                    ],
-                  },
-                }}
-                className="group relative block overflow-hidden rounded-xl sm:rounded-2xl border border-white/[0.06] bg-[#0e0e0e] hover:border-amber-500/30 transition-all"
-              >
-                <div className="relative aspect-[4/3] sm:aspect-[16/10] overflow-hidden">
-                  {board.cover_image || board.banner_image ? (
-                    <img
-                      src={board.cover_image || board.banner_image}
-                      alt=""
-                      className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-                      loading="lazy"
-                    />
-                  ) : posters.length ? (
-                    <div className="absolute inset-0 grid grid-cols-2 gap-px bg-black">
-                      {posters.map((item, i) => (
-                        <img
-                          key={i}
-                          src={itemImageUrl(imageURL, item)}
-                          alt=""
-                          className="w-full h-full object-cover"
-                          loading="lazy"
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="absolute inset-0 bg-gradient-to-br from-zinc-900 to-black" />
-                  )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
-                  <div className="absolute bottom-0 left-0 right-0 p-2.5 sm:p-3">
-                    <h3 className="text-sm sm:text-base font-semibold text-white line-clamp-2 group-hover:text-amber-100">
-                      {board.title}
-                    </h3>
-                    <p className="text-[10px] sm:text-[11px] text-white/45 mt-0.5 truncate">
-                      {username ? `@${username}` : 'Board'} · {board.items_count || 0} titles
-                    </p>
-                  </div>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-      )}
-    </PanelShell>
-  );
-}
-
-export function ExploreBlogsPanel() {
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    getRecentPublicBlogs(30).then((data) => {
-      if (!cancelled) {
-        setRows(data || []);
-        setLoading(false);
-      }
-    });
-    return () => { cancelled = true; };
-  }, []);
-
-  return (
-    <PanelShell loading={loading} skeleton="blogs">
-      {rows.length === 0 ? (
-        <p className="text-sm text-white/40 py-12 text-center">No public blogs yet.</p>
-      ) : (
-        <ul className="space-y-2 sm:space-y-2.5">
-          {rows.map((b) => (
-            <li key={b.id}>
-              <Link
-                to={`/blog/${b.id}`}
-                state={{
-                  from: {
-                    path: '/?tab=explore&view=blogs',
-                    label: 'Blogs',
-                    crumbs: [
-                      { path: '/?tab=explore', label: 'Explore' },
-                      { path: '/?tab=explore&view=blogs', label: 'Blogs' },
-                    ],
-                  },
-                }}
-                className="flex gap-2.5 sm:gap-3 p-2.5 sm:p-3 rounded-xl border border-white/[0.06] bg-[#141414]/60 hover:border-white/15 transition-colors group min-h-[64px]"
-              >
-                {b.cover_image ? (
-                  <img
-                    src={b.cover_image}
-                    alt=""
-                    className="w-16 h-12 sm:w-20 sm:h-14 rounded-lg object-cover shrink-0 bg-black"
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="w-16 h-12 sm:w-20 sm:h-14 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
-                    <FaBookOpen className="text-white/30 text-sm" />
-                  </div>
-                )}
-                <div className="min-w-0 flex-1 self-center">
-                  <p className="text-sm font-semibold text-white group-hover:text-[var(--accent-green)] line-clamp-2">
-                    {b.title}
-                  </p>
-                  <p className="text-[10px] sm:text-[11px] text-white/40 mt-1 truncate">
-                    {b.user_profiles?.username ? `@${b.user_profiles.username}` : 'Author'}
-                    {b.created_at
-                      ? ` · ${new Date(b.created_at).toLocaleDateString()}`
-                      : ''}
-                  </p>
-                </div>
-              </Link>
-            </li>
-          ))}
-        </ul>
       )}
     </PanelShell>
   );

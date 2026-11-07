@@ -28,7 +28,13 @@ export default function RecommendationCard({
     const to = `${mediaType === 'tv' ? '/tv' : '/movies'}/${slug}`;
 
     const poster = resolveTmdbImageUrl(movie.poster_path, { baseUrl: reduxImageURL, size: 'w500' });
-    const matchPct = typeof movie.score === 'number' ? Math.round(movie.score * 100) : null;
+    const matchPct = typeof movie.score === 'number' ? Math.min(99, Math.round(movie.score * 100)) : null;
+    // Where it streams: the user's own services first, else anywhere in their region.
+    const yourServices = Array.isArray(movie.onYourServices) ? movie.onYourServices : [];
+    const streamingOn = yourServices.length ? yourServices : (Array.isArray(movie.availability) ? movie.availability : []);
+    const providerBadges = streamingOn.filter((p) => p?.logo).slice(0, 2);
+    // One service only — keeps the card to title, year and a single short line.
+    const providerLabel = streamingOn.length ? `On ${streamingOn[0].name}` : null;
     const rating = Number(movie.vote_average || 0);
 
     const handleClick = () => {
@@ -84,7 +90,26 @@ export default function RecommendationCard({
                         </div>
                     )}
 
-                    <div className="opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
+                    {providerBadges.length > 0 && (
+                        <div
+                            className="absolute bottom-1 left-1 z-10 flex items-center gap-0.5 sm:bottom-2 sm:left-2 sm:gap-1"
+                            title={providerLabel || undefined}
+                        >
+                            {providerBadges.map((p) => (
+                                <img
+                                    key={p.id}
+                                    src={`https://image.tmdb.org/t/p/w92${p.logo}`}
+                                    alt={p.name}
+                                    loading="lazy"
+                                    className={`h-4 w-4 rounded-[4px] object-cover shadow-md sm:h-6 sm:w-6 sm:rounded-md ${yourServices.length ? 'ring-1 ring-[var(--accent-green)]' : 'ring-1 ring-black/40'}`}
+                                />
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Quick actions on hover devices only — phones keep the poster clean
+                        (watchlist / like / watched live on the title page). */}
+                    <div className="hidden transition-opacity sm:block sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
                         <PosterQuickActions
                             movieId={tmdbId}
                             movieTitle={title}
@@ -96,19 +121,18 @@ export default function RecommendationCard({
                 </div>
             </Link>
 
-            <Link to={to} onClick={handleClick} className="mt-1 block px-0.5 sm:mt-1.5">
+            <Link
+                to={to}
+                onClick={handleClick}
+                title={showReason && movie.reason ? movie.reason : undefined}
+                className="mt-1 block px-0.5 sm:mt-1.5"
+            >
                 <h3 className="line-clamp-2 text-[11px] font-medium leading-snug text-white/90 transition-colors sm:line-clamp-1 sm:text-[13px] group-hover:text-[var(--primary)]">
                     {title}
                 </h3>
-                <p className="text-[9px] text-white/40 sm:text-[11px]">
+                <p className="line-clamp-1 text-[9px] text-white/40 sm:text-[11px]">
                     {year}{mediaType === 'tv' ? ' · Series' : ''}
                 </p>
-                {/* Reasons stay desktop/sm+ — mobile stays poster-first like a native app */}
-                {showReason && movie.reason && (
-                    <p className="mt-0.5 hidden line-clamp-2 text-[10px] leading-snug text-white/35 sm:block">
-                        {movie.reason}
-                    </p>
-                )}
             </Link>
         </div>
     );

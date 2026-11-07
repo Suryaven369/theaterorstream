@@ -13,7 +13,7 @@ export const LIBRARY_CARD_SELECT =
 /** Cap full imports per search request (live search latency). */
 const SEARCH_IMPORT_MAX = 10;
 const SEARCH_IMPORT_CONCURRENCY = 3;
-const SEARCH_DETAIL_APPEND = 'credits,videos,release_dates,keywords,external_ids';
+const SEARCH_DETAIL_APPEND = 'credits,videos,release_dates,keywords,external_ids,watch/providers';
 
 function libraryKey(tmdbId, mediaType) {
     return `${String(tmdbId)}:${mediaType === 'tv' ? 'tv' : 'movie'}`;
@@ -1024,44 +1024,6 @@ export async function fetchShowcaseTrailers(activeOnly = true) {
             url: row.youtube_url,
         },
     }));
-}
-
-/**
- * Articles: admin-curated RSS news articles shown on the public Home feed.
- * Like fetchShowcaseTrailers, this is a plain read of admin-approved rows — fetching
- * and parsing the RSS feeds themselves happens server-side in rss-server.js (cron/admin only).
- */
-export async function fetchArticles(options = {}) {
-    const supabase = getSupabase();
-    const { limit = 20, offset = 0 } = options;
-
-    // Exclude trailer entries: a verified trailer carries a tmdb_id and is shown
-    // as a clean post via trailer_posts, never as a raw news card here.
-    // Order by updated_at (approval / last go-live), not original RSS published_at,
-    // so freshly approved items land at the top of the Home feed.
-    let { data, error, count } = await supabase
-        .from('feed_articles')
-        .select('id, source_name, source_logo_url, title, link, author, summary, summary_items, image_url, published_at, updated_at', { count: 'exact' })
-        .eq('status', 'approved')
-        .eq('is_active', true)
-        .is('tmdb_id', null)
-        .order('updated_at', { ascending: false })
-        .range(offset, offset + limit - 1);
-
-    // Pre-migration DBs may not have summary_items yet.
-    if (error && /summary_items/i.test(error.message || '')) {
-        ({ data, error, count } = await supabase
-            .from('feed_articles')
-            .select('id, source_name, source_logo_url, title, link, author, summary, image_url, published_at, updated_at', { count: 'exact' })
-            .eq('status', 'approved')
-            .eq('is_active', true)
-            .is('tmdb_id', null)
-            .order('updated_at', { ascending: false })
-            .range(offset, offset + limit - 1));
-    }
-
-    if (error) throw error;
-    return { data: data || [], total: count ?? (data || []).length };
 }
 
 /**

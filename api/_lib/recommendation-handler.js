@@ -30,7 +30,10 @@ export function parseRecommendationQuery(request) {
         // Default true for For You / Tonight; mood client sends ottMode=false unless "My OTTs".
         ottMode: params.get('ottMode') !== 'false',
         providerId,
-        watchRegion: params.get('watchRegion') || params.get('region') || 'IN',
+        // No default: the engine uses the region saved with the user's streaming services.
+        watchRegion: params.get('watchRegion') || params.get('region') || null,
+        // Viewer's detected country — used when the user has no saved services.
+        regionHint: /^[A-Za-z]{2}$/.test(params.get('regionHint') || '') ? params.get('regionHint').toUpperCase() : null,
     };
 }
 

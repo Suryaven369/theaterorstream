@@ -28,6 +28,7 @@
   /* Legacy aliases (for gradual migration) */
   --primary: #f5c518;
   --primary-hover: #e4b400;
+  --gradient-gold: linear-gradient(135deg, #f5c518 0%, #e4b400 100%);
   --accent-green: #f5c518;
   --accent-green-dim: rgba(245, 197, 24, 0.15);
   --bg-primary: #0f1115;
@@ -173,7 +174,9 @@ body {
 
 /* Button styles */
 .btn-primary {
-  background: var(--gradient-gold);
+  /* Solid fallback first so the button is never invisible if the gradient var is missing. */
+  background-color: var(--primary);
+  background-image: var(--gradient-gold);
   color: #000;
   font-weight: 600;
   padding: 0.75rem 1.5rem;
@@ -181,9 +184,15 @@ body {
   transition: all 0.3s ease;
 }
 
-.btn-primary:hover {
-  transform: scale(1.05);
-  box-shadow: 0 10px 30px rgba(245, 197, 24, 0.3);
+/* Hover lift only on real pointers — on phones it would stay stuck after a tap. */
+@media (hover: hover) {
+  .btn-primary:hover {
+    transform: scale(1.05);
+    box-shadow: 0 10px 30px rgba(245, 197, 24, 0.3);
+  }
+}
+.btn-primary:active {
+  transform: scale(0.97);
 }
 
 .btn-secondary {
@@ -699,3 +708,31 @@ button:focus-visible, a:focus-visible, input:focus-visible {
 .rich-content img { max-width: 100%; border-radius: 0.5rem; margin: 0.8em 0; }
 .rich-content b, .rich-content strong { font-weight: 700; }
 .rich-content u { text-decoration: underline; }
+
+
+/* ------------------------------------------------------------------
+   Native-app feel on phones
+   ------------------------------------------------------------------ */
+html {
+  -webkit-tap-highlight-color: transparent;   /* no grey flash on tap */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+a, button, [role="button"], label, select {
+  touch-action: manipulation;                 /* no double-tap zoom delay */
+}
+@media (max-width: 1023px) {
+  body {
+    overscroll-behavior-x: none;              /* no sideways rubber-banding */
+  }
+  /* iOS zooms into fields with text under 16px — keep inputs at 16px. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  textarea {
+    font-size: 16px !important;
+  }
+  /* Tabs, chips and nav shouldn't select text on long-press. */
+  nav, button {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}

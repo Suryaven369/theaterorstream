@@ -4,8 +4,6 @@ import { FaArrowLeft } from 'react-icons/fa';
 import SeoHead from '../components/SeoHead';
 import FeedPostCard from '../components/social/FeedPostCard';
 import FeedActivityCard from '../components/social/FeedActivityCard';
-import FeedArticleCard from '../components/social/FeedArticleCard';
-import FeedTweetCard from '../components/social/FeedTweetCard';
 import FeedTrailerCard from '../components/social/FeedTrailerCard';
 import FeedCommentThread from '../components/social/FeedCommentThread';
 import FeedShareModal from '../components/social/FeedShareModal';
@@ -23,7 +21,7 @@ import {
   patchCachedFeedItem,
   shouldSyncLocalLikes,
 } from '../lib/feedSessionCache';
-import { savePost, unsavePost, votePoll } from '../lib/socialFeedApi';
+import { savePost, unsavePost } from '../lib/socialFeedApi';
 import { useToast } from '../components/Toast';
 
 function seedFromNavigation(feedId, locationState) {
@@ -54,7 +52,6 @@ export default function ThreadPage() {
   const [item, setItem] = useState(() => seedFromNavigation(feedId, location.state));
   const [loading, setLoading] = useState(() => !seedFromNavigation(feedId, location.state));
   const [sharePost, setSharePost] = useState(null);
-  const [pollVotingId, setPollVotingId] = useState(null);
   const loadedKeyRef = useRef(null);
 
   // Reset seed when navigating to a different thread
@@ -216,31 +213,6 @@ export default function ThreadPage() {
     });
   };
 
-  const handlePollVote = async (postItem, optionIndex) => {
-    if (!isAuthenticated) {
-      requireSignIn();
-      return;
-    }
-    if (postItem.userPollVote !== null && postItem.userPollVote !== undefined) return;
-    if (pollVotingId) return;
-
-    setPollVotingId(postItem.id);
-    const res = await votePoll(postItem.id, user.id, optionIndex);
-    if (res.ok && item?.pollData?.options) {
-      const options = item.pollData.options.map((opt, i) => ({
-        ...opt,
-        votes: (opt.votes || 0) + (i === optionIndex ? 1 : 0),
-      }));
-      const next = { ...item, pollData: { options }, userPollVote: optionIndex };
-      setItem(next);
-      setCachedThreadItem(next);
-      patchCachedFeedItem(postItem.id, { pollData: { options }, userPollVote: optionIndex });
-    } else if (!res.ok) {
-      toast.error(res.error || 'Could not record vote.');
-    }
-    setPollVotingId(null);
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-[var(--color-background)] flex items-center justify-center pt-20">
@@ -272,20 +244,6 @@ export default function ThreadPage() {
     if (item.type === 'trailer') {
       return <FeedTrailerCard item={item} variant="thread" onShare={(p) => setSharePost(p)} onLike={handleLike} />;
     }
-    if (item.type === 'tweet') {
-      return <FeedTweetCard item={item} variant="thread" onShare={(p) => setSharePost(p)} onLike={handleLike} />;
-    }
-    if (item.type === 'article') {
-      return (
-        <FeedArticleCard
-          item={item}
-          variant="thread"
-          onShare={(p) => setSharePost(p)}
-          onLike={handleLike}
-          onComment={scrollToComments}
-        />
-      );
-    }
     if (item.type === 'activity') {
       return (
         <FeedActivityCard
@@ -307,8 +265,6 @@ export default function ThreadPage() {
         onComment={scrollToComments}
         onShare={(p) => setSharePost(p)}
         onSave={handleSave}
-        onVotePoll={handlePollVote}
-        pollVotingId={pollVotingId}
       />
     );
   };

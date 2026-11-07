@@ -88,18 +88,6 @@ export function resolveActivityDisplay(activity, { profileUsername } = {}) {
             }
             if (p.description) subline = p.description;
             break;
-        case 'blog_post':
-            title = p.title || 'Blog post';
-            if (p.blog_id) href = `/blog/${p.blog_id}`;
-            if (p.excerpt) subline = p.excerpt;
-            break;
-        case 'badge':
-            title = [p.icon, p.name].filter(Boolean).join(' ') || 'Badge';
-            break;
-        case 'board_created':
-            title = p.title || 'Board';
-            if (p.slug) href = `/boards/${p.slug}`;
-            break;
         case 'post_like':
         case 'post_comment':
             title = activity.target_movie_title || p.post_title || p.preview || 'a post';

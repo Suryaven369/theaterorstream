@@ -228,14 +228,6 @@ export async function addComment(postId, userId, content, parentId = null) {
         return { ok: false, error: error.message };
     }
 
-    try {
-        const { ensureHashtagsFromContent } = await import('./hashtagApi.js');
-        await ensureHashtagsFromContent(data.content, {
-            contentType: 'comment',
-            contentId: data.id,
-            userId,
-        });
-    } catch { /* non-fatal */ }
 
     import('./activityFeed.js').then(({ recordPostCommentActivity }) => {
         recordPostCommentActivity(userId, postId, data.content).catch(() => {});
@@ -731,14 +723,6 @@ export async function createPost({
             fallback.post_type = 'post';
             const retry = await supabase.from('feed_posts').insert(fallback).select().single();
             if (!retry.error) {
-                try {
-                    const { ensureHashtagsFromContent } = await import('./hashtagApi.js');
-                    await ensureHashtagsFromContent(retry.data.content, {
-                        contentType: 'post',
-                        contentId: retry.data.id,
-                        userId,
-                    });
-                } catch { /* non-fatal */ }
                 return {
                     ok: true,
                     post: retry.data,
@@ -758,39 +742,8 @@ export async function createPost({
         return { ok: false, error: error.message };
     }
 
-    // Link #hashtags (DB trigger also does this when migration is applied)
-    try {
-        const { ensureHashtagsFromContent } = await import('./hashtagApi.js');
-        await ensureHashtagsFromContent(data.content, {
-            contentType: 'post',
-            contentId: data.id,
-            userId,
-        });
-    } catch { /* non-fatal */ }
 
     return { ok: true, post: data };
-}
-
-// ---------------------------------------------------------------------------
-// Vote on a 2-option poll (one vote per user)
-// ---------------------------------------------------------------------------
-export async function votePoll(postId, userId, optionIndex) {
-    if (!userId) return { ok: false, error: 'not_signed_in' };
-    if (!postId) return { ok: false, error: 'missing_post' };
-    if (optionIndex !== 0 && optionIndex !== 1) return { ok: false, error: 'invalid_option' };
-
-    const { error } = await supabase
-        .from('post_poll_votes')
-        .upsert(
-            { post_id: postId, user_id: userId, option_index: optionIndex },
-            { onConflict: 'post_id,user_id' }
-        );
-
-    if (error) {
-        console.error('[votePoll]', error);
-        return { ok: false, error: error.message };
-    }
-    return { ok: true, optionIndex };
 }
 
 // ---------------------------------------------------------------------------
@@ -836,14 +789,6 @@ export async function updatePost(postId, userId, { content }) {
         return { ok: false, error: error.message };
     }
 
-    try {
-        const { ensureHashtagsFromContent } = await import('./hashtagApi.js');
-        await ensureHashtagsFromContent(data.content, {
-            contentType: 'post',
-            contentId: data.id,
-            userId,
-        });
-    } catch { /* non-fatal */ }
 
     return { ok: true, post: data };
 }
@@ -929,30 +874,15 @@ export async function getFeedPosts({ limit = 20, offset = 0, userId = null, mode
         .order('created_at', { ascending: false })
         .order('id', { ascending: false });
 
-    // "Following" = people you follow + your own + posts tagged with hashtags you follow
-    let followedTagPostIds = [];
+    // "Following" = people you follow + your own posts
     if (mode === 'following' && userId) {
         const { data: follows } = await supabase
             .from('user_follows').select('following_id').eq('follower_id', userId);
         const ids = [...new Set([userId, ...(follows || []).map((f) => f.following_id)])];
-
-        try {
-            const { getFollowedHashtagPostIds } = await import('./hashtagApi.js');
-            followedTagPostIds = await getFollowedHashtagPostIds(userId, { limit: 60 });
-        } catch { /* hashtag tables may not exist yet */ }
-
-        if (followedTagPostIds.length) {
-            // Fetch a wider window then filter — PostgREST can't OR user_id IN + id IN cleanly
-            // without an RPC, so we pull recent public posts and keep matching ones.
-            query = query.or(`user_id.in.(${ids.join(',')}),id.in.(${followedTagPostIds.join(',')})`);
-        } else {
-            query = query.in('user_id', ids);
-        }
+        query = query.in('user_id', ids);
     }
 
-    // Over-fetch slightly when personalizing so we can boost tag-matched posts into the page
-    const fetchLimit = (mode === 'all' && userId) ? limit + 15 : limit;
-    const { data, error } = await query.range(offset, offset + fetchLimit - 1);
+    const { data, error } = await query.range(offset, offset + limit - 1);
 
     if (error) {
         console.error('[getFeedPosts]', error);
@@ -960,43 +890,7 @@ export async function getFeedPosts({ limit = 20, offset = 0, userId = null, mode
     }
     if (!data?.length) return { ok: true, items: [] };
 
-    let rows = data;
-
-    // Home "All": soft-boost posts that use hashtags the user follows (still chronological-ish)
-    if (mode === 'all' && userId && offset === 0) {
-        try {
-            const { getFollowedHashtagPostIds } = await import('./hashtagApi.js');
-            const tagPostIds = new Set(await getFollowedHashtagPostIds(userId, { limit: 40 }));
-            if (tagPostIds.size) {
-                const boosted = [];
-                const rest = [];
-                for (const post of rows) {
-                    if (tagPostIds.has(post.id)) boosted.push(post);
-                    else rest.push(post);
-                }
-                // Interleave: every other slot prefers a followed-tag post when available
-                const merged = [];
-                let bi = 0;
-                let ri = 0;
-                while (merged.length < limit && (bi < boosted.length || ri < rest.length)) {
-                    if (bi < boosted.length && (merged.length % 2 === 0 || ri >= rest.length)) {
-                        merged.push(boosted[bi++]);
-                    } else if (ri < rest.length) {
-                        merged.push(rest[ri++]);
-                    } else {
-                        merged.push(boosted[bi++]);
-                    }
-                }
-                rows = merged;
-            } else {
-                rows = rows.slice(0, limit);
-            }
-        } catch {
-            rows = rows.slice(0, limit);
-        }
-    } else {
-        rows = rows.slice(0, limit);
-    }
+    const rows = data.slice(0, limit);
 
     const postIds = rows.map((p) => p.id);
     const authorIds = [...new Set(rows.map((p) => p.user_id).filter(Boolean))];

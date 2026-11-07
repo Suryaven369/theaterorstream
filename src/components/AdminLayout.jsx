@@ -9,11 +9,9 @@ import {
     FiLayout,
     FiActivity,
     FiSearch,
-    FiList,
     FiVideo,
     FiRss,
     FiLink,
-    FiCpu,
     FiLayers,
     FiMenu,
     FiX,
@@ -30,13 +28,11 @@ const AdminLayout = () => {
         { path: "/admin/browse", label: "Browse TMDB", icon: FiSearch },
         { path: "/admin/sections", label: "Sections", icon: FiLayout },
         { path: "/admin/trailers", label: "Trailers", icon: FiVideo },
-        { path: "/admin/articles", label: "Articles", icon: FiRss },
-        { path: "/admin/news-intel", label: "News Intel", icon: FiCpu },
+        { path: "/admin/articles", label: "Trailer Sources", icon: FiRss },
         { path: "/admin/collections", label: "Collections", icon: FiTag },
         { path: "/admin/franchise-lists", label: "List Moderation", icon: FiLayers },
         { path: "/admin/settings", label: "Settings", icon: FiSettings, exact: true },
         { path: "/admin/settings/profile-connect", label: "Profile Connect", icon: FiLink },
-        { path: "/admin/legacy", label: "Legacy Panel", icon: FiList },
     ];
 
     const isActive = (item) => {

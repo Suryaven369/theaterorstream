@@ -1,9 +1,9 @@
 /**
  * LLM layer — optional polish on top of the rule + vector engine.
  *
- * Providers: Google Gemini (preferred) with Mistral as an automatic fallback.
- * If Gemini is missing / rate-limited / errors, the call retries on Mistral;
- * if both fail (or neither key is set), every function degrades gracefully
+ * Providers: OpenAI GPT (primary, GPT_KEY or OPENAI_API_KEY), then Gemini and
+ * Mistral as automatic fallbacks when GPT is missing / rate-limited / errors.
+ * If every provider fails (or no key is set), every function degrades gracefully
  * (returns null / the original order) so the deterministic engine keeps serving.
  * The LLM only ever *re-orders a shortlist* and *writes prose* — it never invents
  * titles or drops candidates the engine already vetted.
@@ -15,14 +15,30 @@ const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 const DEFAULT_MODEL = 'gemini-2.0-flash';
 const MISTRAL_URL = 'https://api.mistral.ai/v1/chat/completions';
 const MISTRAL_DEFAULT_MODEL = 'mistral-small-latest';
+const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
+// Fast + strong for short reranks/prose (~1–2.5s with reasoning off), well
+// inside the Watch page's LLM budget. Override with OPENAI_MODEL.
+const OPENAI_DEFAULT_MODEL = 'gpt-5.4-mini';
 const REQUEST_TIMEOUT_MS = 9000;
 
 function getMistralKey() {
     return process.env.MIST_API_KEY || process.env.MISTRAL_API_KEY;
 }
 
+function getOpenAiKey() {
+    return process.env.GPT_KEY || process.env.OPENAI_API_KEY;
+}
+
+/** Which provider answers first — reported back for debugging. */
+function primaryProvider() {
+    if (getOpenAiKey()) return 'openai';
+    if (process.env.GEMINI_API_KEY) return 'gemini';
+    if (getMistralKey()) return 'mistral';
+    return null;
+}
+
 export function isLlmEnabled() {
-    return !!(process.env.GEMINI_API_KEY || getMistralKey());
+    return !!(getOpenAiKey() || process.env.GEMINI_API_KEY || getMistralKey());
 }
 
 function getModel() {
@@ -132,17 +148,74 @@ async function callMistral(prompt, opts = {}) {
 }
 
 /**
- * Provider-agnostic call: Mistral first (primary), Gemini as automatic fallback.
+ * Low-level OpenAI chat call. Returns text output or null on any failure.
+ * GPT-5 / o-series are reasoning models: they reject custom temperature and
+ * use max_completion_tokens, so we send minimal reasoning effort instead.
+ */
+async function callOpenAi(prompt, opts = {}) {
+    const key = getOpenAiKey();
+    if (!key) return null;
+
+    const { json = false, temperature = 0.4, maxOutputTokens = 1024 } = opts;
+    const model = process.env.OPENAI_MODEL || OPENAI_DEFAULT_MODEL;
+    const isReasoning = /^(gpt-5|o\d)/i.test(model);
+    // Lowest effort each family accepts: gpt-5.x → none, gpt-5 → minimal, o-series → low.
+    const reasoningEffort = /^gpt-5\.\d/i.test(model) ? 'none' : (/^gpt-5/i.test(model) ? 'minimal' : 'low');
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+    try {
+        const res = await fetch(OPENAI_URL, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${key}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                model,
+                messages: [{ role: 'user', content: prompt }],
+                max_completion_tokens: maxOutputTokens,
+                ...(isReasoning ? { reasoning_effort: reasoningEffort } : { temperature }),
+                ...(opts.jsonSchema
+                    ? { response_format: { type: 'json_schema', json_schema: opts.jsonSchema } }
+                    : (json ? { response_format: { type: 'json_object' } } : {})),
+            }),
+            signal: controller.signal,
+        });
+
+        if (!res.ok) {
+            const errText = await res.text().catch(() => '');
+            console.warn(`[llm] OpenAI ${res.status}: ${errText.slice(0, 160)}`);
+            return null;
+        }
+
+        const data = await res.json();
+        return data?.choices?.[0]?.message?.content || null;
+    } catch (err) {
+        console.warn('[llm] OpenAI call failed:', err.message);
+        return null;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+/**
+ * Provider-agnostic call: OpenAI GPT first, then Gemini, then Mistral.
  * Returns the first non-null text output, or null if all providers fail.
  */
 async function callLlm(prompt, opts = {}) {
-    if (getMistralKey()) {
-        const out = await callMistral(prompt, opts);
+    if (getOpenAiKey()) {
+        const out = await callOpenAi(prompt, opts);
         if (out) return out;
-        if (process.env.GEMINI_API_KEY) console.warn('[llm] Mistral unavailable, falling back to Gemini');
+        console.warn('[llm] OpenAI unavailable, trying fallback provider');
     }
     if (process.env.GEMINI_API_KEY) {
-        return callGemini(prompt, opts);
+        const out = await callGemini(prompt, opts);
+        if (out) return out;
+    }
+    if (getMistralKey()) {
+        return callMistral(prompt, opts);
     }
     return null;
 }
@@ -163,6 +236,27 @@ function safeParseJson(text) {
  * Generic JSON generation: prompt -> parsed JSON object/array, or null.
  * Uses the Gemini→Mistral fallback chain. The prompt must ask for JSON.
  */
+/**
+ * Structured output: OpenAI must return JSON matching `jsonSchema` (strict),
+ * then `validate` (e.g. a zod safeParse) re-checks it on our side. Returns the
+ * validated object, or null on any failure — callers keep a deterministic fallback.
+ * @param {string} prompt
+ * @param {{ name: string, schema: object, validate: (v: unknown) => { success: boolean, data?: any } }} spec
+ */
+export async function generateStructured(prompt, { name, schema, validate }, opts = {}) {
+    if (!getOpenAiKey()) return null;
+    const text = await callOpenAi(prompt, {
+        temperature: 0.3,
+        maxOutputTokens: 700,
+        ...opts,
+        jsonSchema: { name, strict: true, schema },
+    });
+    const parsed = safeParseJson(text);
+    if (!parsed) return null;
+    const checked = validate(parsed);
+    return checked?.success ? checked.data : null;
+}
+
 export async function generateJson(prompt, opts = {}) {
     if (!isLlmEnabled()) return null;
     const text = await callLlm(prompt, { json: true, temperature: 0.2, maxOutputTokens: 600, ...opts });
@@ -414,7 +508,7 @@ export async function runFriendChatTurn(input) {
         intent,
         moodSummary,
         personQuery: personQuery && personQuery.toLowerCase() !== 'null' ? personQuery : null,
-        provider: getMistralKey() ? 'mistral' : 'gemini',
+        provider: primaryProvider(),
     };
 }
 
@@ -518,7 +612,7 @@ export async function answerRecoChat(input) {
         reply: reply || null,
         order,
         reasons,
-        provider: getMistralKey() ? 'mistral' : 'gemini',
+        provider: primaryProvider(),
     };
 }
 

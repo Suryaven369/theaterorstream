@@ -1,17 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import {
-    FiRss,
-    FiEdit3,
     FiBookmark,
     FiFolder,
-    FiCompass,
-    FiAward,
     FiSettings,
     FiLogOut,
     FiChevronRight,
 } from 'react-icons/fi';
-import { getUserBadges } from '../lib/movieDiary';
 
 const AVATARS = {
     avatar_1: { emoji: '🎬', bg: 'from-red-500 to-pink-500' },
@@ -61,18 +56,8 @@ function MenuRow({ to, icon: Icon, label, sublabel, onClick }) {
 }
 
 export default function ProfileMenu({ profile, userId, isOnboarded, onClose, onSignOut }) {
-    const [badgeCount, setBadgeCount] = useState(null);
     const avatar = AVATARS[profile?.avatar_id] || { emoji: '👤', bg: 'from-gray-500 to-gray-600' };
     const username = profile?.username;
-
-    useEffect(() => {
-        if (!userId || !onClose) return;
-        let cancelled = false;
-        getUserBadges(userId).then((badges) => {
-            if (!cancelled) setBadgeCount(badges.length);
-        });
-        return () => { cancelled = true; };
-    }, [userId]);
 
     const close = onClose || (() => {});
 
@@ -102,19 +87,8 @@ export default function ProfileMenu({ profile, userId, isOnboarded, onClose, onS
             <nav className="px-2 py-1 space-y-0.5">
                 {isOnboarded && username ? (
                     <>
-                        <MenuRow to="/feed" icon={FiRss} label="Cinema Feed" sublabel="Popular, following & for you" onClick={close} />
-                        <MenuRow to={`/${username}/blogs`} icon={FiEdit3} label="Blogs" sublabel="Write & manage posts" onClick={close} />
                         <MenuRow to={`/${username}/watchlist`} icon={FiBookmark} label="Watchlist" onClick={close} />
                         <MenuRow to={`/${username}/collections`} icon={FiFolder} label="Lists" onClick={close} />
-                        <MenuRow to={`/${username}/boards`} icon={FiCompass} label="Boards" onClick={close} />
-                        <MenuRow to="/boards" icon={FiCompass} label="Explore Boards" onClick={close} />
-                        <MenuRow
-                            to={`/${username}/achievements`}
-                            icon={FiAward}
-                            label="Achievements"
-                            sublabel={badgeCount != null ? `${badgeCount} unlocked` : undefined}
-                            onClick={close}
-                        />
                         <MenuRow
                             to="/settings"
                             icon={FiSettings}

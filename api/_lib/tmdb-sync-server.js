@@ -7,9 +7,14 @@ import {
     shouldRefreshFull,
     upsertLibraryRecord,
 } from './movie-library-server.js';
+import { refreshProvidersForRows } from './watch-providers-server.js';
 
-const DETAIL_APPEND = 'credits,videos,release_dates,keywords,reviews';
-const BATCH_SIZE = 3;
+// watch/providers keeps OTT availability current for every title the scan touches.
+const DETAIL_APPEND = 'credits,videos,release_dates,keywords,reviews,watch/providers';
+const BATCH_SIZE = 5;
+
+/** Regions scanned for "new on streaming". */
+const STREAMING_SCAN_REGIONS = ['IN', 'US', 'GB'];
 
 // Helper to get date strings for TMDB discover queries
 function getDateRange(daysBack, daysForward) {
@@ -22,6 +27,51 @@ function getDateRange(daysBack, daysForward) {
         from: from.toISOString().split('T')[0],
         to: to.toISOString().split('T')[0],
     };
+}
+
+/**
+ * "New on streaming": recent titles that are on a subscription/free service in
+ * a region. TMDB has no "date added to service", so this pairs a recent release
+ * window with streaming availability — the closest reliable signal.
+ */
+function streamingNewSources(region) {
+    return [
+        {
+            path: '/discover/movie',
+            mediaType: 'movie',
+            pages: 2,
+            customParams: () => {
+                const { from, to } = getDateRange(150, 0);
+                return {
+                    watch_region: region,
+                    with_watch_monetization_types: 'flatrate|free|ads',
+                    'primary_release_date.gte': from,
+                    'primary_release_date.lte': to,
+                    sort_by: 'popularity.desc',
+                    'vote_count.gte': 3,
+                    include_adult: false,
+                };
+            },
+        },
+        {
+            // Shows with episodes airing now (catches new seasons, not just new shows).
+            path: '/discover/tv',
+            mediaType: 'tv',
+            pages: 1,
+            customParams: () => {
+                const { from, to } = getDateRange(21, 0);
+                return {
+                    watch_region: region,
+                    with_watch_monetization_types: 'flatrate|free|ads',
+                    'air_date.gte': from,
+                    'air_date.lte': to,
+                    sort_by: 'popularity.desc',
+                    'vote_count.gte': 3,
+                    include_adult: false,
+                };
+            },
+        },
+    ];
 }
 
 export const SYNC_JOBS = {
@@ -181,6 +231,13 @@ export const SYNC_JOBS = {
         enrichVideos: true,
     },
     
+    // New arrivals on streaming services (daily, multi-region)
+    'streaming-new-daily': {
+        region: 'IN',
+        sources: STREAMING_SCAN_REGIONS.flatMap((region) => streamingNewSources(region)),
+        maxItems: 120,
+    },
+
     // Multi-region popular (US + India)
     'popular-global': {
         region: 'US',
@@ -281,15 +338,24 @@ async function fetchSourceItems(source, region) {
 async function loadExistingMap(supabase, tmdbIds) {
     if (!tmdbIds.length) return new Map();
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
         .from('movies_library')
-        .select('tmdb_id, popularity, vote_average, synced_at')
+        .select('tmdb_id, media_type, popularity, vote_average, synced_at, release_date, watch_providers_synced_at')
         .in('tmdb_id', tmdbIds);
+
+    if (error && /watch_providers/.test(error.message || '')) {
+        // Provider migration not applied yet.
+        ({ data, error } = await supabase
+            .from('movies_library')
+            .select('tmdb_id, media_type, popularity, vote_average, synced_at, release_date')
+            .in('tmdb_id', tmdbIds));
+    }
 
     if (error) throw error;
 
+    // Keyed by media type too: a movie and a show can share a TMDB id.
     const map = new Map();
-    (data || []).forEach((row) => map.set(String(row.tmdb_id), row));
+    (data || []).forEach((row) => map.set(`${row.media_type || 'movie'}:${row.tmdb_id}`, row));
     return map;
 }
 
@@ -306,11 +372,12 @@ async function processItems(supabase, items, stats) {
     const unique = new Map();
     items.forEach((item) => {
         if (!item?.id) return;
-        unique.set(String(item.id), item);
+        const mediaType = item._mediaType || item.media_type || 'movie';
+        unique.set(`${mediaType}:${item.id}`, item);
     });
 
     const list = Array.from(unique.values());
-    const existingMap = await loadExistingMap(supabase, list.map((i) => String(i.id)));
+    const existingMap = await loadExistingMap(supabase, [...new Set(list.map((i) => String(i.id)))]);
 
     for (let i = 0; i < list.length; i += BATCH_SIZE) {
         const batch = list.slice(i, i + BATCH_SIZE);
@@ -318,7 +385,7 @@ async function processItems(supabase, items, stats) {
         await Promise.all(batch.map(async (item) => {
             const mediaType = item._mediaType || item.media_type || 'movie';
             const tmdbId = String(item.id);
-            const existing = existingMap.get(tmdbId);
+            const existing = existingMap.get(`${mediaType}:${tmdbId}`);
 
             try {
                 if (!existing) {
@@ -369,20 +436,35 @@ export async function runSyncJob(jobName) {
     try {
         let collected = [];
 
+        const regions = [config.region, ...(config.additionalRegions || [])];
         for (const source of config.sources) {
-            const { items, pagesFetched } = await fetchSourceItems(source, config.region);
-            stats.pagesFetched += pagesFetched;
-            collected = collected.concat(items);
-            stats.metadata.sources.push({
-                path: source.path,
-                mediaType: source.mediaType,
-                pages: source.pages,
-                fetched: items.length,
-            });
+            // Region-scoped sources run once per configured region.
+            const sourceRegions = source.useRegion ? regions : [config.region];
+            for (const region of sourceRegions) {
+                let result;
+                try {
+                    result = await fetchSourceItems(source, region);
+                } catch (sourceError) {
+                    // One failing source must not sink the whole scan.
+                    console.error(`Sync source ${source.path} (${region}) failed:`, sourceError.message);
+                    stats.metadata.sources.push({ path: source.path, region, error: sourceError.message });
+                    continue;
+                }
+                const { items, pagesFetched } = result;
+                stats.pagesFetched += pagesFetched;
+                collected = collected.concat(items);
+                stats.metadata.sources.push({
+                    path: source.path,
+                    mediaType: source.mediaType,
+                    region,
+                    pages: source.pages,
+                    fetched: items.length,
+                });
+            }
         }
 
         let deduped = Array.from(
-            new Map(collected.map((item) => [String(item.id), item])).values(),
+            new Map(collected.map((item) => [`${item._mediaType}:${item.id}`, item])).values(),
         );
 
         // Drop titles whose primary/list release_date is outside the theatrical window
@@ -426,6 +508,32 @@ export async function runSyncJob(jobName) {
         await updateSyncState(supabase, jobName, config.region, runId, 'failed', null);
         throw error;
     }
+}
+
+/**
+ * Keep OTT availability fresh across the library: refresh the titles whose
+ * provider data is missing or oldest (popular first). Runs daily.
+ */
+export async function runProvidersRefresh({ limit = 220 } = {}) {
+    const supabase = getSupabaseAdmin();
+    const { data: rows, error } = await supabase
+        .from('movies_library')
+        .select('tmdb_id, media_type')
+        .eq('is_active', true)
+        .order('watch_providers_synced_at', { ascending: true, nullsFirst: true })
+        .order('popularity', { ascending: false, nullsFirst: false })
+        .limit(limit);
+
+    if (error) {
+        if (/watch_providers/.test(error.message || '')) {
+            return { skipped: true, reason: 'Apply migration 20261106000000_watch_providers.sql first' };
+        }
+        throw error;
+    }
+    if (!rows?.length) return { checked: 0, fetched: 0, failed: 0 };
+
+    const { stats } = await refreshProvidersForRows(supabase, rows, { concurrency: 10 });
+    return { checked: rows.length, ...stats };
 }
 
 // Backfills the `seasons` column for TV shows that were synced into the library

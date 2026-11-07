@@ -41,8 +41,12 @@
             "schedule": "0 3 * * *"
         },
         {
-            "path": "/api/cron/news-pipeline",
-            "schedule": "0 8 * * *"
+            "path": "/api/cron/streaming-new-daily",
+            "schedule": "30 5 * * *"
+        },
+        {
+            "path": "/api/cron/providers-refresh",
+            "schedule": "0 2 * * *"
         }
     ],
     "rewrites": [
@@ -61,10 +65,6 @@
         {
             "source": "/sitemap-lists.xml",
             "destination": "/api/sitemap-lists.xml"
-        },
-        {
-            "source": "/sitemap-community.xml",
-            "destination": "/api/sitemap-community.xml"
         },
         {
             "source": "/api/tmdb/(.*)",

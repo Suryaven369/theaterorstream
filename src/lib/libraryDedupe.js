@@ -65,10 +65,34 @@ export function isLibraryUpsertConflictError(error) {
         || msg.includes('no unique or exclusion constraint');
 }
 
+const PROVIDER_FIELDS = ['watch_providers', 'watch_providers_synced_at'];
+
+function isMissingProviderColumn(error) {
+    const msg = String(error?.message || error || '');
+    return /watch_providers/.test(msg) && /(column|schema cache|does not exist|Could not find)/i.test(msg);
+}
+
+function stripProviderFields(records) {
+    return records.map((r) => {
+        const copy = { ...r };
+        PROVIDER_FIELDS.forEach((k) => { delete copy[k]; });
+        return copy;
+    });
+}
+
 /**
  * Upsert with composite conflict; falls back to tmdb_id-only if migration not applied yet.
+ * Also retries without OTT provider fields if that migration isn't applied.
  */
 export async function upsertMoviesLibrary(supabase, records, selectColumns) {
+    const result = await upsertMoviesLibraryOnce(supabase, records, selectColumns);
+    if (result.error && isMissingProviderColumn(result.error)) {
+        return upsertMoviesLibraryOnce(supabase, stripProviderFields(records || []), selectColumns);
+    }
+    return result;
+}
+
+async function upsertMoviesLibraryOnce(supabase, records, selectColumns) {
     const deduped = dedupeLibraryRecords(records);
     if (!deduped.length) {
         return { data: [], error: null, conflictTarget: null };

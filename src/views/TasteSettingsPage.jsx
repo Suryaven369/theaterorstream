@@ -5,6 +5,7 @@ import {
     TASTE_GENRES, TASTE_MOODS, TASTE_LANGUAGES, TASTE_ERAS,
 } from '../constants/discoveryTaste';
 import { getTastePreferences, updateTastePreferences } from '../lib/recommendationApi';
+import StreamingServicesPicker from '../components/StreamingServicesPicker';
 
 function toggle(list, value) {
     return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
@@ -81,7 +82,7 @@ export default function TasteSettingsPage() {
             setSavedAt(Date.now());
             setTimeout(() => {
                 if (window.history.length > 1) navigate(-1);
-                else navigate('/watch');
+                else navigate('/');
             }, 700);
         } else {
             setError(res?.error || 'Could not save. Please try again.');
@@ -123,6 +124,8 @@ export default function TasteSettingsPage() {
                         These prefs nudge the engine until you have enough likes and ratings.
                     </p>
                 </div>
+
+                <StreamingServicesPicker />
 
                 {loading ? (
                     <div className="space-y-4 sm:space-y-6">

@@ -8,9 +8,9 @@ const MobileNavigation = () => {
   const { isAuthenticated, profile } = useAuth();
 
   const navItems = [
-    { href: "/", icon: IoHome, label: "Home", match: "home" },
+    { href: "/", icon: IoSparkles, label: "Watch", match: "watch" },
     { href: "/?tab=explore", icon: IoFilm, label: "Explore", match: "explore" },
-    { href: "/?tab=watch", icon: IoSparkles, label: "Watch", match: "watch" },
+    { href: "/?tab=feed", icon: IoHome, label: "Feed", match: "feed" },
     { href: "/search", icon: IoSearch, label: "Search", match: "search" },
   ];
 
@@ -43,9 +43,9 @@ const MobileNavigation = () => {
               isActive = location.search.includes("tab=explore")
                 || location.search.includes("tab=my-feed");
             } else if (nav.match === "watch") {
-              isActive = location.pathname === "/" && location.search.includes("tab=watch");
-            } else if (nav.match === "home") {
               isActive = location.pathname === "/" && !location.search.includes("tab=");
+            } else if (nav.match === "feed") {
+              isActive = location.pathname === "/" && /tab=(feed|home)/.test(location.search);
             } else if (nav.match === "profile") {
               isActive = location.pathname.includes("/profile");
             } else if (nav.match === "search") {

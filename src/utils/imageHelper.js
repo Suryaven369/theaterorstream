@@ -67,6 +67,9 @@ export const resolveTmdbImageUrl = (path, options = {}) => {
         baseUrl = null,
         size = 'original',
     } = options;
+    // An explicitly requested size always wins; the shared Redux base (w342)
+    // is only a default for callers that don't ask for a size.
+    const sizeRequested = Object.prototype.hasOwnProperty.call(options, 'size') && !!options.size;
 
     const sizedBase = `${TMDB_IMAGE_BASE}${size}`;
 
@@ -82,6 +85,7 @@ export const resolveTmdbImageUrl = (path, options = {}) => {
         // Never honor an /original Redux base for thumbnails — size wins
         const base = String(baseUrl || '');
         const useBase = base
+            && !sizeRequested
             && !/\/original\/?$/.test(base)
             && !base.includes('/t/p/original');
         const prefix = (useBase ? base : sizedBase).replace(/\/$/, '');

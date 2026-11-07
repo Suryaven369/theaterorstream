@@ -613,7 +613,7 @@ const AdminArticlesPage = () => {
     const [sources, setSources] = useState([]);
     const [loadingSources, setLoadingSources] = useState(true);
     const [counts, setCounts] = useState({});
-    const [activeKind, setActiveKind] = useState("article"); // 'article' | 'trailer'
+    const [activeKind, setActiveKind] = useState("trailer"); // 'article' | 'trailer'
     const [selectedSourceId, setSelectedSourceId] = useState(null); // null = All Sources
     const [sourceFormOpen, setSourceFormOpen] = useState(false);
     const [editingSource, setEditingSource] = useState(null); // null = add new

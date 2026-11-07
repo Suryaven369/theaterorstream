@@ -82,7 +82,6 @@ Sitemap: https://www.theaterorstream.com/sitemap.xml
 Sitemap: https://www.theaterorstream.com/sitemap-pages.xml
 Sitemap: https://www.theaterorstream.com/sitemap-movies.xml
 Sitemap: https://www.theaterorstream.com/sitemap-lists.xml
-Sitemap: https://www.theaterorstream.com/sitemap-community.xml
 
 # GEO: curated map for answer engines
 # https://www.theaterorstream.com/llms.txt

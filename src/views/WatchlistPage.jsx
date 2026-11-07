@@ -5,6 +5,7 @@ import { useSelector } from 'react-redux';
 import { getUserWatchlist, toggleWatchlist, getProfileByUsername } from '../lib/supabase';
 import { FaBookmark, FaTrash } from 'react-icons/fa';
 import ConfirmationModal from '../components/ConfirmationModal';
+import { getQueueByFit } from '../lib/recommendationApi';
 
 
 const WatchlistPage = () => {
@@ -18,6 +19,9 @@ const WatchlistPage = () => {
     const [removing, setRemoving] = useState(null);
     const [itemToDelete, setItemToDelete] = useState(null);
     const [targetProfile, setTargetProfile] = useState(null);
+    // Own queue: sorted by fit for tonight (default) or by date added.
+    const [sortMode, setSortMode] = useState('fit');
+    const [fitById, setFitById] = useState(null); // tmdbId → { rank, note, whereToWatch }
 
     const isOwnProfile = !username
         || (!!profile?.username && profile.username.toLowerCase() === String(username).toLowerCase());
@@ -39,6 +43,12 @@ const WatchlistPage = () => {
             if (targetUserId) {
                 const data = await getUserWatchlist(targetUserId);
                 setWatchlist(data);
+                if (isOwnProfile && data.length) {
+                    getQueueByFit().then((res) => {
+                        if (!res?.ok) return;
+                        setFitById(new Map((res.items || []).map((it, rank) => [String(it.tmdbId), { rank, ...it }])));
+                    });
+                }
             } else {
                 setWatchlist([]);
             }
@@ -77,6 +87,12 @@ const WatchlistPage = () => {
     }
 
     const displayUsername = targetProfile?.username || username;
+    const fitReady = isOwnProfile && fitById && fitById.size > 0;
+    // Plain computation (this runs after an early return, so no hooks here).
+    const ordered = sortMode !== 'fit' || !fitReady
+        ? watchlist
+        : [...watchlist].sort((a, b) => (fitById.get(String(a.movie_id))?.rank ?? 9999)
+            - (fitById.get(String(b.movie_id))?.rank ?? 9999));
 
     return (
         <div className="min-h-screen bg-[#0a0a0a] pt-24 pb-12 px-4">
@@ -100,11 +116,25 @@ const WatchlistPage = () => {
                         <p className="text-white/50 mt-1">{watchlist.length} movies to watch</p>
                     </div>
                 </div>
+                {isOwnProfile && watchlist.length > 1 && (
+                    <div className="mb-5 inline-flex rounded-full border border-white/10 bg-white/[0.03] p-1 text-[13px]">
+                        {[['fit', 'Best for tonight'], ['recent', 'Recently added']].map(([id, label]) => (
+                            <button
+                                key={id}
+                                type="button"
+                                onClick={() => setSortMode(id)}
+                                className={`min-h-[36px] rounded-full px-4 ${sortMode === id ? 'bg-[var(--primary)] font-semibold text-[#14181c]' : 'text-white/60'}`}
+                            >
+                                {label}{id === 'fit' && !fitReady ? '…' : ''}
+                            </button>
+                        ))}
+                    </div>
+                )}
 
                 {/* Watchlist Grid */}
                 {watchlist.length > 0 ? (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                        {watchlist.map((movie) => (
+                        {ordered.map((movie) => (
                             <div
                                 key={movie.id}
                                 className="group relative rounded-xl overflow-hidden bg-[#1a1a1a] border border-white/5 hover:border-yellow-500/30 transition-all"
@@ -128,8 +158,10 @@ const WatchlistPage = () => {
                                 <div className="p-3 flex items-start justify-between gap-2">
                                     <div className="flex-1 min-w-0">
                                         <h3 className="text-sm font-medium text-white truncate">{movie.movie_title}</h3>
-                                        <p className="text-xs text-white/40">
-                                            Added {new Date(movie.added_at).toLocaleDateString()}
+                                        <p className="text-xs text-white/40 line-clamp-1">
+                                            {sortMode === 'fit' && fitById?.get(String(movie.movie_id))?.note
+                                                ? fitById.get(String(movie.movie_id)).note
+                                                : `Added ${new Date(movie.added_at).toLocaleDateString()}`}
                                         </p>
                                     </div>
                                     {isOwnProfile && (

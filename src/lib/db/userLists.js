@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient.js';
+import { markSeenInWatchCache } from '../watchSessionCache.js';
 
 // =============================================
 // USER MOVIE INTERACTIONS (Watchlist, Liked, Watched)
@@ -92,6 +93,7 @@ export const ensureWatchedMovie = async (userId, movieId, movieTitle, posterPath
         console.error('[watched] ensure failed:', error.message);
         return { success: false, added: false, error: error.message };
     }
+    markSeenInWatchCache(id);
     return { success: true, added: true };
 };
 
@@ -161,6 +163,7 @@ export const toggleWatchedMovie = async (userId, movieId, movieTitle, posterPath
             .from('user_watched_movies')
             .insert({ user_id: userId, movie_id: String(movieId), movie_title: movieTitle, poster_path: posterPath, media_type: mediaType });
         if (error) console.error('[watched] add failed:', error.message);
+        else markSeenInWatchCache(movieId);
         return { success: !error, added: true, error: error?.message };
     }
 };

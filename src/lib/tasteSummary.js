@@ -5,32 +5,45 @@ const GENRE_NAMES = {
     10770: 'TV Movie', 53: 'Thriller', 10752: 'War', 37: 'Western',
 };
 
+const MOOD_WORDS = {
+    mind_bending: 'mind-bending', feel_good: 'feel-good', action_packed: 'action-packed',
+    family_friendly: 'family-friendly', suspenseful: 'suspenseful', dark: 'dark', intense: 'intense',
+    funny: 'funny', emotional: 'emotional', romantic: 'romantic', thoughtful: 'thoughtful', cozy: 'cozy',
+};
+
+function listJoin(items) {
+    if (items.length <= 1) return items.join('');
+    return `${items.slice(0, -1).join(', ')} & ${items[items.length - 1]}`;
+}
+
 export function generateTasteSummary(tasteProfile, displayProfile) {
     if (!tasteProfile && !displayProfile) return null;
 
-    const weights = tasteProfile?.genre_weights || {};
-    const topGenres = Object.entries(weights)
+    // The rebuild writes a proper sentence (AI or template) — prefer it.
+    if (tasteProfile?.taste_summary) return tasteProfile.taste_summary;
+
+    const topGenres = Object.entries(tasteProfile?.genre_weights || {})
+        .filter(([, w]) => Number(w) > 0)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 3)
-        .map(([id]) => GENRE_NAMES[id] || `Genre ${id}`);
+        .map(([id]) => GENRE_NAMES[id])
+        .filter(Boolean);
+    const moods = Object.entries(tasteProfile?.mood_preferences || {})
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 2)
+        .map(([m]) => MOOD_WORDS[m] || m.replace(/_/g, ' '));
+    const decades = (tasteProfile?.preferred_decades || []).slice(0, 2).map((d) => `${d}s`);
 
-    const moods = Object.keys(tasteProfile?.mood_preferences || {}).slice(0, 2);
-    const decades = (tasteProfile?.preferred_decades || []).slice(0, 2);
-    const pacing = tasteProfile?.onboarding_step_data?.pacing || tasteProfile?.axis_preferences?.pacing;
-
-    const parts = [];
-    if (topGenres.length) parts.push(`Loves ${topGenres.join(', ')}`);
-    if (moods.length) parts.push(`with ${moods.join(' & ')} vibes`);
-    if (pacing) parts.push(`Prefers ${String(pacing).replace(/_/g, ' ')} pacing`);
-    if (decades.length) parts.push(`from the ${decades.join(' & ')}s`);
-
-    if (!parts.length) {
+    if (!topGenres.length) {
         const fav = displayProfile?.favorite_genres || [];
-        if (fav.length) return `Into ${fav.slice(0, 3).join(', ')} cinema.`;
+        if (fav.length) return `Into ${listJoin(fav.slice(0, 3))} cinema.`;
         // No real taste signal yet — callers decide whether to show a CTA
         // (own profile) or hide the card (viewing someone else as a guest).
         return null;
     }
 
-    return `${parts.join('. ')}.`;
+    let text = `Loves ${listJoin(topGenres)}`;
+    if (moods.length) text += ` with ${listJoin(moods)} vibes`;
+    if (decades.length) text += `, mostly from the ${listJoin(decades)}`;
+    return `${text}.`;
 }

@@ -29,9 +29,8 @@ import {
     reportUser,
     canViewProfile,
 } from '../lib/profileSystem';
-import { getUserBadges, getUserActivityFeed, getUserMovieLogs } from '../lib/movieDiary';
+import { getUserActivityFeed, getUserMovieLogs } from '../lib/movieDiary';
 import { prefetchCollectionPage } from '../lib/pageSessionCache';
-import { getUserBlogPosts } from '../lib/blogs';
 import FollowListModal from '../components/social/FollowListModal';
 import ActivityFeedRow from '../components/social/ActivityFeedRow';
 import { generateTasteSummary } from '../lib/tasteSummary';
@@ -40,7 +39,6 @@ import { getFeedPostsByAuthor } from '../lib/socialFeedApi';
 import { generateSlugWithId } from '../lib/slugUtils';
 import { searchContentFromDb } from '../lib/contentApi';
 import { searchPeople } from '../lib/peopleApi';
-import { getUserTopHashtags, getUserFollowedHashtags } from '../lib/hashtagApi';
 import { FaUserPlus, FaUserCheck, FaEllipsisH, FaSearch, FaTimes, FaCamera, FaStar, FaFlag, FaBan, FaShareAlt, FaChartLine } from 'react-icons/fa';
 import SeoHead from '../components/SeoHead';
 import MovieMentionText from '../components/MovieMentionText';
@@ -82,7 +80,6 @@ const PROFILE_TABS = [
     { id: 'diary', label: 'Diary', path: '/diary' },
     { id: 'watchlist', label: 'Watchlist', path: '/watchlist' },
     { id: 'lists', label: 'Lists', path: '/collections' },
-    { id: 'blogs', label: 'Blogs', path: '/blogs' },
 ];
 
 const ProfilePage = () => {
@@ -99,7 +96,7 @@ const ProfilePage = () => {
     const [viewedUserId, setViewedUserId] = useState(null);
     const [allWatchlist, setAllWatchlist] = useState([]);
     const [allCollections, setAllCollections] = useState([]);
-    const [tabData, setTabData] = useState({ activity: null, diary: null, blogs: null });
+    const [tabData, setTabData] = useState({ activity: null, diary: null });
     const [tabLoading, setTabLoading] = useState(false);
     const [tabPage, setTabPage] = useState(1);
 
@@ -134,7 +131,6 @@ const ProfilePage = () => {
     const [likedMovies, setLikedMovies] = useState([]);
     const [recentWatched, setRecentWatched] = useState([]);
     const [watchlistItems, setWatchlistItems] = useState([]);
-    const [badges, setBadges] = useState([]);
     const [socialReviews, setSocialReviews] = useState([]);
     const [userPosts, setUserPosts] = useState([]);
 
@@ -183,8 +179,6 @@ const ProfilePage = () => {
     // Favorites from profile (display)
     const [favoriteShows, setFavoriteShows] = useState([]);
     const [favoriteDirectors, setFavoriteDirectors] = useState([]);
-    const [favoriteTags, setFavoriteTags] = useState([]);
-    const [followedTags, setFollowedTags] = useState([]);
 
     // Privacy / menu / moderation
     const [accessAllowed, setAccessAllowed] = useState(true);
@@ -257,7 +251,6 @@ const ProfilePage = () => {
                     watchedMovies,
                     followersData,
                     followingData,
-                    userBadges,
                     reviews,
                     postsRes,
                 ] = await Promise.all([
@@ -268,13 +261,12 @@ const ProfilePage = () => {
                     getUserWatchedMovies(targetUserId),
                     getUserFollowers(targetUserId),
                     getUserFollowing(targetUserId),
-                    getUserBadges(targetUserId),
                     getSocialReviewsForUser(targetUserId, 5),
                     getFeedPostsByAuthor(targetUserId, { limit: 8, viewerId: user?.id || null }),
                 ]);
 
                 setViewedUserId(targetUserId);
-                setTabData({ activity: null, diary: null, blogs: null });
+                setTabData({ activity: null, diary: null });
                 setWatchlistCount(watchlist.length);
                 setWatchlistItems(watchlist.slice(0, 5));
                 setAllWatchlist(watchlist);
@@ -286,15 +278,6 @@ const ProfilePage = () => {
                 setFavoriteFilms((targetProfile?.favorite_films || []).slice(0, 4));
                 setFavoriteShows((targetProfile?.favorite_shows || []).slice(0, 4));
                 setFavoriteDirectors((targetProfile?.favorite_directors || []).slice(0, 6));
-
-                // Favorite / followed hashtags (taste profile signal)
-                Promise.all([
-                    getUserTopHashtags(targetUserId, { limit: 10 }),
-                    getUserFollowedHashtags(targetUserId, { limit: 10 }),
-                ]).then(([top, followed]) => {
-                    setFavoriteTags(top || []);
-                    setFollowedTags(followed || []);
-                });
 
                 // Privacy gate (followers-only / private profiles)
                 const allowed = await canViewProfile(user?.id, targetProfile, { isFollowing: isOwner ? true : undefined });
@@ -321,7 +304,6 @@ const ProfilePage = () => {
                 });
                 setWatchedThisYear(thisYearWatched.length);
 
-                setBadges(userBadges);
                 setSocialReviews(reviews);
                 setUserPosts(postsRes?.items || []);
             }
@@ -347,18 +329,17 @@ const ProfilePage = () => {
         return () => { cancelled = true; };
     }, [isOwnProfile, user?.id, isEditing]);
 
-    // Lazy-load the heavier tabs (activity / diary / blogs) the first time they're opened.
+    // Lazy-load the heavier tabs (activity / diary) the first time they're opened.
     useEffect(() => {
         if (!viewedUserId) return;
-        if (!['activity', 'diary', 'blogs'].includes(activeTab)) return;
+        if (!['activity', 'diary'].includes(activeTab)) return;
         if (tabData[activeTab] != null) return;
 
         let cancelled = false;
         setTabLoading(true);
         const loader =
             activeTab === 'activity' ? getUserActivityFeed(viewedUserId, 200)
-            : activeTab === 'diary' ? getUserMovieLogs(viewedUserId, { limit: 200 })
-            : getUserBlogPosts(viewedUserId);
+            : getUserMovieLogs(viewedUserId, { limit: 200 });
         Promise.resolve(loader)
             .then((data) => { if (!cancelled) setTabData((p) => ({ ...p, [activeTab]: data || [] })); })
             .catch(() => { if (!cancelled) setTabData((p) => ({ ...p, [activeTab]: [] })); })
@@ -587,7 +568,7 @@ const ProfilePage = () => {
         </div>
     );
 
-    const TAB_PAGE_SIZE = { watchlist: 24, lists: 12, activity: 15, diary: 15, blogs: 10 };
+    const TAB_PAGE_SIZE = { watchlist: 24, lists: 12, activity: 15, diary: 15 };
     const pageSlice = (arr) => {
         const size = TAB_PAGE_SIZE[activeTab] || 20;
         return arr.slice((tabPage - 1) * size, tabPage * size);
@@ -616,7 +597,7 @@ const ProfilePage = () => {
     };
 
     const renderTabContent = () => {
-        if (tabLoading && ['activity', 'diary', 'blogs'].includes(activeTab) && tabData[activeTab] == null) {
+        if (tabLoading && ['activity', 'diary'].includes(activeTab) && tabData[activeTab] == null) {
             return <div className="py-16 flex justify-center"><div className="animate-spin w-7 h-7 border-2 border-[var(--accent-green)] border-t-transparent rounded-full" /></div>;
         }
         switch (activeTab) {
@@ -730,36 +711,6 @@ const ProfilePage = () => {
                     <Pager total={logs.length} />
                   </>
                 ) : emptyTab('No diary entries yet.');
-            }
-            case 'blogs': {
-                const blogs = tabData.blogs || [];
-                return blogs.length ? (
-                  <>
-                    <div className="space-y-2">
-                        {pageSlice(blogs).map((b) => (
-                            <Link
-                                key={b.id}
-                                to={`/blog/${b.id}`}
-                                state={viewedProfile?.username ? {
-                                    from: {
-                                        path: `/${viewedProfile.username}/profile?tab=blogs`,
-                                        label: 'Profile',
-                                        crumbs: [
-                                            { path: `/${viewedProfile.username}/profile`, label: `@${viewedProfile.username}` },
-                                            { path: `/${viewedProfile.username}/profile?tab=blogs`, label: 'Blogs' },
-                                        ],
-                                    },
-                                } : undefined}
-                                className="block p-4 rounded-xl bg-[#1a1d1f] border border-white/5 hover:border-white/15 transition-colors"
-                            >
-                                <p className="text-sm font-semibold text-white">{b.title}</p>
-                                {b.created_at && <p className="text-[11px] text-white/40 mt-1">{new Date(b.created_at).toLocaleDateString()}</p>}
-                            </Link>
-                        ))}
-                    </div>
-                    <Pager total={blogs.length} />
-                  </>
-                ) : emptyTab(isOwnProfile ? 'No blogs yet — write your first!' : 'No blogs yet.');
             }
             default:
                 return null;
@@ -1358,7 +1309,7 @@ const ProfilePage = () => {
                         </div>
                     </div>
                 ) : activeTab !== 'profile' ? (
-                    /* In-page tab content (Activity / Diary / Watchlist / Lists / Blogs) */
+                    /* In-page tab content (Activity / Diary / Watchlist / Lists) */
                     <div>{renderTabContent()}</div>
                 ) : (
                     /* Profile Content */
@@ -1379,8 +1330,8 @@ const ProfilePage = () => {
                                     </span>
                                 </Link>
                             )}
-                            {/* Taste Identity & Achievements Row */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Taste Identity */}
+                            <div className="grid grid-cols-1 gap-4">
                                 {/* Taste Identity Card */}
                                 {(() => {
                                     const tasteSummary = generateTasteSummary(tasteProfile, displayProfile);
@@ -1402,36 +1353,6 @@ const ProfilePage = () => {
                                     );
                                 })()}
 
-                                {/* Achievements Card */}
-                                <section className="p-5 rounded-xl bg-[#1a1d1f] border border-white/5">
-                                    <div className="flex items-center justify-between mb-3">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-lg">🏆</span>
-                                            <h3 className="text-xs font-semibold uppercase tracking-wider text-white/50">
-                                                Achievements ({badges.length})
-                                            </h3>
-                                        </div>
-                                        <Link to={`/${profileUsername}/achievements`} className="text-xs text-white/40 hover:text-[var(--primary)] uppercase tracking-wide">
-                                            View all
-                                        </Link>
-                                    </div>
-                                    {badges.length > 0 ? (
-                                        <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-                                            {badges.slice(0, 6).map((b) => (
-                                                <div
-                                                    key={b.id}
-                                                    title={b.description}
-                                                    className="flex flex-col items-center p-2 rounded-lg bg-white/5 border border-white/10 text-center hover:border-white/20 transition-colors"
-                                                >
-                                                    <span className="text-xl">{b.icon}</span>
-                                                    <span className="text-[9px] text-white/60 mt-1 line-clamp-1">{b.name}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <p className="text-sm text-white/40">No badges yet — watch movies to unlock!</p>
-                                    )}
-                                </section>
                             </div>
 
                             {/* Recent Posts */}
@@ -1615,40 +1536,6 @@ const ProfilePage = () => {
                                             </div>
                                         ))}
                                     </div>
-                                </section>
-                            )}
-
-                            {/* Favorite Tags — most-used + followed */}
-                            {(favoriteTags.length > 0 || followedTags.length > 0) && (
-                                <section>
-                                    <h3 className="text-xs font-semibold uppercase tracking-wider text-white/50 mb-3">Favorite Tags</h3>
-                                    <div className="flex flex-wrap gap-1.5">
-                                        {(favoriteTags.length ? favoriteTags : followedTags).map((tag) => (
-                                            <Link
-                                                key={tag.id || tag.slug}
-                                                to={`/tag/${tag.slug}`}
-                                                className="px-2.5 py-1 rounded-lg text-xs font-medium bg-white/[0.04] border border-white/10 text-orange-300/90 hover:border-orange-500/40 transition-colors"
-                                            >
-                                                #{tag.display_name}
-                                            </Link>
-                                        ))}
-                                    </div>
-                                    {favoriteTags.length > 0 && followedTags.length > 0 && (
-                                        <div className="mt-2.5">
-                                            <p className="text-[10px] uppercase tracking-wider text-white/30 mb-1.5">Following</p>
-                                            <div className="flex flex-wrap gap-1.5">
-                                                {followedTags.slice(0, 8).map((tag) => (
-                                                    <Link
-                                                        key={`f-${tag.id || tag.slug}`}
-                                                        to={`/tag/${tag.slug}`}
-                                                        className="px-2 py-0.5 rounded-md text-[11px] bg-white/[0.03] border border-white/10 text-white/55 hover:text-orange-300 transition-colors"
-                                                    >
-                                                        #{tag.display_name}
-                                                    </Link>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
                                 </section>
                             )}
 

@@ -1,7 +1,6 @@
 import { supabase } from './supabase';
 import { toPublicStorageUrl } from './storagePublicUrl';
 import { getFeedPostById, getPostComments, addComment } from './socialFeedApi';
-import { isTwitterRssUrl } from './twitterRss';
 import { generateThreadSlug, parseThreadSlug } from './slugUtils';
 
 /**
@@ -25,10 +24,6 @@ export function parseFeedThreadId(feedId = '') {
 /** Canonical shareable path for a feed item. */
 export function threadPathForItem(item) {
     if (!item?.id) return '/';
-
-    if (item.type === 'blog' && item.blogId) {
-        return `/blog/${item.blogId}`;
-    }
 
     if (item.type === 'article' || item.type === 'tweet') {
         const uuid = String(item.id).startsWith('article-')
@@ -176,39 +171,9 @@ async function resolveUuidByShortId(shortId) {
     return null;
 }
 
-async function loadArticleThread(articleId) {
-    const { data: a, error } = await supabase
-        .from('feed_articles')
-        .select('id, source_name, source_logo_url, title, link, author, summary, summary_items, image_url, published_at, status, is_active')
-        .eq('id', articleId)
-        .eq('status', 'approved')
-        .eq('is_active', true)
-        .maybeSingle();
-    if (error || !a) {
-        if (error) console.error('[getThreadItem article]', error);
-        return { ok: false, item: null };
-    }
-    const twitter = isTwitterRssUrl(a.link || '');
-    return {
-        ok: true,
-        item: {
-            id: `article-${a.id}`,
-            type: twitter ? 'tweet' : 'article',
-            title: a.title,
-            sourceName: a.source_name,
-            sourceLogo: a.source_logo_url,
-            imageUrl: a.image_url,
-            summary: a.summary,
-            summaryItems: Array.isArray(a.summary_items) ? a.summary_items : null,
-            publishedAt: a.published_at,
-            createdAt: a.published_at,
-            link: a.link,
-            user: null,
-            likes: 0,
-            isLiked: false,
-            comments: 0,
-        },
-    };
+/** News articles were removed from the app — old article links resolve as not found. */
+async function loadArticleThread() {
+    return { ok: false, item: null };
 }
 
 async function loadTrailerThread(tmdbId) {

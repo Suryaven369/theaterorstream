@@ -1,4 +1,6 @@
 import { getSupabaseAdmin } from './supabase-admin.js';
+import { TasteQuizSchema, quizError, QUIZ_LANGUAGES } from '../../src/lib/tasteQuiz.js';
+import { saveUserStreamingSetup } from './streaming-services-server.js';
 
 /**
  * Manual taste preferences (Settings → Taste Preferences).
@@ -48,7 +50,10 @@ export const TASTE_ERAS = [1980, 1990, 2000, 2010, 2020];
 
 const VALID_GENRE_IDS = new Set(TASTE_GENRES.map((g) => g.id));
 const VALID_MOOD_IDS = new Set(TASTE_MOODS.map((m) => m.id));
-const VALID_LANGUAGE_IDS = new Set(TASTE_LANGUAGES.map((l) => l.id));
+const VALID_LANGUAGE_IDS = new Set([
+    ...(TASTE_LANGUAGES.map((l) => l.id)),
+    ...QUIZ_LANGUAGES.map((l) => l.id),
+]);
 const VALID_ERAS = new Set(TASTE_ERAS);
 
 function sanitizeGenreWeights(genreIds) {
@@ -126,6 +131,7 @@ export async function getTastePreferences(userId) {
             decades: profile?.preferred_decades || [],
         },
         questionnaire: questionnaireFromStep(profile?.onboarding_step_data),
+        quiz: profile?.onboarding_step_data?.quiz || null,
         onboardingCompletedAt: profile?.onboarding_completed_at || null,
         options: {
             genres: TASTE_GENRES,
@@ -184,6 +190,22 @@ export async function updateTastePreferences(userId, input) {
     const now = new Date().toISOString();
     const step = { ...(existing?.onboarding_step_data || {}) };
     if (status) step.taste_questionnaire = status;
+
+    // Structured taste quiz (loved/disliked films, platforms, pattern, dealbreakers).
+    let quiz = null;
+    if (input?.quiz) {
+        const parsed = TasteQuizSchema.safeParse(input.quiz);
+        if (!parsed.success) {
+            const err = new Error(quizError(parsed));
+            err.statusCode = 400;
+            throw err;
+        }
+        quiz = { ...parsed.data, savedAt: now };
+        step.quiz = quiz;
+        step.taste_questionnaire = 'completed';
+        // Languages from the quiz become the user's language preference.
+        input = { ...input, languages: input.languages ?? quiz.languages };
+    }
     if (input?.watchStyle !== undefined) {
         const style = sanitizeWatchStyle(input.watchStyle);
         if (style) step.watch_style = style;
@@ -223,10 +245,10 @@ export async function updateTastePreferences(userId, input) {
         manual_mood_preferences: moodPrefs,
         manual_languages: languages,
         manual_preferred_eras: eras,
-        favorite_actor_ids: actors.ids,
-        favorite_director_ids: directors.ids,
-        favorite_actors: actors.list,
-        favorite_directors: directors.list,
+        // Only touch hand-picked people when the caller sent them — the questionnaire
+        // and the Taste Settings chips don't, and must not wipe them.
+        ...(input?.actors !== undefined ? { favorite_actor_ids: actors.ids, favorite_actors: actors.list } : {}),
+        ...(input?.directors !== undefined ? { favorite_director_ids: directors.ids, favorite_directors: directors.list } : {}),
         onboarding_step_data: step,
         onboarding_completed_at: existing?.onboarding_completed_at || now,
         manual_updated_at: now,
@@ -253,7 +275,18 @@ export async function updateTastePreferences(userId, input) {
 
     if (error) throw new Error(error.message);
 
+    if (quiz && (quiz.platformIds.length || input?.quiz?.region)) {
+        try {
+            await saveUserStreamingSetup(userId, {
+                region: quiz.region,
+                providers: quiz.platformIds.map((id) => ({ id })),
+            });
+        } catch (err) {
+            console.warn('[quiz] saving streaming services failed:', err.message);
+        }
+    }
+
     await supabase.from('recommendation_cache').delete().eq('user_id', userId);
 
-    return { ok: true };
+    return { ok: true, quiz };
 }

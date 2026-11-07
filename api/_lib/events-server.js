@@ -25,6 +25,9 @@ export const EVENT_WEIGHTS = {
     rated_1: -10,
     movie_liked: 12,
     movie_disliked: -12,
+    // Feedback on a recommendation (Phase 5).
+    movie_meh: -4,          // watched it, it was fine — mild negative
+    not_interested: -10,    // don't show me this kind of thing
     shared: 12,
     collection_added: 15,
     collection_created: 6,
@@ -38,20 +41,20 @@ export const EVENT_WEIGHTS = {
 // Only EXPLICIT rejections suppress a title from future recs. Passive views /
 // scroll-bys must NOT suppress, or the feed reshuffles on every visit.
 export const SUPPRESS_EVENTS = new Set([
-    'recommendation_ignored', 'movie_disliked', 'watchlist_removed',
+    'recommendation_ignored', 'movie_disliked', 'watchlist_removed', 'not_interested', 'movie_meh',
 ]);
 const SUPPRESS_MIN_COUNT = 3; // must be rejected this many times to demote
 
 // Taste map + reco affinity: likes + ratings only (not watches / views / watchlist).
 export const TASTE_SIGNAL_EVENTS = new Set([
-    'movie_liked', 'movie_disliked',
+    'movie_liked', 'movie_disliked', 'movie_meh', 'not_interested',
     'rated_5', 'rated_4', 'rated_3', 'rated_2', 'rated_1',
 ]);
 
 // Events that may invalidate reco cache — watches do NOT (client drops the card;
 // full reload / 3+ likes refreshes analysis). Ratings & dislikes still bust.
 export const CACHE_BUST_EVENTS = new Set([
-    'movie_disliked',
+    'movie_disliked', 'movie_meh', 'not_interested',
     'rated_5', 'rated_4', 'rated_3', 'rated_2', 'rated_1',
 ]);
 
@@ -248,7 +251,8 @@ export async function getBehavioralSignals(userId, options = {}) {
         // One dislike is enough to hide a title; ignores still need repeats.
         if (event.tmdb_id && SUPPRESS_EVENTS.has(event.event_type)) {
             const id = String(event.tmdb_id);
-            if (event.event_type === 'movie_disliked') {
+            if (event.event_type === 'movie_disliked' || event.event_type === 'not_interested'
+                || event.event_type === 'movie_meh') {
                 rejectCounts.set(id, SUPPRESS_MIN_COUNT);
             } else {
                 rejectCounts.set(id, (rejectCounts.get(id) || 0) + 1);
@@ -335,6 +339,7 @@ export async function getTasteDashboard(userId) {
 
     const genreWeights = profile?.genre_weights || {};
     const favoriteGenres = Object.entries(genreWeights)
+        .filter(([, w]) => Number(w) > 0)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 6)
         .map(([id, weight]) => ({
@@ -343,7 +348,11 @@ export async function getTasteDashboard(userId) {
             score: Math.round(Number(weight) * 100),
         }));
 
-    const moodPrefs = { ...(profile?.mood_preferences || {}), ...(profile?.manual_mood_preferences || {}) };
+    // Learned moods (from loved films) lead; declared moods only fill an empty map.
+    const learnedMoods = profile?.mood_preferences || {};
+    const moodPrefs = Object.keys(learnedMoods).length
+        ? learnedMoods
+        : (profile?.manual_mood_preferences || {});
     const favoriteMoods = Object.entries(moodPrefs)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 6)
@@ -420,6 +429,10 @@ export async function getTasteDashboard(userId) {
         favoriteLanguages: profile?.preferred_languages || [],
         favoriteActors: profile?.favorite_actors || [],
         favoriteDirectors: profile?.favorite_directors || [],
+        learnedDirectors: profile?.learned_people?.directors || [],
+        learnedActors: profile?.learned_people?.actors || [],
+        tasteStats: profile?.taste_stats || null,
+        likedCount: profile?.taste_stats?.likedCount ?? null,
         evolvingInterests: recent,
         evolution,
         accuracyScore: signals.accuracyScore,

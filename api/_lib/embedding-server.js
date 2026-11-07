@@ -8,6 +8,19 @@ function getMistralKey() {
     return process.env.MIST_API_KEY || process.env.MISTRAL_API_KEY;
 }
 
+/** OpenAI key — GPT_KEY is the project's name for it. */
+function getOpenAiKey() {
+    return process.env.GPT_KEY || process.env.OPENAI_API_KEY;
+}
+
+const GENRE_NAMES = {
+    28: 'Action', 12: 'Adventure', 16: 'Animation', 35: 'Comedy', 80: 'Crime',
+    99: 'Documentary', 18: 'Drama', 10751: 'Family', 14: 'Fantasy', 36: 'History',
+    27: 'Horror', 10402: 'Music', 9648: 'Mystery', 10749: 'Romance', 878: 'Science Fiction',
+    10770: 'TV Movie', 53: 'Thriller', 10752: 'War', 37: 'Western', 10759: 'Action & Adventure',
+    10765: 'Sci-Fi & Fantasy', 10768: 'War & Politics', 10762: 'Kids', 10764: 'Reality',
+};
+
 /** L2-normalise so cosine/inner-product comparisons stay consistent. Google
  *  recommends this when truncating MRL embeddings below their native size. */
 function l2normalize(vector) {
@@ -24,18 +37,37 @@ function truncate(text, maxLen = 6000) {
 }
 
 export function buildMovieDocument(movie) {
-    const genres = Array.isArray(movie?.genres)
-        ? movie.genres.map((g) => g?.name || g).filter(Boolean).join(', ')
-        : '';
+    const genreList = Array.isArray(movie?.genres) && movie.genres.length
+        ? movie.genres.map((g) => g?.name || GENRE_NAMES[g?.id ?? g]).filter(Boolean)
+        : (movie?.genre_ids || []).map((id) => GENRE_NAMES[id]).filter(Boolean);
+    const keywords = (Array.isArray(movie?.keywords) ? movie.keywords : [])
+        .map((k) => k?.name || k)
+        .filter((k) => typeof k === 'string' && k)
+        .slice(0, 15);
+    const directors = (movie?.credits?.crew || [])
+        .filter((c) => c.job === 'Director')
+        .map((c) => c.name)
+        .slice(0, 2);
+    const cast = (movie?.credits?.cast || [])
+        .slice()
+        .sort((x, y) => (x.order ?? 99) - (y.order ?? 99))
+        .slice(0, 4)
+        .map((c) => c.name);
     const moods = Array.isArray(movie?.mood_tags) ? movie.mood_tags.join(', ') : '';
+    const year = String(movie?.release_date || movie?.first_air_date || '').slice(0, 4);
+    const kind = movie?.media_type === 'tv' ? 'TV series' : 'Film';
 
     return truncate([
-        movie?.title,
-        genres && `Genres: ${genres}`,
+        `${movie?.title || movie?.name || ''}${year ? ` (${year})` : ''} — ${kind}`,
+        movie?.tagline && `Tagline: ${movie.tagline}`,
+        genreList.length && `Genres: ${genreList.join(', ')}`,
+        keywords.length && `Keywords: ${keywords.join(', ')}`,
+        directors.length && `Director: ${directors.join(', ')}`,
+        cast.length && `Starring: ${cast.join(', ')}`,
         moods && `Moods: ${moods}`,
         movie?.original_language && `Language: ${movie.original_language}`,
         movie?.overview,
-    ].filter(Boolean).join('\n'));
+    ].filter(Boolean).join('\n'), 4000);
 }
 
 export function buildUserTasteDocument(profile, ratings = [], movieByTmdbId = new Map()) {
@@ -203,29 +235,42 @@ async function embedWithMistral(text) {
 }
 
 async function embedWithOpenAI(text) {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) return null;
+    const vectors = await embedBatchOpenAI([text]);
+    return vectors?.[0] || null;
+}
 
-    const response = await fetch('https://api.openai.com/v1/embeddings', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-            model: OPENAI_MODEL,
-            input: text,
-            dimensions: EMBEDDING_DIM,
-        }),
-    });
+const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
 
-    if (!response.ok) {
+/**
+ * Embed many texts in one OpenAI request (text-embedding-3-small @ 512 dims).
+ * Retries 429 / 5xx with exponential backoff. Returns vectors in input order
+ * plus token usage when `withUsage` is set.
+ */
+export async function embedBatchOpenAI(texts, { withUsage = false, maxRetries = 5 } = {}) {
+    const apiKey = getOpenAiKey();
+    if (!apiKey) throw new Error('GPT_KEY / OPENAI_API_KEY is not set');
+    const input = texts.map((t) => truncate(String(t || ' '), 8000) || ' ');
+
+    for (let attempt = 0; ; attempt += 1) {
+        const response = await fetch('https://api.openai.com/v1/embeddings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+            body: JSON.stringify({ model: OPENAI_MODEL, input, dimensions: EMBEDDING_DIM }),
+        });
+        if (response.ok) {
+            const json = await response.json();
+            const vectors = new Array(input.length);
+            (json?.data || []).forEach((d) => { vectors[d.index] = l2normalize(d.embedding); });
+            if (vectors.some((v) => !v?.length)) throw new Error('OpenAI returned a missing embedding');
+            return withUsage ? { vectors, tokens: json?.usage?.total_tokens || 0 } : vectors;
+        }
         const body = await response.text();
-        throw new Error(`OpenAI embeddings failed (${response.status}): ${body}`);
+        const retryable = response.status === 429 || response.status >= 500;
+        if (!retryable || attempt >= maxRetries) {
+            throw new Error(`OpenAI embeddings failed (${response.status}): ${body.slice(0, 200)}`);
+        }
+        await sleep(Math.min(30000, 1000 * 2 ** attempt));
     }
-
-    const json = await response.json();
-    return json?.data?.[0]?.embedding || null;
 }
 
 /**
@@ -247,6 +292,12 @@ export async function embedTextWithProvider(text, inputType = 'document') {
     const normalized = truncate(String(text || '').trim(), 8000);
     if (!normalized) {
         throw new Error('Cannot embed empty text');
+    }
+
+    // OpenAI is the primary provider: the whole library is embedded with it, and
+    // similarity only works within one provider's vector space.
+    if (getOpenAiKey()) {
+        return { vector: await embedWithOpenAI(normalized), provider: 'openai' };
     }
 
     if (process.env.VOYAGE_API_KEY) {
@@ -275,9 +326,6 @@ export async function embedTextWithProvider(text, inputType = 'document') {
         return { vector: await embedWithHuggingFace(normalized), provider: 'hf' };
     }
 
-    if (process.env.OPENAI_API_KEY) {
-        return { vector: await embedWithOpenAI(normalized), provider: 'openai' };
-    }
 
     throw new Error(
         'No embedding provider configured. Set GEMINI_API_KEY (free), MIST_API_KEY, HF_API_KEY, VOYAGE_API_KEY, or OPENAI_API_KEY.',
@@ -291,7 +339,8 @@ export async function embedText(text, inputType = 'document') {
 
 export function isEmbeddingConfigured() {
     return !!(
-        process.env.VOYAGE_API_KEY
+        getOpenAiKey()
+        || process.env.VOYAGE_API_KEY
         || process.env.GEMINI_API_KEY
         || getMistralKey()
         || process.env.OPENAI_API_KEY

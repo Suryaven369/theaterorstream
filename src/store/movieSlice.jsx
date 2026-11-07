@@ -4,7 +4,6 @@ import { createSlice } from "@reduxjs/toolkit";
 const initialState = {
   bannerData: [],
   imageURL: "",
-  reviewAnalysisCache: {},
   // ---- Caching layer to avoid repeated DB calls ----
   homepageSections: null,          // cached homepage sections from Supabase
   homepageSectionsTimestamp: null,  // when they were fetched
@@ -21,9 +20,6 @@ export const movieSlice = createSlice({
     },
     setImageURL: (state, action) => {
       state.imageURL = action.payload;
-    },
-    updateReviewAnalysisCache: (state, action) => {
-      state.reviewAnalysisCache[action.payload.movieId] = action.payload.analysis;
     },
     // Homepage sections cache
     setHomepageSections: (state, action) => {
@@ -81,7 +77,6 @@ export const movieSlice = createSlice({
 export const {
   setBannerData,
   setImageURL,
-  updateReviewAnalysisCache,
   setHomepageSections,
   cacheMovieDetails,
   invalidateHomepageSections,

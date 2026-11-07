@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient.js';
+import { markSeenInWatchCache } from '../watchSessionCache.js';
 import { normalizeProfileMediaUrls } from '../storagePublicUrl.js';
 
 // Helper functions for movie ratings and reviews
@@ -207,6 +208,8 @@ export const getUserRatingForMovie = async (userId, movieId) => {
 
 // Submit or update a rating (upsert on user_id + movie_id)
 export const submitRating = async (movieId, movieTitle, ratings, userId = 'anonymous') => {
+    // A rated title is a seen title — drop it from the Watch tab right away.
+    if (userId && userId !== 'anonymous') markSeenInWatchCache(movieId);
     const normalizedMovieId = normalizeMovieId(movieId);
     const row = ratingPayloadFromInput(normalizedMovieId, movieTitle, ratings, userId);
 

@@ -3,11 +3,9 @@ import {
     parseMentions, buildMovieToken, buildUserToken, buildPersonToken,
     detectSlashTrigger, detectAtTrigger,
 } from "../lib/movieMentions";
-import { detectHashTrigger } from "../lib/hashtags";
 import { resolveTmdbImageUrl } from "../utils/imageHelper";
 import MovieMentionPicker from "./MovieMentionPicker";
 import UserPersonPicker from "./UserPersonPicker";
-import HashtagPicker from "./HashtagPicker";
 
 const MENTION_CHIP_CLASS =
     "inline-flex items-center gap-1 mx-0.5 px-1 py-0.5 rounded-md bg-white/10 border border-white/10 align-middle select-none";
@@ -129,7 +127,7 @@ const MentionEditor = ({ value, onChange, placeholder, className = "", minHeight
     const lastEmittedRef = useRef(undefined);
     const triggerRef = useRef(null);
     const [mentionQuery, setMentionQuery] = useState(null);
-    const [mentionType, setMentionType] = useState("movie"); // 'movie' | 'mention' | 'hashtag'
+    const [mentionType, setMentionType] = useState("movie"); // 'movie' | 'mention'
     const [isEmpty, setIsEmpty] = useState(!value);
 
     // Rebuild the DOM only when `value` changes from *outside* this component
@@ -174,12 +172,10 @@ const MentionEditor = ({ value, onChange, placeholder, className = "", minHeight
         const off = sel.anchorOffset;
         const slash = detectSlashTrigger(text, off);
         const at = detectAtTrigger(text, off);
-        const hash = detectHashTrigger(text, off);
 
         const candidates = [];
         if (slash) candidates.push({ type: "movie", index: slash.slashIndex, query: slash.query });
         if (at) candidates.push({ type: "mention", index: at.atIndex, query: at.query });
-        if (hash) candidates.push({ type: "hashtag", index: hash.hashIndex, query: hash.query });
 
         if (!candidates.length) return clearTrigger();
         candidates.sort((a, b) => b.index - a.index);
@@ -227,36 +223,6 @@ const MentionEditor = ({ value, onChange, placeholder, className = "", minHeight
             return;
         }
         checkTriggerFromSelection();
-    };
-
-    const handleInsertHashtag = (tag) => {
-        const trigger = triggerRef.current;
-        const container = containerRef.current;
-        if (!trigger || !container) return;
-
-        const sel = window.getSelection();
-        const { node, slashOffset } = trigger;
-        const cursorOffset = sel && sel.anchorNode === node ? sel.anchorOffset : node.textContent.length;
-        const display = String(tag.display_name || tag.displayName || tag.slug || "").replace(/^#/, "");
-        const token = `#${display}`;
-
-        const range = document.createRange();
-        range.setStart(node, slashOffset);
-        range.setEnd(node, cursorOffset);
-        range.deleteContents();
-
-        const textNode = document.createTextNode(`${token} `);
-        range.insertNode(textNode);
-
-        const newRange = document.createRange();
-        newRange.setStart(textNode, textNode.textContent.length);
-        newRange.collapse(true);
-        sel.removeAllRanges();
-        sel.addRange(newRange);
-
-        container.focus();
-        clearTrigger();
-        emitChange();
     };
 
     const handleInsertMention = (item, opts = {}) => {
@@ -315,13 +281,7 @@ const MentionEditor = ({ value, onChange, placeholder, className = "", minHeight
                 }`}
             />
             {mentionQuery !== null && (
-                mentionType === "hashtag" ? (
-                    <HashtagPicker
-                        query={mentionQuery}
-                        onSelect={handleInsertHashtag}
-                        onClose={clearTrigger}
-                    />
-                ) : mentionType === "mention" ? (
+                mentionType === "mention" ? (
                     <UserPersonPicker
                         query={mentionQuery}
                         onInsert={handleInsertMention}

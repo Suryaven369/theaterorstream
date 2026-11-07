@@ -5,6 +5,7 @@ import { FaCalendarAlt, FaChevronDown, FaFilm, FaStar } from "react-icons/fa";
 import { getUpcomingFromEdge } from "../lib/contentEdgeApi";
 import { generateSlugWithId } from "../lib/slugUtils";
 import { REGIONS, getSavedRegion, persistRegion } from "../constants/regions";
+import { REGION_CHANGE_EVENT } from "../lib/userRegion";
 
 const ALL_MONTHS = [
   { id: 0, name: "January", short: "Jan" },
@@ -116,6 +117,12 @@ const CompactCard = ({ movie }) => {
 
 const UpcomingPage = () => {
   const [selectedRegion, setSelectedRegion] = useState(getSavedRegion);
+  // Follow auto-detection (first visit) — a manual pick is kept by getSavedRegion.
+  useEffect(() => {
+    const onRegion = () => setSelectedRegion(getSavedRegion());
+    window.addEventListener(REGION_CHANGE_EVENT, onRegion);
+    return () => window.removeEventListener(REGION_CHANGE_EVENT, onRegion);
+  }, []);
   const [isRegionOpen, setIsRegionOpen] = useState(false);
   const [selectedYear, setSelectedYear] = useState(CALENDAR_START_YEAR);
   const [isYearOpen, setIsYearOpen] = useState(false);

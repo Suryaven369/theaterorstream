@@ -114,14 +114,7 @@ const Header = () => {
             <span className="text-sm">Search movies, people…</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => navigate('/search')}
-            className="md:hidden tap-target text-xl text-[var(--color-text-secondary)] hover:text-[var(--color-text)] p-2.5 rounded-lg hover:bg-[var(--color-surface-subtle)] transition-colors flex items-center justify-center"
-            aria-label="Search"
-          >
-            <IoSearchOutline />
-          </button>
+{/* Phones use the bottom nav's Search tab — no duplicate icon up here. */}
 
           {/* Auth Section */}
           {isAuthenticated ? (

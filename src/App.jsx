@@ -10,6 +10,7 @@ import Header from "./components/Header";
 import Footer from "./components/Footer";
 import MobileNavigation from "./components/MobileNavigation";
 import TasteOnboardingGate from "./components/TasteOnboardingGate";
+import { detectUserRegion } from "./lib/userRegion";
 
 function App() {
   const dispatch = useDispatch();
@@ -17,6 +18,8 @@ function App() {
 
   useEffect(() => {
     dispatch(setImageURL(`${TMDB_IMAGE_BASE}w342`));
+    // Work out the viewer's country once on load (India → Indian catalog & OTTs).
+    detectUserRegion();
   }, [dispatch]);
 
   // Supabase Realtime: auto-invalidate cache when DB content changes

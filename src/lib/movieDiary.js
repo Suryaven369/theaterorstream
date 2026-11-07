@@ -1,4 +1,5 @@
 import { supabase, getUserFollowing } from './supabase';
+import { markSeenInWatchCache } from './watchSessionCache.js';
 import {
     syncMovieToTheaterCollection,
     watchedInTheaterFromContext,
@@ -35,6 +36,7 @@ export async function createMovieLog(userId, input) {
         console.error('createMovieLog:', error);
         return { success: false, error };
     }
+    markSeenInWatchCache(row.tmdb_id);
 
     // Everything below is secondary (feed/streak/taste-profile bookkeeping) — fire
     // it in the background instead of awaiting so the modal can close immediately
@@ -105,8 +107,7 @@ export async function createMovieLog(userId, input) {
             requestTasteProfileRebuild().catch(() => {});
         });
     }
-    import('./socialApi.js').then(({ checkBadges, updateStreak }) => {
-        checkBadges().catch(() => {});
+    import('./socialApi.js').then(({ updateStreak }) => {
         updateStreak().catch(() => {});
     });
 
@@ -183,6 +184,7 @@ export async function toggleSeasonWatched(userId, input) {
         console.error('toggleSeasonWatched (mark):', error);
         return { success: false, error };
     }
+    markSeenInWatchCache(tmdbId);
 
     const seasonLabel = input.seasonName || `Season ${seasonNumber}`;
 
@@ -222,8 +224,7 @@ export async function toggleSeasonWatched(userId, input) {
         if (watchedErr) console.warn('season log -> user_watched_movies failed:', watchedErr.message);
     });
 
-    import('./socialApi.js').then(({ checkBadges, updateStreak }) => {
-        checkBadges().catch(() => {});
+    import('./socialApi.js').then(({ updateStreak }) => {
         updateStreak().catch(() => {});
     });
 
@@ -347,7 +348,6 @@ export async function publishRatingActivity(userId, ratingRow, movieMeta = {}) {
         visibility: 'public',
     });
 
-    import('./socialApi.js').then(({ checkBadges }) => checkBadges().catch(() => {}));
 }
 
 export async function getUserActivityFeed(userId, limit = 40) {
@@ -411,99 +411,3 @@ async function loadProfilesForActivities(activities) {
     return map;
 }
 
-export async function getUserBadges(userId) {
-    if (!userId) return [];
-
-    const { data: earned, error } = await supabase
-        .from('user_badges')
-        .select('badge_id, earned_at')
-        .eq('user_id', userId)
-        .order('earned_at', { ascending: false });
-
-    if (error) {
-        console.error('getUserBadges:', error);
-        return [];
-    }
-
-    if (!earned?.length) return [];
-
-    const defs = await getBadgeDefinitions();
-    const defMap = new Map(defs.map((d) => [d.id, d]));
-
-    return earned.map((row) => ({
-        ...defMap.get(row.badge_id),
-        earned_at: row.earned_at,
-    })).filter((b) => b.id);
-}
-
-export async function getBadgeDefinitions() {
-    const { data } = await supabase
-        .from('badge_definitions')
-        .select('*')
-        .order('sort_order', { ascending: true });
-
-    return data || [];
-}
-
-// Pretty labels + display order for the Achievements page categories.
-const ACHIEVEMENT_CATEGORIES = [
-    { key: 'watching', label: 'Watching' },
-    { key: 'reviewing', label: 'Reviewing' },
-    { key: 'rating', label: 'Rating' },
-    { key: 'collections', label: 'Collections' },
-    { key: 'genre', label: 'Genre Explorer' },
-    { key: 'decades', label: 'Decades' },
-    { key: 'theater', label: 'Theater' },
-    { key: 'streaks', label: 'Streaks' },
-    { key: 'social', label: 'Social' },
-    { key: 'community', label: 'Community' },
-];
-
-const prettify = (k) => String(k || 'Other').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-
-/**
- * Reddit-style achievements: ALL badge definitions merged with the user's earned
- * state, grouped by category with per-category + overall progress. Earned badges
- * sort first (newest), then locked ones (by definition order).
- */
-export async function getAchievements(userId) {
-    const defs = await getBadgeDefinitions();
-
-    let earnedMap = new Map();
-    if (userId) {
-        const { data } = await supabase
-            .from('user_badges').select('badge_id, earned_at').eq('user_id', userId);
-        earnedMap = new Map((data || []).map((r) => [r.badge_id, r.earned_at]));
-    }
-
-    const merged = defs.map((d) => ({ ...d, earned: earnedMap.has(d.id), earned_at: earnedMap.get(d.id) || null }));
-
-    const groups = {};
-    for (const b of merged) {
-        const k = b.category || 'other';
-        (groups[k] = groups[k] || []).push(b);
-    }
-
-    const sortBadges = (arr) => [...arr].sort((a, b) => {
-        if (a.earned !== b.earned) return a.earned ? -1 : 1;
-        if (a.earned && b.earned) return new Date(b.earned_at) - new Date(a.earned_at);
-        return (a.sort_order || 0) - (b.sort_order || 0);
-    });
-
-    const orderedKeys = [
-        ...ACHIEVEMENT_CATEGORIES.map((c) => c.key).filter((k) => groups[k]),
-        ...Object.keys(groups).filter((k) => !ACHIEVEMENT_CATEGORIES.some((c) => c.key === k)),
-    ];
-
-    const categories = orderedKeys.map((key) => {
-        const label = ACHIEVEMENT_CATEGORIES.find((c) => c.key === key)?.label || prettify(key);
-        const badges = sortBadges(groups[key]);
-        return { key, label, badges, unlocked: badges.filter((b) => b.earned).length, total: badges.length };
-    });
-
-    return {
-        categories,
-        totalUnlocked: merged.filter((b) => b.earned).length,
-        total: merged.length,
-    };
-}

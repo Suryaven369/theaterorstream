@@ -5,9 +5,16 @@ import { Link } from "react-router-dom";
 import { getTVSectionsFromEdge } from "../lib/contentEdgeApi";
 import { generateSlugWithId } from "../lib/slugUtils";
 import { REGIONS, getSavedRegion, persistRegion } from "../constants/regions";
+import { REGION_CHANGE_EVENT } from "../lib/userRegion";
 
 const TVSeries = () => {
     const [selectedRegion, setSelectedRegion] = useState(getSavedRegion);
+    // Follow auto-detection (first visit) — a manual pick is kept by getSavedRegion.
+    useEffect(() => {
+      const onRegion = () => setSelectedRegion(getSavedRegion());
+      window.addEventListener(REGION_CHANGE_EVENT, onRegion);
+      return () => window.removeEventListener(REGION_CHANGE_EVENT, onRegion);
+    }, []);
     const [isRegionOpen, setIsRegionOpen] = useState(false);
     const [tvSections, setTvSections] = useState([]);
     const [loadingSections, setLoadingSections] = useState(true);
