@@ -199,7 +199,7 @@ const Home = () => {
           </Suspense>
         </div>
       ) : activeTab === 'feed' ? (
-        <section className="page-below-header lg:pt-0 px-3 sm:px-8 py-4 sm:py-8">
+        <section className="page-below-header lg:pt-10 px-3 sm:px-8 py-4 sm:py-8">
           <Suspense fallback={<TabFallback />}>
             <HomeFeed />
           </Suspense>
