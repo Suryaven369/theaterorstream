@@ -9,7 +9,6 @@ import {
     providerIdsForServiceRow,
     getRegionProviderCatalog,
 } from './watch-providers-server.js';
-import { invalidateRecommendationCache } from './taste-profile-server.js';
 
 const MAX_SERVICES = 20;
 
@@ -125,8 +124,7 @@ export async function saveUserStreamingSetup(userId, body = {}) {
         if (error) throw new Error(error.message);
     }
 
-    // Picks depend on services — drop cached rails so the next load is accurate.
-    await invalidateRecommendationCache(supabase, userId);
+    // Saved Watch rows are kept until their 7 days are up (no mid-week refresh).
 
     return getUserStreamingSetup(userId, supabase);
 }

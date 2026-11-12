@@ -126,6 +126,25 @@ export default function TonightPicker() {
         feedbackRef.current = { ...feedbackRef.current, [pick.tmdbId]: action };
         setFeedback(feedbackRef.current);
         sendFeedback(action, pick, user.id).catch(() => {});
+        // Show the tap briefly, then swap in the next saved backup pick.
+        setTimeout(() => {
+            setResult((prev) => {
+                if (!prev?.picks) return prev;
+                const used = new Set([
+                    ...prev.picks.map((p) => p.tmdbId),
+                    ...Object.keys(feedbackRef.current).map(Number),
+                ]);
+                const reserve = [...(prev.reserve || [])];
+                let next = reserve.shift();
+                while (next && used.has(next.tmdbId)) next = reserve.shift();
+                if (!next) return prev; // no backups left: keep the card with its feedback
+                return {
+                    ...prev,
+                    reserve,
+                    picks: prev.picks.map((p) => (p.tmdbId === pick.tmdbId ? next : p)),
+                };
+            });
+        }, 900);
     };
 
     const run = async (c) => {

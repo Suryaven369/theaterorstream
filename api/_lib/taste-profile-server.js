@@ -75,18 +75,6 @@ function vectorToPgLiteral(vector) {
     return `[${vector.join(',')}]`;
 }
 
-export async function invalidateRecommendationCache(supabase, userId) {
-    const client = supabase || getSupabaseAdmin();
-    const { error } = await client
-        .from('recommendation_cache')
-        .delete()
-        .eq('user_id', userId);
-
-    if (error) {
-        console.warn('recommendation_cache invalidate failed:', error.message);
-    }
-}
-
 /**
  * Rebuild user_taste_profiles from the user's FULL history: every rating,
  * diary-log rating, like and dislike (recency-weighted), judged against the
@@ -289,7 +277,8 @@ export async function rebuildUserTasteProfile(userId, options = {}) {
     }
     if (updateError) throw new Error(updateError.message);
 
-    await invalidateRecommendationCache(supabase, userId);
+    // Saved Watch rows are kept until their 7 days are up; the new taste
+    // profile shapes the next weekly refresh.
 
     return {
         userId,

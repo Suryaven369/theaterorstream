@@ -28,52 +28,61 @@ export function setWatchSessionCache(userId, payload) {
     };
 }
 
-/** Drop a title from cached rows after watched / dislike (no re-analysis). */
+// Titles marked watched / liked / rated / dismissed this session.
+const seenIds = new Set();
+const idOf = (m) => String(m?.tmdb_id ?? m?.tmdbId ?? m?.id ?? '');
+
+/**
+ * Drop seen titles from a row and fill each gap with the next saved backup
+ * (row.reserve, sent by the server), keeping the row at its original size.
+ */
+export function refillRow(row) {
+    if (!row?.items) return row;
+    const items = row.items.filter((m) => !seenIds.has(idOf(m)));
+    const reserve = (row.reserve || []).filter((m) => !seenIds.has(idOf(m)));
+    const target = row.target ?? row.items.length;
+    const have = new Set(items.map(idOf));
+    while (items.length < target && reserve.length) {
+        const next = reserve.shift();
+        if (have.has(idOf(next))) continue;
+        have.add(idOf(next));
+        items.push(next);
+    }
+    if (items.length === row.items.length && items.every((m, i) => m === row.items[i])) return row;
+    return { ...row, items, reserve };
+}
+
+const ROW_KEYS = ['forYou', 'tonight', 'trending', 'family', 'becauseLoved', 'hiddenGems', 'outsideComfort', 'moodRow'];
+
+/** Remove a title from cached rows after watched / dislike and swap in a backup. */
 export function removeFromWatchSessionCache(userId, tmdbId) {
+    if (tmdbId == null) return;
+    const id = String(tmdbId);
+    seenIds.add(id);
     const cached = getWatchSessionCache(userId);
     if (!cached) return;
-    const id = String(tmdbId);
-    const strip = (row) => {
-        if (!row?.items) return row;
-        return {
-            ...row,
-            items: row.items.filter((m) => String(m.tmdb_id ?? m.id) !== id),
-        };
-    };
-    setWatchSessionCache(userId, {
-        ...cached,
-        forYou: strip(cached.forYou),
-        tonight: strip(cached.tonight),
-        trending: strip(cached.trending),
-        family: strip(cached.family),
-        becauseLoved: strip(cached.becauseLoved),
-        hiddenGems: strip(cached.hiddenGems),
-        outsideComfort: strip(cached.outsideComfort),
-        perfect: cached.perfect?.movie
-            && String(cached.perfect.movie.tmdb_id ?? cached.perfect.movie.id) === id
-            ? { movie: null, loading: false }
-            : cached.perfect,
-    });
+    const next = { ...cached };
+    ROW_KEYS.forEach((k) => { if (cached[k]) next[k] = refillRow(cached[k]); });
+    next.perfect = cached.perfect?.movie && idOf(cached.perfect.movie) === id
+        ? { movie: null, loading: false }
+        : cached.perfect;
+    setWatchSessionCache(userId, next);
 }
 
 /**
  * Call when the user marks a title watched / liked / disliked / logged / rated
- * anywhere in the app, so the Watch tab never shows it again this session.
+ * anywhere in the app, so the Watch tab replaces it with a backup title.
  */
 export function markSeenInWatchCache(tmdbId) {
-    if (!entry?.userId || tmdbId == null) return;
+    if (tmdbId == null) return;
+    seenIds.add(String(tmdbId));
+    if (!entry?.userId) return;
     removeFromWatchSessionCache(entry.userId, tmdbId);
-    const mood = entry?.payload?.moodRow;
-    if (mood?.items) {
-        entry.payload.moodRow = {
-            ...mood,
-            items: mood.items.filter((m) => String(m.tmdb_id ?? m.id) !== String(tmdbId)),
-        };
-    }
 }
 
 export function clearWatchSessionCache() {
     entry = null;
+    seenIds.clear();
     inflight.clear();
 }
 

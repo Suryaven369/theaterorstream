@@ -26,12 +26,16 @@ import {
     getWatchSessionCache,
     setWatchSessionCache,
     removeFromWatchSessionCache,
+    refillRow,
     sharedWatchRequest,
 } from '../lib/watchSessionCache';
 import { getUserRegionCode } from '../lib/userRegion';
 
 const initialRow = { items: [], loading: true };
-const readyRow = (items = [], meta = {}) => ({ items, loading: false, meta });
+// reserve = saved backup titles; target = row size to keep when one is removed.
+const readyRow = (items = [], meta = {}, reserve = []) => refillRow({
+    items, loading: false, meta, reserve, target: items.length,
+});
 
 const WATCH_RAIL =
     'w-full max-w-[842px] sm:max-w-[1080px] lg:max-w-[1170px]';
@@ -154,7 +158,7 @@ export default function WatchPage({ embedded = false }) {
         const hit = reloadKey === 0 ? getWatchSessionCache(userId) : null;
         if (reloadKey > 0) setRailError(null);
 
-        const rowFrom = (r, withMeta = false) => readyRow(r?.data || [], withMeta ? (r?.meta || {}) : {});
+        const rowFrom = (r, withMeta = false) => readyRow(r?.data || [], withMeta ? (r?.meta || {}) : {}, r?.reserve || []);
         const rows = [
             { key: 'forYou', set: setForYou, core: true, fetch: () => getForYouRecommendations({ limit: 12 }), map: (r) => rowFrom(r, true) },
             { key: 'tonight', set: setTonight, core: true, fetch: () => getTonightRecommendations({ limit: 6 }), map: (r) => rowFrom(r, true) },
@@ -211,19 +215,16 @@ export default function WatchPage({ embedded = false }) {
     const handleDismiss = useCallback((movie) => {
         const id = movie?.tmdb_id ?? movie?.id;
         if (!id || !userId) return;
+        // Marks it seen, then each row swaps in its next saved backup title.
         removeFromWatchSessionCache(userId, id);
-        const drop = (row) => ({
-            ...row,
-            items: (row.items || []).filter((m) => String(m.tmdb_id ?? m.id) !== String(id)),
-        });
-        setForYou(drop);
-        setTonight(drop);
-        setTrending(drop);
-        setFamily(drop);
-        setBecauseLoved(drop);
-        setHiddenGems(drop);
-        setOutsideComfort(drop);
-        setMoodRow((prev) => (prev ? drop(prev) : prev));
+        setForYou(refillRow);
+        setTonight(refillRow);
+        setTrending(refillRow);
+        setFamily(refillRow);
+        setBecauseLoved(refillRow);
+        setHiddenGems(refillRow);
+        setOutsideComfort(refillRow);
+        setMoodRow((prev) => (prev ? refillRow(prev) : prev));
         setPerfect((prev) => (
             prev?.movie && String(prev.movie.tmdb_id ?? prev.movie.id) === String(id)
                 ? { movie: null, loading: false }
@@ -286,13 +287,15 @@ export default function WatchPage({ embedded = false }) {
             `${userId}:mood:${activeMood}:${moodOtt}`,
             () => getMoodRecommendations(activeMood, opts),
         ).then((r) => {
-            const row = {
+            const row = refillRow({
                 items: r.data || [],
+                reserve: r.reserve || [],
+                target: (r.data || []).length,
                 loading: false,
                 mood: activeMood,
                 ott: moodOtt,
                 error: r.error || null,
-            };
+            });
             if (alive) setMoodRow(row);
             // Only persist successful non-empty rows so empties can retry next visit.
             if (row.items.length > 0) {

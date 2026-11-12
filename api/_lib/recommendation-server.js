@@ -78,7 +78,9 @@ const BROAD_GENRE_IDS = new Set(['18']);
 const DARK_GENRE_IDS = new Set(['27', '53', '9648', '80', '10752', '37']); // horror, thriller, mystery, crime, war, western
 const LIGHT_GENRE_IDS = new Set(['10751', '16', '10749', '10402']); // family, animation, romance, music
 
-const CACHE_TTL_HOURS = 6;
+// Watch-page rows are saved in recommendation_cache and stay fixed for 7 days:
+// no new titles appear before then (watched / dismissed ones are only removed).
+const CACHE_TTL_HOURS = 24 * 7;
 
 // Ranking nudges (added to the 0–1 weighted score).
 const ON_YOUR_SERVICES_BONUS = 0.08;  // streams on a service the user pays for
@@ -602,13 +604,14 @@ export async function loadSeenSet(supabase, userId) {
 }
 
 /** Drop seen titles from a cached payload (keeps meta.count accurate). */
-async function filterCachedPayload(supabase, userId, payload) {
-    if (!payload?.items?.length) return payload;
+async function filterCachedPayload(supabase, userId, payload, listKey = 'items') {
+    const list = payload?.[listKey];
+    if (!list?.length) return payload;
     try {
         const seen = await loadSeenSet(supabase, userId);
-        const items = payload.items.filter((m) => !seen.has(String(m.tmdb_id ?? m.id)));
-        if (items.length === payload.items.length) return payload;
-        return { ...payload, items, meta: { ...(payload.meta || {}), count: items.length, cacheFiltered: true } };
+        const items = list.filter((m) => !seen.has(String(m.tmdb_id ?? m.tmdbId ?? m.id)));
+        if (items.length === list.length) return payload;
+        return { ...payload, [listKey]: items, meta: { ...(payload.meta || {}), count: items.length, cacheFiltered: true } };
     } catch (err) {
         console.warn('[reco] cached seen-filter failed:', err.message);
         return payload;
@@ -1556,6 +1559,7 @@ async function applyLlmRerank(profile, items) {
     return reordered;
 }
 
+/** Saved row { payload, expires_at } or null when missing / expired. */
 async function readCache(supabase, userId, cacheKey) {
     const { data, error } = await supabase
         .from('recommendation_cache')
@@ -1566,12 +1570,13 @@ async function readCache(supabase, userId, cacheKey) {
 
     if (error || !data) return null;
     if (new Date(data.expires_at) <= new Date()) return null;
-    return data.payload;
+    return data;
 }
 
-async function writeCache(supabase, userId, cacheKey, payload, ttlHours = CACHE_TTL_HOURS) {
-    const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + ttlHours);
+/** fixedExpiresAt keeps a row's original 7-day refresh date when it is topped up. */
+async function writeCache(supabase, userId, cacheKey, payload, ttlHours = CACHE_TTL_HOURS, fixedExpiresAt = null) {
+    const expiresAt = fixedExpiresAt ? new Date(fixedExpiresAt) : new Date();
+    if (!fixedExpiresAt) expiresAt.setHours(expiresAt.getHours() + ttlHours);
 
     const { error } = await supabase
         .from('recommendation_cache')
@@ -1588,13 +1593,102 @@ async function writeCache(supabase, userId, cacheKey, payload, ttlHours = CACHE_
     }
 }
 
+/**
+ * Each saved row keeps ranked backup titles beyond what is shown, so a title
+ * the user watches / rates / dismisses is replaced by the next backup instead
+ * of leaving a gap.
+ */
+function poolSize(limit) {
+    return Math.min(48, Math.max(limit * 3, limit + 12));
+}
+
+function itemKey(m) {
+    return String(m?.tmdb_id ?? m?.tmdbId ?? m?.id ?? '');
+}
+
+function mergeUniqueItems(...lists) {
+    const seen = new Set();
+    const out = [];
+    lists.flat().forEach((m) => {
+        const k = itemKey(m);
+        if (!k || seen.has(k)) return;
+        seen.add(k);
+        out.push(m);
+    });
+    return out;
+}
+
+/**
+ * Serve a Watch row from recommendation_cache.
+ *  - Saved and unexpired: same titles for 7 days, minus seen ones, with the
+ *    gaps filled from the saved backups (in rank order).
+ *  - Backups used up: top up with fresh picks; the original refresh date stays.
+ *  - Missing / expired: build a new pool and save it for 7 days.
+ * Returns the visible list (limit) plus `reserve` (remaining backups) so the
+ * client can swap a dismissed title instantly.
+ */
+async function servePooled(supabase, userId, cacheKey, {
+    limit,
+    build,
+    listKey = 'items',
+    ttlHours = CACHE_TTL_HOURS,
+    refresh = false,
+}) {
+    const shape = (payload, fromCache) => {
+        const all = payload?.[listKey] || [];
+        const visible = all.slice(0, limit);
+        return {
+            ...payload,
+            [listKey]: visible,
+            reserve: all.slice(limit),
+            meta: { ...(payload?.meta || {}), count: visible.length },
+            fromCache,
+        };
+    };
+
+    const row = refresh ? null : await readCache(supabase, userId, cacheKey);
+    if (row?.payload?.[listKey]?.length) {
+        const filtered = await filterCachedPayload(supabase, userId, row.payload, listKey);
+        const remaining = filtered[listKey] || [];
+        if (remaining.length >= limit) return shape(filtered, true);
+
+        // Backups ran out: add fresh picks behind the ones still showing.
+        let fresh = null;
+        try {
+            fresh = await build();
+        } catch (err) {
+            console.warn('[reco] top-up failed:', cacheKey, err.message);
+        }
+        const freshList = fresh?.[listKey] || [];
+        if (!freshList.length) return shape(filtered, true);
+        const merged = { ...filtered, [listKey]: mergeUniqueItems(remaining, freshList) };
+        await writeCache(supabase, userId, cacheKey, merged, ttlHours, row.expires_at);
+        return shape(merged, false);
+    }
+
+    const fresh = await build();
+    if (!fresh) return null;
+    const { fromCache: _fc, reserve: _r, ...toSave } = fresh;
+    if (toSave[listKey]?.length) await writeCache(supabase, userId, cacheKey, toSave, ttlHours);
+    return shape(toSave, false);
+}
+
 export async function getRecommendations(userId, baseCacheKey, options = {}) {
     const supabase = getSupabaseAdmin();
     const cacheKey = options.regionHint ? `${baseCacheKey}_${options.regionHint}` : baseCacheKey;
+    const limit = Math.max(1, Number(options.limit) || 24);
+    return servePooled(supabase, userId, cacheKey, {
+        limit,
+        refresh: !!options.refresh,
+        ttlHours: options.ttlHours || CACHE_TTL_HOURS,
+        build: () => buildRecommendations(supabase, userId, cacheKey, { ...options, limit: poolSize(limit) }),
+    });
+}
+
+async function buildRecommendations(supabase, userId, cacheKey, options = {}) {
     const {
         limit = 24,
         mediaType = null,
-        refresh = false,
         requireOtt = false,
         excludeRated = false,
         maxRuntime = null,
@@ -1603,20 +1697,7 @@ export async function getRecommendations(userId, baseCacheKey, options = {}) {
         seedTmdbId = null,
         candidateLimit = 200,
         useLlm = false,
-        ttlHours = CACHE_TTL_HOURS,
     } = options;
-
-    if (!refresh) {
-        const cached = await readCache(supabase, userId, cacheKey);
-        if (cached?.items?.length) {
-            // Serve cached analysis (fast), minus anything seen since it was cached.
-            const filtered = await filterCachedPayload(supabase, userId, cached);
-            // Too few left after filtering — rebuild instead of serving a thin row.
-            if ((filtered.items?.length || 0) >= Math.min(limit, 4)) {
-                return { ...filtered, fromCache: true };
-            }
-        }
-    }
 
     const context = await loadUserContext(supabase, userId, { regionHint: options?.regionHint });
 
@@ -1727,9 +1808,7 @@ export async function getRecommendations(userId, baseCacheKey, options = {}) {
         },
     };
 
-    await writeCache(supabase, userId, cacheKey, payload, ttlHours);
-
-    return { ...payload, fromCache: false };
+    return payload;
 }
 
 /**
@@ -1760,21 +1839,35 @@ export async function getOnePerfectMovie(userId, options = {}) {
 
 // ---- Discovery Feed sections -------------------------------------------------
 
-async function cachedSection(userId, baseKey, builder, ttl = CACHE_TTL_HOURS, regionHint = null) {
+/**
+ * Pooled 7-day section. `limit` is how many are shown; the builder gets a
+ * larger pool size so backups are saved with the row.
+ */
+async function cachedSection(userId, baseKey, builder, ttl = CACHE_TTL_HOURS, regionHint = null, limit = 18) {
     const cacheKey = regionHint ? `${baseKey}_${regionHint}` : baseKey;
     const supabase = getSupabaseAdmin();
-    const cached = await readCache(supabase, userId, cacheKey);
-    if (cached?.items?.length) {
-        const filtered = await filterCachedPayload(supabase, userId, cached);
-        if ((filtered.items?.length || 0) >= 4) return { ...filtered, fromCache: true };
-    }
-    const payload = await builder(supabase);
-    if (payload?.items?.length) await writeCache(supabase, userId, cacheKey, payload, ttl);
-    return { ...payload, fromCache: false };
+    const shown = Math.max(1, Number(limit) || 18);
+    return servePooled(supabase, userId, cacheKey, {
+        limit: shown,
+        ttlHours: ttl,
+        build: () => builder(supabase, poolSize(shown)),
+    });
+}
+
+/** "Because you loved X" — saved for 7 days so the seed title doesn't change per load. */
+export async function getBecauseYouLoved(userId, options = {}) {
+    return cachedSection(
+        userId,
+        'because_loved_v1',
+        (_sb, pool) => buildBecauseYouLoved(userId, { ...options, limit: pool }),
+        CACHE_TTL_HOURS,
+        options.regionHint || null,
+        options.limit || 18,
+    );
 }
 
 /** "Because you loved X" — similar to the user's single highest-rated title. */
-export async function getBecauseYouLoved(userId, options = {}) {
+async function buildBecauseYouLoved(userId, options = {}) {
     const supabase = getSupabaseAdmin();
     const [
         { data: ratings },
@@ -1843,9 +1936,9 @@ export async function getBecauseYouLoved(userId, options = {}) {
 
 /** "Hidden Gems You Missed" — TMDB Discover + library gems, scored to taste. */
 export async function getHiddenGems(userId, options = {}) {
-    return cachedSection(userId, 'hidden_gems_v3', async (supabase) => {
+    return cachedSection(userId, 'hidden_gems_v3', async (supabase, poolLimit) => {
         const context = await loadUserContext(supabase, userId, { regionHint: options?.regionHint });
-        const limit = options.limit || 18;
+        const limit = poolLimit;
 
         const [libPoolRes, tmdbGems] = await Promise.all([
             supabase
@@ -1901,12 +1994,12 @@ export async function getHiddenGems(userId, options = {}) {
             items,
             meta: { count: items.length },
         };
-    }, CACHE_TTL_HOURS, options.regionHint || null);
+    }, CACHE_TTL_HOURS, options.regionHint || null, options.limit || 18);
 }
 
 /** "Underrated Masterpieces" — top-rated, modest reach. */
 export async function getUnderratedMasterpieces(userId, options = {}) {
-    return cachedSection(userId, 'underrated_v2', async (supabase) => {
+    return cachedSection(userId, 'underrated_v2', async (supabase, poolLimit) => {
         const context = await loadUserContext(supabase, userId, { regionHint: options?.regionHint });
         const { data: pool } = await supabase
             .from('movies_library').select(RECO_MOVIE_SELECT)
@@ -1916,14 +2009,14 @@ export async function getUnderratedMasterpieces(userId, options = {}) {
 
         const { items: candidates } = await prepareCandidates(
             supabase, (pool || []).map(normalizeLibraryItem), context, { excludeRated: true }, 6);
-        const items = await scoreAndRankMovies(supabase, candidates, context, { limit: options.limit || 18 });
+        const items = await scoreAndRankMovies(supabase, candidates, context, { limit: poolLimit });
         return { cacheKey: 'underrated_v2', heading: 'Underrated Masterpieces', items, meta: { count: items.length } };
-    }, CACHE_TTL_HOURS, options.regionHint || null);
+    }, CACHE_TTL_HOURS, options.regionHint || null, options.limit || 18);
 }
 
 /** "Outside Your Comfort Zone" — quality picks outside the user's top genres. */
 export async function getOutsideComfortZone(userId, options = {}) {
-    return cachedSection(userId, 'outside_comfort_v2', async (supabase) => {
+    return cachedSection(userId, 'outside_comfort_v2', async (supabase, poolLimit) => {
         const context = await loadUserContext(supabase, userId, { regionHint: options?.regionHint });
         const dominant = topGenreIds(context.profile.genre_weights, 2);
         const { data: pool } = await supabase
@@ -1940,10 +2033,10 @@ export async function getOutsideComfortZone(userId, options = {}) {
             });
 
         const { items: filtered } = await prepareCandidates(supabase, candidates, context, { excludeRated: true }, 6);
-        let items = await scoreAndRankMovies(supabase, filtered, context, { limit: options.limit || 18 });
+        let items = await scoreAndRankMovies(supabase, filtered, context, { limit: poolLimit });
         items = items.map((m) => ({ ...m, reason: 'A fresh pick to broaden your taste.' }));
         return { cacheKey: 'outside_comfort_v2', heading: 'Outside Your Comfort Zone', items, meta: { count: items.length } };
-    }, CACHE_TTL_HOURS, options.regionHint || null);
+    }, CACHE_TTL_HOURS, options.regionHint || null, options.limit || 18);
 }
 
 export async function getForYouRecommendations(userId, options = {}) {
@@ -2305,7 +2398,30 @@ function mergeMoodPools(primary, secondary) {
     return out;
 }
 
+function moodCacheKey(moodId, options = {}) {
+    const explicitProvider = options.providerId != null && options.providerId !== ''
+        ? Number(options.providerId)
+        : null;
+    const hasExplicitProvider = Number.isFinite(explicitProvider) && explicitProvider > 0;
+    const wantMyOtt = !hasExplicitProvider && options.ottMode === true;
+    const regionOverride = normalizeRegion(options.watchRegion);
+    const ottKey = hasExplicitProvider ? `p${explicitProvider}` : (wantMyOtt ? 'my' : 'any');
+    // v7: real provider data + the user's own region/services.
+    return `mood_v8_${moodId}_${ottKey}_${regionOverride || options.regionHint || 'home'}`;
+}
+
+/** Mood row — saved for 7 days per mood + OTT, with backups for removed titles. */
 export async function getMoodRecommendations(userId, moodId, options = {}) {
+    const supabase = getSupabaseAdmin();
+    const limit = Math.min(24, Math.max(1, Number(options.limit) || 12));
+    return servePooled(supabase, userId, moodCacheKey(moodId, options), {
+        limit,
+        refresh: !!options.refresh,
+        build: () => buildMoodRecommendations(userId, moodId, { ...options, limit: poolSize(limit) }),
+    });
+}
+
+async function buildMoodRecommendations(userId, moodId, options = {}) {
     const config = MOOD_CONFIG[moodId];
     if (!config) {
         const err = new Error(`Unknown mood: ${moodId}`);
@@ -2321,17 +2437,8 @@ export async function getMoodRecommendations(userId, moodId, options = {}) {
     const wantMyOtt = !hasExplicitProvider && options.ottMode === true;
     const regionOverride = normalizeRegion(options.watchRegion);
     const ottKey = hasExplicitProvider ? `p${explicitProvider}` : (wantMyOtt ? 'my' : 'any');
-    // v7: real provider data + the user's own region/services.
-    const cacheKey = `mood_v8_${moodId}_${ottKey}_${regionOverride || options.regionHint || 'home'}`;
-    const limit = Math.min(24, Math.max(1, Number(options.limit) || 12));
-
-    if (!options.refresh) {
-        const cached = await readCache(supabase, userId, cacheKey);
-        if (cached?.items?.length) {
-            const filtered = await filterCachedPayload(supabase, userId, cached);
-            if ((filtered.items?.length || 0) >= Math.min(limit, 4)) return { ...filtered, fromCache: true };
-        }
-    }
+    const cacheKey = moodCacheKey(moodId, options);
+    const limit = Math.min(48, Math.max(1, Number(options.limit) || 12));
 
     const context = await loadUserContext(supabase, userId, { regionHint: options?.regionHint });
     const watchRegion = regionOverride || context.region || DEFAULT_REGION;
@@ -2487,10 +2594,7 @@ export async function getMoodRecommendations(userId, moodId, options = {}) {
         },
     };
 
-    if (items.length) {
-        await writeCache(supabase, userId, cacheKey, payload);
-    }
-    return { ...payload, fromCache: false };
+    return payload;
 }
 
 /**
@@ -2499,6 +2603,18 @@ export async function getMoodRecommendations(userId, moodId, options = {}) {
  * library only backfills.
  */
 export async function getTrendingPersonalized(userId, options = {}) {
+    const media = options.mediaType === 'tv' || options.mediaType === 'movie' ? options.mediaType : 'all';
+    return cachedSection(
+        userId,
+        `trending_personalized_v2_${media}`,
+        (_sb, pool) => buildTrendingPersonalized(userId, { ...options, limit: pool }),
+        CACHE_TTL_HOURS,
+        options.regionHint || null,
+        options.limit || 24,
+    );
+}
+
+async function buildTrendingPersonalized(userId, options = {}) {
     const supabase = getSupabaseAdmin();
     const context = await loadUserContext(supabase, userId, { regionHint: options?.regionHint });
     const mediaType = options.mediaType === 'tv' || options.mediaType === 'movie'
@@ -2593,6 +2709,8 @@ export async function getTrendingPersonalized(userId, options = {}) {
 
 const TONIGHT_SHORTLIST = 20;
 const TONIGHT_PICKS = 3;
+// Saved backups behind the 3 picks, so a watched / dismissed pick gets replaced.
+const TONIGHT_POOL = 9;
 
 const TonightPicksSchema = z.object({
     picks: z.array(z.object({
@@ -2712,12 +2830,23 @@ function genreIdsOf(movie) {
  * @param {{ mood?: string, minutes?: number, company?: string, regionHint?: string }} options
  * @returns {Promise<{ picks: Array, meta: object }>}
  */
+/** Tonight picker — each mood/time/company answer is saved for 7 days. */
 export async function getTonightPicks(userId, options = {}) {
     const supabase = getSupabaseAdmin();
     const mood = TONIGHT_MOODS[options.mood] ? options.mood : 'any';
     const company = TONIGHT_COMPANY[options.company] ? options.company : 'solo';
     const minutesRaw = Number(options.minutes);
     const minutes = Number.isFinite(minutesRaw) && minutesRaw >= 60 ? Math.min(minutesRaw, 300) : null;
+    const cacheKey = `tonight_picks_v1_${mood}_${minutes || 'any'}_${company}_${options.regionHint || 'home'}`;
+
+    return servePooled(supabase, userId, cacheKey, {
+        limit: TONIGHT_PICKS,
+        listKey: 'picks',
+        build: () => buildTonightPicks(supabase, userId, { ...options, mood, company, minutes }),
+    });
+}
+
+async function buildTonightPicks(supabase, userId, { mood, company, minutes, ...options }) {
 
     const loaded = await loadUserContext(supabase, userId, { regionHint: options.regionHint });
     // The "who's watching" tap decides family filtering here, not the global
@@ -2832,14 +2961,14 @@ export async function getTonightPicks(userId, options = {}) {
     // Fill any gap (LLM down / invalid ids) from the MMR order with template reasons.
     const picks = chosen || [];
     for (const m of shortlist) {
-        if (picks.length >= TONIGHT_PICKS) break;
+        if (picks.length >= TONIGHT_POOL) break;
         if (picks.some((p) => p.movie.tmdb_id === m.tmdb_id)) continue;
         picks.push({ movie: m, why: templateWhy(m, context, tonight), template: true });
     }
 
     // Discover-sourced picks only know "on one of your services", not which one —
     // look up the real providers for the final few so "where to watch" is named.
-    const unnamed = picks.slice(0, TONIGHT_PICKS).map((p) => p.movie)
+    const unnamed = picks.slice(0, TONIGHT_POOL).map((p) => p.movie)
         .filter((m) => !toPublicItem(m).onYourServices?.length && !toPublicItem(m).availability?.length);
     if (unnamed.length) {
         try {
@@ -2855,7 +2984,7 @@ export async function getTonightPicks(userId, options = {}) {
     }
 
     return {
-        picks: picks.slice(0, TONIGHT_PICKS).map(({ movie, why, template }) => {
+        picks: picks.slice(0, TONIGHT_POOL).map(({ movie, why, template }) => {
             const pub = toPublicItem(movie);
             return {
                 tmdbId: Number(movie.tmdb_id),

@@ -54,6 +54,8 @@ export async function handleRecommendationRequest(request, res, loadFn) {
         return res.status(200).json({
             ok: true,
             data: result.items,
+            // Saved backup titles — the client swaps one in when a title is removed.
+            reserve: result.reserve || [],
             meta: result.meta,
             generatedAt: result.generatedAt,
             fromCache: result.fromCache ?? false,

@@ -60,6 +60,7 @@ async function fetchRecommendations(path, options = {}) {
 
         return {
             data: payload.data || [],
+            reserve: payload.reserve || [],
             meta: payload.meta || {},
             generatedAt: payload.generatedAt,
             fromCache: payload.fromCache,

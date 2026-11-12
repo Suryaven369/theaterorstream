@@ -286,7 +286,6 @@ export async function updateTastePreferences(userId, input) {
         }
     }
 
-    await supabase.from('recommendation_cache').delete().eq('user_id', userId);
-
+    // Saved Watch rows are kept until their 7 days are up (no mid-week refresh).
     return { ok: true, quiz };
 }

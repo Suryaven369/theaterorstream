@@ -20,11 +20,10 @@ import {
     getTasteDashboard,
     shouldRelearn,
     shouldRebuildForLikes,
-    CACHE_BUST_EVENTS,
 } from '../_lib/events-server.js';
 import { getFollowingFeed } from '../_lib/following-feed-server.js';
 import { getTastePreferences, updateTastePreferences } from '../_lib/taste-preferences-server.js';
-import { rebuildUserTasteProfile, invalidateRecommendationCache, isTasteProfileStale } from '../_lib/taste-profile-server.js';
+import { rebuildUserTasteProfile, isTasteProfileStale } from '../_lib/taste-profile-server.js';
 import { isEmbeddingConfigured } from '../_lib/embedding-server.js';
 import { handleRecoChat, RECO_CHAT_PRESETS } from '../_lib/reco-chat-server.js';
 import { getUserStreamingSetup, saveUserStreamingSetup } from '../_lib/streaming-services-server.js';
@@ -96,20 +95,9 @@ export default async function handler(req, res) {
             const list = Array.isArray(events) ? events : [events];
             const types = list.map((e) => String(e?.eventType || e?.event_type || ''));
             const hasLike = types.includes('movie_liked');
-            const hasRatingOrDislike = types.some(
-                (t) => CACHE_BUST_EVENTS.has(t) || t.startsWith('rated_'),
-            );
-            // Likes: only re-analyse after ≥3 hearts. Watches never bust cache.
+            // Likes: only re-analyse after ≥3 hearts. Saved Watch rows are NOT
+            // cleared here — they refresh only when their 7 days are up.
             const likesReady = hasLike ? await shouldRebuildForLikes(userId) : false;
-            const shouldBustCache = result.recorded > 0 && (hasRatingOrDislike || likesReady);
-
-            if (shouldBustCache) {
-                try {
-                    await invalidateRecommendationCache(null, userId);
-                } catch (err) {
-                    console.warn('[events] cache invalidate failed:', err.message);
-                }
-            }
 
             let relearned = false;
             try {

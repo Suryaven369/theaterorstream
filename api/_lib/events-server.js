@@ -51,13 +51,6 @@ export const TASTE_SIGNAL_EVENTS = new Set([
     'rated_5', 'rated_4', 'rated_3', 'rated_2', 'rated_1',
 ]);
 
-// Events that may invalidate reco cache — watches do NOT (client drops the card;
-// full reload / 3+ likes refreshes analysis). Ratings & dislikes still bust.
-export const CACHE_BUST_EVENTS = new Set([
-    'movie_disliked', 'movie_meh', 'not_interested',
-    'rated_5', 'rated_4', 'rated_3', 'rated_2', 'rated_1',
-]);
-
 /** One heart is enough to refresh taste / bust reco cache. */
 export const MIN_LIKES_FOR_TASTE_REBUILD = 1;
 
