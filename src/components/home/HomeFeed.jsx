@@ -242,7 +242,7 @@ export default function HomeFeed() {
             {/* 2. New trailers */}
             {(loading || data.trailers?.length > 0) && (
                 <section>
-                    <SectionHeader title="New trailers" subtitle="The most popular trailers released this fortnight" />
+                    <SectionHeader title="New trailers" subtitle="Fresh picks and the most popular trailers this fortnight" />
                     <Row desktopCols="sm:grid-cols-2 lg:grid-cols-4">
                         {loading
                             ? <Skeleton className="aspect-video w-[240px] sm:w-auto" count={4} />
