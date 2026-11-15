@@ -8,7 +8,8 @@ import { generateSlugWithId } from '../lib/slugUtils';
 import { supabase } from '../lib/supabase';
 
 const IMG = 'https://image.tmdb.org/t/p';
-const GOLD = '#e8b34b';
+const GOLD = '#f5c518'; // app brand yellow (--color-theater)
+const LOGO = 'https://res.cloudinary.com/ddhhlkyut/image/upload/v1768226006/a78a29523128c4555fdd178b6c612ac6_dbtyqp.jpg';
 
 const CHOICES = [
     { id: 'theater', label: 'Theater', hint: 'Worth the big screen' },
@@ -150,7 +151,7 @@ function VerdictPoll({ movies, onSignup }) {
                                 {movie.year}
                                 {movie.rating ? <> · <FaStar className="mb-0.5 inline text-[10px]" style={{ color: GOLD }} /> {movie.rating}</> : null}
                             </p>
-                            <Link to={moviePath(movie)} className="mt-1 text-2xl font-bold leading-tight tracking-tight text-white hover:underline sm:text-3xl">{movie.title}</Link>
+                            <Link to={moviePath(movie)} className="mt-1 text-2xl font-semibold leading-tight tracking-tight text-white hover:underline sm:text-3xl">{movie.title}</Link>
                             {call?.verdict && (
                                 <p className="mt-2 text-[13px] text-white/55">
                                     Our call: <span className="font-semibold" style={{ color: GOLD }}>{call.verdict}</span>
@@ -163,7 +164,7 @@ function VerdictPoll({ movies, onSignup }) {
 
                 <div className="p-5 pt-2 sm:p-6 sm:pt-3">
                     <p className="mb-3 text-[14px] text-white/70">{myChoice ? 'Your vote is in. Change it anytime.' : 'What’s your call?'}</p>
-                    <div className="grid gap-2">
+                    <div className="grid grid-cols-3 gap-2">
                         {CHOICES.map((c) => {
                             const selected = myChoice === c.id;
                             const share = pct(t, c.id);
@@ -173,20 +174,20 @@ function VerdictPoll({ movies, onSignup }) {
                                     type="button"
                                     onClick={() => vote(c.id)}
                                     aria-pressed={selected}
-                                    className={`relative flex min-h-[52px] w-full items-center justify-between overflow-hidden rounded-xl border px-4 text-left transition ${selected ? 'border-[#e8b34b]/70' : 'border-white/12 hover:border-white/30'}`}
+                                    className={`relative flex min-h-[72px] flex-col items-center justify-center overflow-hidden rounded-xl border px-2 py-2.5 text-center transition ${selected ? 'border-[#f5c518]/70 bg-[#f5c518]/[0.08]' : 'border-white/10 bg-white/[0.02] hover:border-white/25'}`}
                                 >
+                                    <span className={`text-[14px] font-semibold leading-tight ${selected ? 'text-[#f5c518]' : 'text-white'}`}>{c.label}</span>
+                                    {showResults
+                                        ? <span className="mt-1 text-[13px] font-semibold tabular-nums text-white/80">{share}%</span>
+                                        : <span className="mt-1 hidden text-[11px] leading-tight text-white/40 sm:block">{c.hint}</span>}
                                     {showResults && (
-                                        <span
-                                            className="absolute inset-y-0 left-0 transition-[width] duration-700 ease-out"
-                                            style={{ width: `${share}%`, background: selected ? 'rgba(232,179,75,0.22)' : 'rgba(255,255,255,0.06)' }}
-                                            aria-hidden
-                                        />
+                                        <span className="absolute inset-x-0 bottom-0 h-1 bg-white/[0.06]" aria-hidden>
+                                            <span
+                                                className="block h-full transition-[width] duration-700 ease-out"
+                                                style={{ width: `${share}%`, background: selected ? GOLD : 'rgba(255,255,255,0.35)' }}
+                                            />
+                                        </span>
                                     )}
-                                    <span className="relative">
-                                        <span className={`block text-[15px] font-semibold ${selected ? 'text-[#e8b34b]' : 'text-white'}`}>{c.label}</span>
-                                        {!showResults && <span className="block text-[12px] text-white/40">{c.hint}</span>}
-                                    </span>
-                                    {showResults && <span className="relative text-[15px] font-semibold tabular-nums text-white">{share}%</span>}
                                 </button>
                             );
                         })}
@@ -211,7 +212,7 @@ function VerdictPoll({ movies, onSignup }) {
             </div>
 
             {/* Switch between this week's releases */}
-            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            <div className="mt-3 grid grid-cols-3 gap-2">
                 {movies.map((m, i) => {
                     const lead = leader(totals[m.tmdbId]);
                     const active = i === index;
@@ -222,12 +223,12 @@ function VerdictPoll({ movies, onSignup }) {
                             onClick={() => setIndex(i)}
                             aria-label={`Vote on ${m.title}`}
                             aria-pressed={active}
-                            className={`flex items-center gap-3 rounded-xl border p-2 text-left transition ${active ? 'border-[#e8b34b]/70 bg-[#e8b34b]/[0.06]' : 'border-white/10 hover:border-white/25'}`}
+                            className={`flex flex-col items-center gap-1.5 rounded-xl border p-2 text-center transition sm:flex-row sm:gap-3 sm:text-left ${active ? 'border-[#f5c518]/70 bg-[#f5c518]/[0.06]' : 'border-white/10 hover:border-white/25'}`}
                         >
                             <img src={`${IMG}/w92${m.poster}`} alt="" className="h-14 w-10 shrink-0 rounded-md object-cover" />
-                            <span className="min-w-0">
-                                <span className={`line-clamp-1 text-[13px] font-semibold ${active ? 'text-white' : 'text-white/75'}`}>{m.title}</span>
-                                <span className="mt-0.5 block text-[11px] text-white/45">
+                            <span className="min-w-0 w-full">
+                                <span className={`line-clamp-1 text-[12px] font-semibold sm:text-[13px] ${active ? 'text-white' : 'text-white/75'}`}>{m.title}</span>
+                                <span className="mt-0.5 hidden text-[11px] text-white/45 sm:block">
                                     {mine[m.tmdbId] ? 'You voted' : 'Not voted yet'}
                                     {lead ? ` · ${lead.label} leads` : ''}
                                 </span>
@@ -266,7 +267,7 @@ export default function LandingPage() {
     const marquee = wall.length ? [...wall, ...wall] : [];
 
     return (
-        <div className="min-h-screen bg-[#0a0907] text-[#f3eee6] antialiased selection:bg-[#e8b34b] selection:text-black">
+        <div className="min-h-screen bg-[#0a0907] text-[#f3eee6] antialiased selection:bg-[#f5c518] selection:text-black">
             <SeoHead
                 title="TheaterOrStream · Theater or stream? Know before you watch"
                 description="Movie picks that match your taste, in the languages you watch, with where to stream and an honest Theater / Wait for OTT / Skip verdict. Free."
@@ -283,8 +284,12 @@ export default function LandingPage() {
                 </div>
 
                 <header className="mx-auto flex w-full max-w-7xl items-center justify-between px-5 pt-[calc(1.1rem+env(safe-area-inset-top,0px))] sm:px-8">
-                    <Link to="/" className="text-[19px] font-bold tracking-tight text-white">
-                        Theater<span style={{ color: GOLD }}>or</span>Stream
+                    <Link to="/" className="flex items-center gap-2.5">
+                        <img src={LOGO} alt="TheaterOrStream" className="h-9 w-9 rounded-full object-cover" />
+                        <span className="text-lg font-semibold tracking-tight">
+                            <span style={{ color: GOLD }}>Theater</span>
+                            <span className="text-[#9299a6]"> or Stream</span>
+                        </span>
                     </Link>
                     <nav className="flex items-center gap-1 text-[14px] sm:gap-5">
                         <Link to="/?tab=explore" className="hidden text-white/75 hover:text-white sm:inline">Browse</Link>
@@ -297,7 +302,7 @@ export default function LandingPage() {
 
                 <div className="mx-auto grid w-full max-w-7xl flex-1 items-end gap-8 px-5 pb-8 pt-8 sm:px-8 lg:grid-cols-[1fr_400px] lg:items-center lg:gap-16 lg:pb-14">
                     <div className="lg:pb-6">
-                        <h1 className="text-[2.6rem] font-bold leading-[1.02] tracking-[-0.035em] text-white sm:text-6xl lg:text-[4.75rem]">
+                        <h1 className="text-[2.6rem] font-semibold leading-[1.05] tracking-tight text-white sm:text-6xl lg:text-[4.5rem]">
                             Theater or stream?
                             <span className="block" style={{ color: GOLD }}>Know before you watch.</span>
                         </h1>
@@ -307,7 +312,7 @@ export default function LandingPage() {
                     </div>
 
                     <div ref={formRef} className="w-full scroll-mt-24 rounded-2xl border border-white/12 bg-[#0a0907]/70 p-5 backdrop-blur-xl sm:p-6">
-                        <h2 className="text-2xl font-bold tracking-tight text-white">{AUTH_MODE_TITLES[mode]}</h2>
+                        <h2 className="text-2xl font-semibold tracking-tight text-white">{AUTH_MODE_TITLES[mode]}</h2>
                         <p className="mb-4 mt-0.5 text-[13px] text-white/50">
                             {mode === 'signup' ? 'Free. Your first picks in about two minutes.' : mode === 'login' ? 'Pick up where you left off.' : ' '}
                         </p>
@@ -349,7 +354,7 @@ export default function LandingPage() {
             {/* ─── Live poll ────────────────────────────────────────── */}
             <section className="mx-auto grid max-w-7xl gap-10 px-5 py-20 sm:px-8 sm:py-28 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16">
                 <div className="lg:sticky lg:top-16 lg:self-start">
-                    <h2 className="text-4xl font-bold leading-[1.05] tracking-[-0.03em] text-white sm:text-5xl">
+                    <h2 className="text-4xl font-semibold leading-[1.08] tracking-tight text-white sm:text-5xl">
                         Theater, stream,<br /><span style={{ color: GOLD }}>or skip?</span>
                     </h2>
                     <p className="mt-5 max-w-md text-[17px] leading-relaxed text-white/65">
@@ -358,7 +363,7 @@ export default function LandingPage() {
                     <p className="mt-6 max-w-md text-[14px] leading-relaxed text-white/45">
                         Sign up and every verdict is weighed against your own taste, so you know what’s worth it <em>for you</em>.
                     </p>
-                    <button type="button" onClick={() => goToForm('signup')} className="mt-7 inline-flex items-center gap-2 border-b pb-0.5 text-[15px] font-medium text-white hover:text-[#e8b34b]" style={{ borderColor: GOLD }}>
+                    <button type="button" onClick={() => goToForm('signup')} className="mt-7 inline-flex items-center gap-2 border-b pb-0.5 text-[15px] font-medium text-white hover:text-[#f5c518]" style={{ borderColor: GOLD }}>
                         Get personal verdicts <FaArrowRight className="text-[11px]" />
                     </button>
                 </div>
@@ -368,7 +373,7 @@ export default function LandingPage() {
             {/* ─── What you get ─────────────────────────────────────── */}
             <section className="border-t border-white/[0.07]">
                 <div className="mx-auto grid max-w-7xl gap-10 px-5 py-20 sm:px-8 sm:py-28 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16">
-                    <h2 className="text-4xl font-bold leading-[1.05] tracking-[-0.03em] text-white sm:text-5xl lg:sticky lg:top-16 lg:self-start">
+                    <h2 className="text-4xl font-semibold leading-[1.08] tracking-tight text-white sm:text-5xl lg:sticky lg:top-16 lg:self-start">
                         Made for how you <span style={{ color: GOLD }}>actually</span> watch.
                     </h2>
                     <ol className="divide-y divide-white/[0.08] border-y border-white/[0.08]">
@@ -391,7 +396,7 @@ export default function LandingPage() {
                 <div className="absolute inset-0 -z-10 bg-[#0a0907]/40" />
                 <div className="absolute inset-0 -z-10 bg-gradient-to-b from-[#0a0907] via-[#0a0907]/10 to-[#0a0907]" />
                 <div className="mx-auto max-w-7xl px-5 py-28 sm:px-8 sm:py-40">
-                    <p className="max-w-4xl text-4xl font-bold leading-[1.05] tracking-[-0.035em] text-white sm:text-6xl">
+                    <p className="max-w-4xl text-4xl font-semibold leading-[1.08] tracking-tight text-white sm:text-6xl">
                         Less time scrolling.<br /><span style={{ color: GOLD }}>More time watching.</span>
                     </p>
                     <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -407,7 +412,7 @@ export default function LandingPage() {
 
             {/* ─── FAQ ──────────────────────────────────────────────── */}
             <section className="mx-auto grid max-w-7xl gap-10 px-5 py-20 sm:px-8 sm:py-28 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16">
-                <h2 className="text-4xl font-bold leading-[1.05] tracking-[-0.03em] text-white sm:text-5xl">Good questions.</h2>
+                <h2 className="text-4xl font-semibold leading-[1.08] tracking-tight text-white sm:text-5xl">Good questions.</h2>
                 <div className="divide-y divide-white/[0.08] border-y border-white/[0.08]">
                     {FAQS.map((f) => (
                         <details key={f.q} className="group py-5 [&_summary::-webkit-details-marker]:hidden">
@@ -440,9 +445,9 @@ export default function LandingPage() {
                 </div>
                 <p
                     aria-hidden
-                    className="mx-auto mt-12 max-w-7xl select-none whitespace-nowrap px-5 text-center text-[11.5vw] font-bold leading-[0.9] tracking-[-0.05em] text-white/[0.06] sm:px-8 lg:text-[9rem]"
+                    className="mx-auto mt-12 max-w-7xl select-none whitespace-nowrap px-5 text-center text-[10.5vw] font-semibold leading-[0.95] tracking-tight text-white/[0.06] sm:px-8 lg:text-[8.5rem]"
                 >
-                    Theater<span>or</span>Stream
+                    Theater or Stream
                 </p>
                 <div className="border-t border-white/[0.07]">
                     <div className="mx-auto flex max-w-7xl flex-col gap-1 px-5 py-5 text-[12px] text-white/35 sm:flex-row sm:justify-between sm:px-8">

@@ -30,9 +30,9 @@ const THEMES = {
         link: 'text-orange-400',
     },
     gold: {
-        input: 'focus:border-[#e8b34b]',
-        primary: 'bg-[#e8b34b] text-[#16120a] hover:bg-[#f0c463] shadow-[0_8px_30px_-8px_rgba(232,179,75,0.55)]',
-        link: 'text-[#e8b34b]',
+        input: 'focus:border-[#f5c518]',
+        primary: 'bg-[#f5c518] text-[#14181c] hover:bg-[#f5c518]/90 shadow-[0_8px_30px_-8px_rgba(245,197,24,0.45)]',
+        link: 'text-[#f5c518]',
     },
 };
 
