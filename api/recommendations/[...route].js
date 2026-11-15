@@ -30,6 +30,7 @@ import { getUserStreamingSetup, saveUserStreamingSetup } from '../_lib/streaming
 import { getHomeFeed } from '../_lib/home-feed-server.js';
 import { fetchTmdbApi } from '../_lib/tmdb-server.js';
 import { getQuizStarters, getQuizPeople, parseQuizLanguages } from '../_lib/quiz-server.js';
+import { getLandingData } from '../_lib/landing-server.js';
 import { getRegionProviderCatalog, normalizeRegion, DEFAULT_REGION } from '../_lib/watch-providers-server.js';
 
 export const config = {
@@ -242,6 +243,20 @@ export default async function handler(req, res) {
         } catch (error) {
             console.warn('movie-search failed:', error.message);
             return res.status(200).json({ ok: true, data: [], degraded: true });
+        }
+    }
+
+    // --- Landing page: daily hero still + hot-right-now movies (public) ---
+    if (segment === 'landing') {
+        if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+        try {
+            const hint = String(req.query?.regionHint || '').toUpperCase();
+            const data = await getLandingData({ regionHint: /^[A-Z]{2}$/.test(hint) ? hint : null });
+            res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400');
+            return res.status(200).json({ ok: true, ...data });
+        } catch (error) {
+            console.warn('landing failed:', error.message);
+            return res.status(200).json({ ok: true, hero: null, hot: [], degraded: true });
         }
     }
 

@@ -223,6 +223,19 @@ export async function searchQuizMovies(query, { signal } = {}) {
     }
 }
 
+/** Landing page: daily hero still + six hot-right-now movies. Public. */
+export async function getLandingData() {
+    try {
+        const res = await fetch(`${resolveApiBase()}/api/recommendations/landing?regionHint=${getUserRegionCode()}`, {
+            headers: { Accept: 'application/json' },
+        });
+        const payload = await res.json().catch(() => ({}));
+        return res.ok ? { hero: payload.hero || null, hot: payload.hot || [] } : { hero: null, hot: [] };
+    } catch {
+        return { hero: null, hot: [] };
+    }
+}
+
 /** Taste quiz: well-known films in the picked languages → [{ id, title, year, lang, poster, genreIds }]. */
 export async function getQuizStarters(languages = []) {
     if (!languages.length) return [];

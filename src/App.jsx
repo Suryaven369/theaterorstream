@@ -10,11 +10,14 @@ import Header from "./components/Header";
 import Footer from "./components/Footer";
 import MobileNavigation from "./components/MobileNavigation";
 import TasteOnboardingGate from "./components/TasteOnboardingGate";
+import LandingPage from "./views/LandingPage";
+import { useAuth } from "./context/AuthContext";
 import { detectUserRegion } from "./lib/userRegion";
 
 function App() {
   const dispatch = useDispatch();
   const location = useLocation();
+  const { isAuthenticated, loading: authLoading } = useAuth();
 
   useEffect(() => {
     dispatch(setImageURL(`${TMDB_IMAGE_BASE}w342`));
@@ -63,6 +66,16 @@ function App() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }, [location.pathname, homeTab, isSearchPage]);
+
+  // Signed-out visitors on "/" get the landing page. "Browse without an
+  // account" goes to /?tab=explore, which opens the app as a guest.
+  const isLandingPath = location.pathname === '/' && !homeTab;
+  if (isLandingPath && authLoading) {
+    return <div className="min-h-screen bg-[#0b0a08]" />;
+  }
+  if (isLandingPath && !isAuthenticated) {
+    return <LandingPage />;
+  }
 
   return (
     <TasteOnboardingGate>
