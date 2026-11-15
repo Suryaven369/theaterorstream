@@ -15,7 +15,7 @@ import {
     DEFAULT_REGION,
 } from './watch-providers-server.js';
 import { getUserStreamingSetup } from './streaming-services-server.js';
-import { generateCandidates, passesDealbreakers } from './reco/candidates.js';
+import { generateCandidates, passesDealbreakers, passesLanguage, strictLanguages } from './reco/candidates.js';
 import { effectiveMaxRuntime } from '../../src/lib/tasteQuiz.js';
 import { attachVectors, computeUserVector, VECTOR_PROVIDER } from './reco/embeddings.js';
 import { scoreCandidates, mmrSelect, cosine } from './reco/scoring.js';
@@ -87,6 +87,37 @@ const ON_YOUR_SERVICES_BONUS = 0.08;  // streams on a service the user pays for
 const WATCHABLE_NOW_BONUS = 0.03;     // streams somewhere in the user's region (no services set)
 const FRESH_RELEASE_BONUS = 0.06;     // max bonus for brand-new titles, decays over FRESH_WINDOW_DAYS
 const FRESH_WINDOW_DAYS = 180;
+// Onboarding answers that nudge ranking (added to the 0–1 score).
+const FAV_PERSON_BONUS = 0.06;   // has an actor / director the user picked
+const ERA_BONUS = 0.04;          // released in a decade the user picked
+const FAMILY_COMPANY_BONUS = 0.03; // family-friendly, for people who watch with family
+
+/** Small score lift from onboarding answers (favourite people, eras, company). */
+function tasteNudge(movie, prefs = {}) {
+    let bonus = 0;
+    if (movie._favPerson) bonus += FAV_PERSON_BONUS;
+    const eras = prefs.eras || [];
+    if (eras.length) {
+        const year = Number(String(movie.release_date || movie.first_air_date || '').slice(0, 4));
+        if (year) {
+            const decade = Math.floor(year / 10) * 10;
+            if (eras.includes(decade) || (eras.includes(1980) && year < 1990)) bonus += ERA_BONUS;
+        }
+    }
+    if ((prefs.company || []).includes('family') && Number(movie.family_score) >= 7) bonus += FAMILY_COMPANY_BONUS;
+    return bonus;
+}
+
+/** TMDB discover params that keep results in the user's languages (if any). */
+function languageParams(context, { minVotes = null } = {}) {
+    const langs = strictLanguages(context?.prefs);
+    if (!langs) return {};
+    return {
+        with_original_language: langs.join('|'),
+        ...(minVotes != null ? { 'vote_count.gte': String(minVotes) } : {}),
+    };
+}
+
 // Provider lookups per request (TMDB calls) — results persist for 72h.
 const AVAILABILITY_FETCH_BUDGET = 45;
 
@@ -583,6 +614,11 @@ function buildEffectiveProfile(profile, signals) {
  * a title watched after a row was cached never comes back.
  */
 export async function loadSeenSet(supabase, userId) {
+    return (await loadServeFilter(supabase, userId)).seen;
+}
+
+/** Seen titles + the user's language limit, for filtering saved rows. */
+async function loadServeFilter(supabase, userId) {
     const [watched, logs, ratings, liked, disliked, quizRow] = await Promise.all([
         supabase.from('user_watched_movies').select('movie_id').eq('user_id', userId).limit(5000),
         supabase.from('movie_logs').select('tmdb_id').eq('user_id', userId).limit(5000),
@@ -590,7 +626,7 @@ export async function loadSeenSet(supabase, userId) {
         supabase.from('user_liked_movies').select('movie_id').eq('user_id', userId).limit(5000),
         supabase.from('user_events').select('tmdb_id').eq('user_id', userId)
             .in('event_type', ['movie_disliked', 'movie_meh', 'not_interested']).limit(1000),
-        supabase.from('user_taste_profiles').select('onboarding_step_data').eq('user_id', userId).maybeSingle(),
+        supabase.from('user_taste_profiles').select('onboarding_step_data, manual_languages').eq('user_id', userId).maybeSingle(),
     ]);
     const seen = new Set();
     (watched.data || []).forEach((r) => seen.add(String(r.movie_id)));
@@ -600,7 +636,8 @@ export async function loadSeenSet(supabase, userId) {
     (disliked.data || []).forEach((r) => { if (r.tmdb_id) seen.add(String(r.tmdb_id)); });
     const quiz = quizRow?.data?.onboarding_step_data?.quiz;
     [...(quiz?.lovedIds || []), ...(quiz?.dislikedIds || [])].forEach((id) => seen.add(String(id)));
-    return seen;
+    const languages = quiz?.languages?.length ? quiz.languages : (quizRow?.data?.manual_languages || []);
+    return { seen, prefs: { languages } };
 }
 
 /** Drop seen titles from a cached payload (keeps meta.count accurate). */
@@ -608,8 +645,11 @@ async function filterCachedPayload(supabase, userId, payload, listKey = 'items')
     const list = payload?.[listKey];
     if (!list?.length) return payload;
     try {
-        const seen = await loadSeenSet(supabase, userId);
-        const items = list.filter((m) => !seen.has(String(m.tmdb_id ?? m.tmdbId ?? m.id)));
+        // Seen titles drop out; so does anything outside the user's languages
+        // (rows saved before they picked languages get backfilled/rebuilt).
+        const { seen, prefs } = await loadServeFilter(supabase, userId);
+        const items = list.filter((m) => !seen.has(String(m.tmdb_id ?? m.tmdbId ?? m.id))
+            && passesLanguage(m, prefs));
         if (items.length === list.length) return payload;
         return { ...payload, [listKey]: items, meta: { ...(payload.meta || {}), count: items.length, cacheFiltered: true } };
     } catch (err) {
@@ -830,6 +870,14 @@ async function loadUserContext(supabase, userId, { regionHint = null } = {}) {
             dealbreakers: quiz?.dealbreakers || [],
             maxRuntime: effectiveMaxRuntime(quiz),
             pattern: quiz?.pattern || null,
+            format: quiz?.format || 'both',
+            genreIds: Object.keys(baseProfile.manual_genre_weights || {}).map(Number).filter(Boolean),
+            peopleIds: [
+                ...(baseProfile.favorite_director_ids || []),
+                ...(baseProfile.favorite_actor_ids || []),
+            ],
+            eras: (baseProfile.manual_preferred_eras || []).map(Number),
+            company: baseProfile.onboarding_step_data?.questionnaire_company || [],
         },
         lovedTmdbIds,
         services: streaming?.services || [],
@@ -866,6 +914,7 @@ async function fetchTasteGemIdsFromTmdb(context, { mediaType = 'movie', limit = 
                 'vote_count.lte': '8000',
                 include_adult: 'false',
                 page: String(page),
+                ...languageParams(context, { minVotes: 30 }),
             });
             for (const m of data?.results || []) {
                 const id = String(m.id);
@@ -907,12 +956,14 @@ async function fetchOttDiscoverPool(context, { mediaType = null } = {}) {
             with_watch_monetization_types: 'flatrate|free|ads',
             include_adult: 'false',
             ...(genres.length ? { with_genres: genres.join('|') } : {}),
+            ...languageParams(context),
         };
+        const strictLang = !!strictLanguages(context.prefs);
         const dateGte = type === 'tv' ? 'first_air_date.gte' : 'primary_release_date.gte';
         const dateLte = type === 'tv' ? 'first_air_date.lte' : 'primary_release_date.lte';
         const pages = type === 'movie' ? 2 : 1;
         for (let page = 1; page <= pages; page += 1) {
-            jobs.push({ type, params: { ...base, sort_by: 'popularity.desc', 'vote_count.gte': type === 'tv' ? '30' : '60', page: String(page) } });
+            jobs.push({ type, params: { ...base, sort_by: 'popularity.desc', 'vote_count.gte': strictLang ? '15' : (type === 'tv' ? '30' : '60'), page: String(page) } });
         }
         jobs.push({ type, params: { ...base, sort_by: 'popularity.desc', [dateGte]: from, [dateLte]: today, 'vote_count.gte': '10', page: '1' }, fresh: true });
     });
@@ -965,6 +1016,7 @@ async function fetchFreshReleasePool(context, { mediaType = null } = {}) {
             sort_by: 'popularity.desc',
             include_adult: 'false',
             page: '1',
+            ...languageParams(context, { minVotes: 5 }),
         }).then((data) => ({ type, data })).catch(() => ({ type, data: null }));
     });
 
@@ -1115,6 +1167,8 @@ async function fetchCandidateMovies(supabase, context, options) {
             .limit(popularityCap);
 
         if (mediaType) popularityQuery = popularityQuery.eq('media_type', mediaType);
+        const backfillLangs = strictLanguages(context.prefs);
+        if (backfillLangs) popularityQuery = popularityQuery.in('original_language', backfillLangs);
 
         const { data: popularRows, error: popError } = await popularityQuery;
         if (popError) throw new Error(popError.message);
@@ -1169,6 +1223,9 @@ async function fetchCandidateMovies(supabase, context, options) {
     }));
     // Candidates TMDB gave us that aren't in the library yet still compete,
     // as lightweight cards built from TMDB's own data.
+    const favIds = new Set([...(context._liteCards || new Map())]
+        .filter(([, card]) => card._favPerson).map(([id]) => id));
+    if (favIds.size) hydrated.forEach((m) => { if (favIds.has(String(m.tmdb_id))) m._favPerson = true; });
     const have = new Set(hydrated.map((m) => String(m.tmdb_id)));
     (context._liteCards || new Map()).forEach((card, id) => {
         if (have.has(id) || (mediaType && mediaType !== 'movie')) return;
@@ -1289,6 +1346,7 @@ function passesBaseFilters(movie, context, filters) {
     if (filters.excludeRated && context.ratedIds?.has(id)) return false;
     if (!filters.allowUnreleased && !isReleased(movie)) return false;
     if (!passesDealbreakers(movie, context.prefs)) return false;
+    if (context.prefs?.format === 'movies' && movie.media_type === 'tv') return false;
     return true;
 }
 
@@ -1392,6 +1450,11 @@ async function scoreAndRankMovies(supabase, movies, context, options = {}) {
             pattern: context.prefs?.pattern,
             ...(tonight || {}),
         });
+        scored.forEach((m) => {
+            const bonus = tasteNudge(m, context.prefs);
+            if (bonus) m.score = Math.round((m.score + bonus) * 1000) / 1000;
+        });
+        scored.sort((a, b) => (b.score - a.score) || (Number(a.tmdb_id) - Number(b.tmdb_id)));
         const ranked = skipDiversity
             ? scored.slice(0, limit)
             : diversifyRanking(scored, limit, topGenreIds(context.profile.genre_weights, 2));
@@ -1471,6 +1534,7 @@ async function scoreAndRankMovies(supabase, movies, context, options = {}) {
             finalScore += WATCHABLE_NOW_BONUS;
         }
         finalScore += freshnessBonus(movie);
+        finalScore += tasteNudge(movie, context.prefs);
 
         return {
             ...movie,
@@ -1502,7 +1566,7 @@ function toPublicItem(movie, extra = {}) {
     const {
         _embeddingSimilarity, _isExploration, _watchProviders, _watchProvidersSyncedAt,
         _availabilityKnown, _fromProviderDiscover, availability, onYourServices,
-        vector, _lite, _source, _fresh, ...rest
+        vector, _lite, _source, _fresh, _favPerson, ...rest
     } = movie;
     return {
         ...rest,
@@ -1940,12 +2004,15 @@ export async function getHiddenGems(userId, options = {}) {
         const context = await loadUserContext(supabase, userId, { regionHint: options?.regionHint });
         const limit = poolLimit;
 
+        const gemLangs = strictLanguages(context.prefs);
+        let gemLibQuery = supabase
+            .from('movies_library').select(RECO_MOVIE_SELECT)
+            .eq('is_active', true)
+            .gte('vote_average', 7.3).gte('vote_count', gemLangs ? 20 : 50).lte('popularity', 40)
+            .order('vote_average', { ascending: false }).limit(options.candidateLimit || 200);
+        if (gemLangs) gemLibQuery = gemLibQuery.in('original_language', gemLangs);
         const [libPoolRes, tmdbGems] = await Promise.all([
-            supabase
-                .from('movies_library').select(RECO_MOVIE_SELECT)
-                .eq('is_active', true)
-                .gte('vote_average', 7.3).gte('vote_count', 50).lte('popularity', 40)
-                .order('vote_average', { ascending: false }).limit(options.candidateLimit || 200),
+            gemLibQuery,
             fetchTasteGemIdsFromTmdb(context, {
                 mediaType: options.mediaType || 'movie',
                 limit: 80,
@@ -2019,11 +2086,32 @@ export async function getOutsideComfortZone(userId, options = {}) {
     return cachedSection(userId, 'outside_comfort_v2', async (supabase, poolLimit) => {
         const context = await loadUserContext(supabase, userId, { regionHint: options?.regionHint });
         const dominant = topGenreIds(context.profile.genre_weights, 2);
-        const { data: pool } = await supabase
+        const comfortLangs = strictLanguages(context.prefs);
+        let comfortQuery = supabase
             .from('movies_library').select(RECO_MOVIE_SELECT)
             .eq('is_active', true).gte('vote_average', 6.6)
             .order('popularity', { ascending: false, nullsFirst: false })
             .limit(options.candidateLimit || 300);
+        if (comfortLangs) {
+            comfortQuery = comfortQuery.in('original_language', comfortLangs);
+            // Our library is English-heavy: pull well-rated titles in the user's
+            // languages outside their usual genres straight from TMDB first.
+            try {
+                const found = await Promise.all([1, 2].map((page) => fetchTmdbApi('/discover/movie', {
+                    with_original_language: comfortLangs.join('|'),
+                    ...(dominant.length ? { without_genres: dominant.join(',') } : {}),
+                    sort_by: 'vote_average.desc',
+                    'vote_count.gte': '100',
+                    include_adult: 'false',
+                    page: String(page),
+                }).catch(() => null)));
+                const ids = found.flatMap((d) => d?.results || []).map((m) => ({ id: String(m.id), media_type: 'movie' }));
+                if (ids.length) await ensureLibraryCardsForCandidates(ids.slice(0, 40), { maxImport: 25 });
+            } catch (err) {
+                console.warn('[reco] comfort-zone language pool skipped:', err.message);
+            }
+        }
+        const { data: pool } = await comfortQuery;
 
         const candidates = (pool || [])
             .map(normalizeLibraryItem)
@@ -2292,6 +2380,7 @@ async function fetchMoodPoolFromTmdb(config, {
     watchRegion = DEFAULT_REGION,
     strictWithout = true,
     knownAvailable = null,
+    languages = null,
 } = {}) {
     const type = mediaType === 'tv' ? 'tv' : 'movie';
     const out = [];
@@ -2310,10 +2399,11 @@ async function fetchMoodPoolFromTmdb(config, {
             const params = {
                 with_genres: withGenres,
                 sort_by: 'popularity.desc',
-                'vote_count.gte': hasProvider ? '25' : '80',
+                'vote_count.gte': languages ? '15' : (hasProvider ? '25' : '80'),
                 include_adult: 'false',
                 page: String(page),
             };
+            if (languages) params.with_original_language = languages.join('|');
             // Always ask TMDB to exclude off-mood genres for accuracy.
             if (without.length) {
                 params.without_genres = without.join(',');
@@ -2354,6 +2444,7 @@ async function fetchMoodPoolFromTmdb(config, {
                 family_score: null,
                 movie_dna: {},
                 overview: m.overview || null,
+                original_language: m.original_language || null,
                 _fromProviderDiscover: hasProvider,
             };
             // Enforce genre accuracy on every discover hit (soft secondary for OTT).
@@ -2367,13 +2458,15 @@ async function fetchMoodPoolFromTmdb(config, {
 }
 
 /** Library titles that match mood genres (tags alone are not enough). */
-async function fetchMoodPoolFromLibrary(supabase, config, { limit = 200 } = {}) {
-    const { data: rows } = await supabase
+async function fetchMoodPoolFromLibrary(supabase, config, { limit = 200, languages = null } = {}) {
+    let query = supabase
         .from('movies_library')
         .select(`${RECO_MOVIE_SELECT}, custom_vibes`)
         .eq('is_active', true)
         .order('popularity', { ascending: false, nullsFirst: false })
         .limit(Math.min(800, Math.max(limit * 3, 300)));
+    if (languages) query = query.in('original_language', languages);
+    const { data: rows } = await query;
 
     const matched = [];
     for (const row of rows || []) {
@@ -2460,6 +2553,8 @@ async function buildMoodRecommendations(userId, moodId, options = {}) {
         : null;
     const discoverPages = hasProvider ? 5 : 3;
 
+    // Mood rows stay in the user's languages too.
+    const moodLangs = strictLanguages(context.prefs);
     const discoverOpts = (type, strictWithout) => ({
         pages: type === 'tv' ? Math.max(2, discoverPages - 1) : discoverPages,
         mediaType: type,
@@ -2467,6 +2562,7 @@ async function buildMoodRecommendations(userId, moodId, options = {}) {
         watchRegion,
         strictWithout,
         knownAvailable,
+        languages: moodLangs,
     });
 
     const runDiscover = async (strictWithout) => {
@@ -2485,7 +2581,7 @@ async function buildMoodRecommendations(userId, moodId, options = {}) {
         tmdbPool = mergeMoodPools(tmdbPool, await runDiscover(false));
     }
 
-    const libPool = await fetchMoodPoolFromLibrary(supabase, config, { limit: 240 });
+    const libPool = await fetchMoodPoolFromLibrary(supabase, config, { limit: 240, languages: moodLangs });
     const discoverIds = new Set(tmdbPool.map((m) => String(m.tmdb_id)));
     let pool = mergeMoodPools(tmdbPool, libPool);
 
@@ -2632,7 +2728,27 @@ async function buildTrendingPersonalized(userId, options = {}) {
             })))
             .catch(() => [])
     ))));
-    const live = lists.flat();
+    // Global trending is mostly English — for language-limited users lead with
+    // what's popular right now in their languages.
+    const trendLangs = strictLanguages(context.prefs);
+    let regional = [];
+    if (trendLangs) {
+        const since = isoDaysAgo(120);
+        regional = (await Promise.all(types.map((type) => fetchTmdbApi(`/discover/${type}`, {
+            with_original_language: trendLangs.join('|'),
+            sort_by: 'popularity.desc',
+            [type === 'tv' ? 'first_air_date.gte' : 'primary_release_date.gte']: since,
+            [type === 'tv' ? 'first_air_date.lte' : 'primary_release_date.lte']: todayIso(),
+            'vote_count.gte': '3',
+            include_adult: 'false',
+            page: '1',
+        }).then((d) => (d?.results || []).map((m) => ({
+            id: String(m.id),
+            media_type: type,
+            popularity: Number(m.popularity) || 0,
+        }))).catch(() => [])))).flat();
+    }
+    const live = [...regional, ...lists.flat()];
     const livePopularity = new Map(live.map((m) => [`${m.media_type}:${m.id}`, m.popularity]));
 
     if (live.length) {
@@ -2675,6 +2791,7 @@ async function buildTrendingPersonalized(userId, options = {}) {
             .order('popularity', { ascending: false, nullsFirst: false })
             .limit(options.candidateLimit || 60);
         if (mediaType) query = query.eq('media_type', mediaType);
+        if (trendLangs) query = query.in('original_language', trendLangs);
         const { data: libRows, error } = await query;
         if (error) throw new Error(error.message);
         (libRows || []).forEach(push);
@@ -2791,8 +2908,10 @@ async function tonightDiscoverPool(context, { moodDef, banned, runtimeCap, famil
         base.certification_country = 'US';
         base['certification.lte'] = familyCert;
     }
-    if (context.prefs?.languages?.length && context.prefs.dealbreakers?.includes('subtitles')) {
-        base.with_original_language = context.prefs.languages.join('|');
+    const tonightLangs = strictLanguages(context.prefs);
+    if (tonightLangs) {
+        base.with_original_language = tonightLangs.join('|');
+        base['vote_count.gte'] = '20';
     }
     const pages = await Promise.all([1, 2, 3].map((page) => fetchTmdbApi('/discover/movie', { ...base, page: String(page) })
         .catch(() => null)));
@@ -2989,6 +3108,7 @@ async function buildTonightPicks(supabase, userId, { mood, company, minutes, ...
             return {
                 tmdbId: Number(movie.tmdb_id),
                 title: movie.title,
+                lang: movie.original_language || null,
                 year: String(movie.release_date || '').slice(0, 4) || null,
                 poster: movie.poster_path || null,
                 backdrop: movie.backdrop_path || null,

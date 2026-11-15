@@ -223,6 +223,34 @@ export async function searchQuizMovies(query, { signal } = {}) {
     }
 }
 
+/** Taste quiz: well-known films in the picked languages → [{ id, title, year, lang, poster, genreIds }]. */
+export async function getQuizStarters(languages = []) {
+    if (!languages.length) return [];
+    try {
+        const res = await fetch(`${resolveApiBase()}/api/recommendations/quiz-starters?langs=${encodeURIComponent(languages.join(','))}`, {
+            headers: { Accept: 'application/json' },
+        });
+        const payload = await res.json().catch(() => ({}));
+        return res.ok ? (payload.data || []) : [];
+    } catch {
+        return [];
+    }
+}
+
+/** Taste quiz: actors + directors from loved films and the picked languages. */
+export async function getQuizPeople(languages = [], lovedIds = []) {
+    try {
+        const q = new URLSearchParams({ langs: languages.join(','), loved: lovedIds.join(',') });
+        const res = await fetch(`${resolveApiBase()}/api/recommendations/quiz-people?${q}`, {
+            headers: { Accept: 'application/json' },
+        });
+        const payload = await res.json().catch(() => ({}));
+        return res.ok ? { actors: payload.actors || [], directors: payload.directors || [] } : { actors: [], directors: [] };
+    } catch {
+        return { actors: [], directors: [] };
+    }
+}
+
 /**
  * The user's streaming services + home region.
  * @returns {Promise<{ region: string, providerIds: number[], services: {id,name,logo}[], hasServices: boolean } | null>}

@@ -6,6 +6,10 @@
  *   2. Keyword discover: the keywords loved films share most → /discover/movie with_keywords
  *   3. Platform discover: /discover/movie on the user's services + region, in their
  *      languages, vote_count ≥ 200, runtime ≤ their limit
+ *   4. Language discover: popular + acclaimed films in the user's languages and genres
+ *   5. People discover: films with the actors / directors the user picked
+ * Languages are strict: when the user picked languages, nothing in any other
+ * original language is ever shown (see strictLanguages / passesDealbreakers).
  * Hard filters (seen, disliked, platforms, dealbreakers) are applied by the caller
  * through passesDealbreakers() + the engine's base filters.
  *
@@ -14,9 +18,9 @@
  */
 import { fetchTmdbApi } from '../tmdb-server.js';
 
-export const CANDIDATE_TARGET_MAX = 250;
+export const CANDIDATE_TARGET_MAX = 320;
 // Per-pool quotas so no single source crowds out the others.
-const POOL_QUOTA = { neighbours: 150, keywords: 60, platforms: 60 };
+const POOL_QUOTA = { neighbours: 150, keywords: 60, platforms: 60, languages: 120, people: 60 };
 const SIMILAR_PER_SEED = 8; // TMDB /similar is weaker than /recommendations — keep only its top
 const NEIGHBOUR_SEEDS = 8;
 const KEYWORDS_FOR_DISCOVER = 6;
@@ -53,6 +57,25 @@ function keywordText(movie) {
         .join(' | ');
 }
 
+/**
+ * The languages a user watches, as a hard filter — or null for "any language"
+ * (nothing picked, or 'other' picked from Settings).
+ */
+export function strictLanguages(prefs = {}) {
+    const langs = (prefs.languages || []).filter(Boolean);
+    if (!langs.length || langs.includes('other')) return null;
+    return langs;
+}
+
+/** True when the title is in one of the user's languages (or no language limit). */
+export function passesLanguage(movie, prefs = {}) {
+    const langs = strictLanguages(prefs);
+    if (!langs) return true;
+    const lang = movie?.original_language || movie?.lang || null;
+    // Unknown language can't be verified — leave it out rather than risk English.
+    return !!lang && langs.includes(lang);
+}
+
 function guideLevel(guide, ...keys) {
     if (!guide || typeof guide !== 'object') return 0;
     return Math.max(0, ...keys.map((k) => SEVERITY[String(guide[k] || '').toLowerCase()] ?? 0));
@@ -75,11 +98,8 @@ export function passesDealbreakers(movie, prefs = {}) {
     if (deal.has('sexual_content')
         && (DEALBREAKER_KEYWORDS.sexual_content.test(kw) || guideLevel(guide, 'nudity', 'sex', 'sex_nudity') >= SEVERITY.moderate)) return false;
 
-    // "No subtitles": only films originally in a language the user watches.
-    const langs = prefs.languages || [];
-    if (deal.has('subtitles') && langs.length && movie?.original_language && !langs.includes(movie.original_language)) {
-        return false;
-    }
+    // Only films originally in a language the user watches.
+    if (!passesLanguage(movie, prefs)) return false;
 
     const runtime = Number(movie?.runtime);
     if (prefs.maxRuntime && runtime > 0 && runtime > prefs.maxRuntime) return false;
@@ -190,7 +210,51 @@ async function keywordDiscoverPool(keywords, prefs) {
         include_adult: 'false',
     };
     if (prefs.maxRuntime) params['with_runtime.lte'] = String(prefs.maxRuntime);
+    const langs = strictLanguages(prefs);
+    if (langs) {
+        params.with_original_language = langs.join('|');
+        params['vote_count.gte'] = '40'; // regional films have fewer TMDB votes
+    }
     const pages = await Promise.all([1, 2].map((page) => safe(fetchTmdbApi('/discover/movie', { ...params, page: String(page) }))));
+    return pages.flatMap((d) => d?.results || []);
+}
+
+/** Popular + acclaimed films in the user's languages (and favourite genres). */
+async function languageDiscoverPool(prefs, topGenreIds = []) {
+    const langs = strictLanguages(prefs);
+    if (!langs) return [];
+    const base = {
+        with_original_language: langs.join('|'),
+        include_adult: 'false',
+        'primary_release_date.lte': new Date().toISOString().slice(0, 10),
+    };
+    if (prefs.maxRuntime) base['with_runtime.lte'] = String(prefs.maxRuntime);
+    const genres = (prefs.genreIds?.length ? prefs.genreIds : topGenreIds).slice(0, 4);
+    const jobs = [
+        ...[1, 2, 3].map((page) => ({ ...base, sort_by: 'popularity.desc', 'vote_count.gte': '30', page: String(page) })),
+        ...[1, 2].map((page) => ({ ...base, sort_by: 'vote_average.desc', 'vote_count.gte': '150', page: String(page) })),
+    ];
+    if (genres.length) {
+        jobs.push({ ...base, with_genres: genres.join('|'), sort_by: 'popularity.desc', 'vote_count.gte': '30', page: '1' });
+        jobs.push({ ...base, with_genres: genres.join('|'), sort_by: 'popularity.desc', 'vote_count.gte': '30', page: '2' });
+    }
+    const pages = await Promise.all(jobs.map((params) => safe(fetchTmdbApi('/discover/movie', params))));
+    return pages.flatMap((d) => d?.results || []);
+}
+
+/** Films with the actors / directors the user picked (in their languages). */
+async function peopleDiscoverPool(prefs) {
+    const people = (prefs.peopleIds || []).map(Number).filter((n) => n > 0).slice(0, 12);
+    if (!people.length) return [];
+    const base = {
+        with_people: people.join('|'),
+        sort_by: 'popularity.desc',
+        'vote_count.gte': '20',
+        include_adult: 'false',
+    };
+    const langs = strictLanguages(prefs);
+    if (langs) base.with_original_language = langs.join('|');
+    const pages = await Promise.all([1, 2].map((page) => safe(fetchTmdbApi('/discover/movie', { ...base, page: String(page) }))));
     return pages.flatMap((d) => d?.results || []);
 }
 
@@ -205,7 +269,11 @@ async function platformDiscoverPool(prefs, topGenreIds = []) {
         sort_by: 'popularity.desc',
         include_adult: 'false',
     };
-    if (prefs.languages?.length) base.with_original_language = prefs.languages.join('|');
+    const langs = strictLanguages(prefs);
+    if (langs) {
+        base.with_original_language = langs.join('|');
+        base['vote_count.gte'] = '30';
+    }
     if (prefs.maxRuntime) base['with_runtime.lte'] = String(prefs.maxRuntime);
     const jobs = [1, 2].map((page) => safe(fetchTmdbApi('/discover/movie', { ...base, page: String(page) })));
     if (topGenreIds.length) {
@@ -223,30 +291,38 @@ async function platformDiscoverPool(prefs, topGenreIds = []) {
  */
 export async function generateCandidates({ lovedIds = [], lovedKeywords = [], prefs = {}, topGenreIds = [], exclude = new Set() }) {
     const keywords = topSharedKeywords(lovedKeywords);
-    const [neighbours, byKeyword, onPlatforms] = await Promise.all([
+    const [neighbours, byKeyword, onPlatforms, byLanguage, byPeople] = await Promise.all([
         lovedNeighbourPool(lovedIds.map(String)),
         keywordDiscoverPool(keywords, prefs),
         platformDiscoverPool(prefs, topGenreIds),
+        languageDiscoverPool(prefs, topGenreIds),
+        peopleDiscoverPool(prefs),
     ]);
 
     const cards = new Map();
     const knownAvailable = new Map();
-    const sources = { neighbours: 0, keywords: 0, platforms: 0 };
+    const sources = { neighbours: 0, keywords: 0, platforms: 0, languages: 0, people: 0 };
+    // Strict languages: drop other-language titles before they use up a quota.
+    const langs = strictLanguages(prefs);
     const add = (list, source) => {
         list.forEach((m) => {
             const id = String(m?.id || '');
             if (!id || exclude.has(id) || m.adult) return;
+            if (langs && !langs.includes(m.original_language)) return;
+            if (source === 'people' && cards.has(id)) cards.get(id)._favPerson = true;
             if (!cards.has(id)) {
                 if (cards.size >= CANDIDATE_TARGET_MAX || sources[source] >= POOL_QUOTA[source]) return;
-                cards.set(id, { ...liteCard(m), _source: source });
+                cards.set(id, { ...liteCard(m), _source: source, ...(source === 'people' ? { _favPerson: true } : {}) });
                 sources[source] += 1;
             }
             if (source === 'platforms') knownAvailable.set(id, prefs.platformIds.map(Number));
         });
     };
     // Order = priority when the pool is capped: closest to taste first.
+    add(byPeople, 'people');
     add(neighbours, 'neighbours');
     add(byKeyword, 'keywords');
+    add(byLanguage, 'languages');
     add(onPlatforms, 'platforms');
 
     return { cards, knownAvailable, sources, keywords };

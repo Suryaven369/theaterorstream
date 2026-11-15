@@ -29,6 +29,7 @@ import { handleRecoChat, RECO_CHAT_PRESETS } from '../_lib/reco-chat-server.js';
 import { getUserStreamingSetup, saveUserStreamingSetup } from '../_lib/streaming-services-server.js';
 import { getHomeFeed } from '../_lib/home-feed-server.js';
 import { fetchTmdbApi } from '../_lib/tmdb-server.js';
+import { getQuizStarters, getQuizPeople, parseQuizLanguages } from '../_lib/quiz-server.js';
 import { getRegionProviderCatalog, normalizeRegion, DEFAULT_REGION } from '../_lib/watch-providers-server.js';
 
 export const config = {
@@ -244,6 +245,33 @@ export default async function handler(req, res) {
         }
     }
 
+    // --- Taste onboarding: starter films in the user's languages ---
+    if (segment === 'quiz-starters') {
+        if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+        try {
+            const data = await getQuizStarters(parseQuizLanguages(req.query?.langs));
+            res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=172800');
+            return res.status(200).json({ ok: true, data });
+        } catch (error) {
+            console.warn('quiz-starters failed:', error.message);
+            return res.status(200).json({ ok: true, data: [], degraded: true });
+        }
+    }
+
+    // --- Taste onboarding: actors + directors to pick from ---
+    if (segment === 'quiz-people') {
+        if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+        try {
+            const loved = String(req.query?.loved || '').split(',').filter((id) => /^\d{1,9}$/.test(id));
+            const data = await getQuizPeople(parseQuizLanguages(req.query?.langs), loved);
+            res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=172800');
+            return res.status(200).json({ ok: true, ...data });
+        } catch (error) {
+            console.warn('quiz-people failed:', error.message);
+            return res.status(200).json({ ok: true, actors: [], directors: [], degraded: true });
+        }
+    }
+
     // --- Streaming services (OTT subscriptions + region) ---
     if (segment === 'streaming-services') {
         if (req.method === 'GET') {
@@ -392,7 +420,7 @@ export default async function handler(req, res) {
             'for-you', 'tonight', 'family', 'trending-personalized',
             'similar/:tmdbId', 'mood/:moodId', 'perfect-tonight',
             'discovery/:section', 'events', 'taste-profile', 'dashboard',
-            'chat', 'streaming-services', 'providers', 'home', 'tonight-picks', 'movie-search', 'queue', 'tos-verdict/:tmdbId',
+            'chat', 'streaming-services', 'providers', 'home', 'tonight-picks', 'movie-search', 'quiz-starters', 'quiz-people', 'queue', 'tos-verdict/:tmdbId',
         ],
     });
 }

@@ -1,5 +1,5 @@
 import { getSupabaseAdmin } from './supabase-admin.js';
-import { TasteQuizSchema, quizError, QUIZ_LANGUAGES } from '../../src/lib/tasteQuiz.js';
+import { TasteQuizSchema, quizError, QUIZ_LANGUAGES, QUIZ_GENRES } from '../../src/lib/tasteQuiz.js';
 import { saveUserStreamingSetup } from './streaming-services-server.js';
 
 /**
@@ -48,7 +48,7 @@ export const TASTE_LANGUAGES = [
 
 export const TASTE_ERAS = [1980, 1990, 2000, 2010, 2020];
 
-const VALID_GENRE_IDS = new Set(TASTE_GENRES.map((g) => g.id));
+const VALID_GENRE_IDS = new Set([...TASTE_GENRES, ...QUIZ_GENRES].map((g) => g.id));
 const VALID_MOOD_IDS = new Set(TASTE_MOODS.map((m) => m.id));
 const VALID_LANGUAGE_IDS = new Set([
     ...(TASTE_LANGUAGES.map((l) => l.id)),
@@ -262,7 +262,7 @@ export async function updateTastePreferences(userId, input) {
     if (isEmptyWeights(existing?.mood_preferences) && Object.keys(moodPrefs).length) {
         payload.mood_preferences = moodPrefs;
     }
-    if (!(existing?.preferred_languages || []).length && languages.length) {
+    if ((quiz || !(existing?.preferred_languages || []).length) && languages.length) {
         payload.preferred_languages = languages.filter((l) => l !== 'other');
     }
     if (!(existing?.preferred_decades || []).length && eras.length) {
@@ -286,6 +286,12 @@ export async function updateTastePreferences(userId, input) {
         }
     }
 
-    // Saved Watch rows are kept until their 7 days are up (no mid-week refresh).
+    // Finishing (or redoing) the taste quiz is the one time saved Watch rows are
+    // cleared, so picks immediately follow the new languages and taste. Other
+    // changes wait for the weekly refresh.
+    if (quiz) {
+        const { error: clearErr } = await supabase.from('recommendation_cache').delete().eq('user_id', userId);
+        if (clearErr) console.warn('[quiz] clearing saved rows failed:', clearErr.message);
+    }
     return { ok: true, quiz };
 }

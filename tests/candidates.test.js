@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { passesDealbreakers, topSharedKeywords } from '../api/_lib/reco/candidates.js';
+import { passesDealbreakers, passesLanguage, strictLanguages, topSharedKeywords } from '../api/_lib/reco/candidates.js';
 
 const film = (over = {}) => ({
     tmdb_id: '1', genre_ids: [28, 53], original_language: 'en', runtime: 110,
@@ -55,5 +55,26 @@ describe('topSharedKeywords', () => {
     it('falls back to single-film keywords when few are shared', () => {
         const kw = topSharedKeywords([[{ id: 1, name: 'a' }], [{ id: 2, name: 'b' }]]);
         expect(kw.length).toBe(2);
+    });
+});
+
+describe('strict languages', () => {
+    const prefs = { languages: ['hi', 'te'] };
+    it('keeps only films originally in the picked languages', () => {
+        expect(passesLanguage(film({ original_language: 'hi' }), prefs)).toBe(true);
+        expect(passesLanguage(film({ original_language: 'te' }), prefs)).toBe(true);
+        expect(passesLanguage(film({ original_language: 'en' }), prefs)).toBe(false);
+        expect(passesDealbreakers(film({ original_language: 'en' }), prefs)).toBe(false);
+    });
+    it('leaves out films whose language is unknown', () => {
+        expect(passesLanguage(film({ original_language: null }), prefs)).toBe(false);
+    });
+    it('reads the short `lang` field used by saved Tonight picks', () => {
+        expect(passesLanguage({ lang: 'te' }, prefs)).toBe(true);
+    });
+    it('has no limit when nothing (or "other") is picked', () => {
+        expect(strictLanguages({ languages: [] })).toBeNull();
+        expect(strictLanguages({ languages: ['hi', 'other'] })).toBeNull();
+        expect(passesLanguage(film({ original_language: 'en' }), {})).toBe(true);
     });
 });

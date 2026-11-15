@@ -17,9 +17,12 @@ export const WATCH_PATTERNS = [
     { id: 'theater', label: 'I love the theater', hint: 'Big-screen first, streaming for the rest' },
 ];
 
-/** Hard no's — titles that hit one are filtered out, not just ranked lower. */
+/**
+ * Hard no's — titles that hit one are filtered out, not just ranked lower.
+ * ('subtitles' is kept valid for older saved quizzes; languages are now
+ * always strict, so it's no longer offered.)
+ */
 export const DEALBREAKERS = [
-    { id: 'subtitles', label: 'No subtitles', hint: 'Only films in languages I picked' },
     { id: 'horror', label: 'No horror' },
     { id: 'violence', label: 'No excessive violence' },
     { id: 'gore', label: 'No gore' },
@@ -48,6 +51,60 @@ export const QUIZ_LANGUAGES = [
     { id: 'fr', label: 'French' },
 ];
 
+const DEALBREAKER_IDS = ['subtitles', ...DEALBREAKERS.map((d) => d.id)];
+
+/** Genre chips (TMDB genre ids). */
+export const QUIZ_GENRES = [
+    { id: 28, label: 'Action' },
+    { id: 18, label: 'Drama' },
+    { id: 35, label: 'Comedy' },
+    { id: 53, label: 'Thriller' },
+    { id: 10749, label: 'Romance' },
+    { id: 80, label: 'Crime' },
+    { id: 9648, label: 'Mystery' },
+    { id: 27, label: 'Horror' },
+    { id: 878, label: 'Sci-Fi' },
+    { id: 14, label: 'Fantasy' },
+    { id: 12, label: 'Adventure' },
+    { id: 10751, label: 'Family' },
+    { id: 16, label: 'Animation' },
+    { id: 99, label: 'Documentary' },
+];
+
+/** Usual vibe (mood ids match the engine's mood tags). */
+export const QUIZ_MOODS = [
+    { id: 'feel_good', label: 'Feel-good' },
+    { id: 'action_packed', label: 'Action-packed' },
+    { id: 'emotional', label: 'Emotional' },
+    { id: 'suspenseful', label: 'Edge-of-seat' },
+    { id: 'mind_bending', label: 'Mind-bending' },
+    { id: 'dark', label: 'Dark & gritty' },
+    { id: 'romantic', label: 'Romantic' },
+    { id: 'family_friendly', label: 'Family-friendly' },
+];
+
+export const QUIZ_FORMATS = [
+    { id: 'movies', label: 'Movies', hint: 'Films only' },
+    { id: 'series', label: 'Web series', hint: 'Shows and series mostly' },
+    { id: 'both', label: 'Both', hint: 'Whatever’s good' },
+];
+
+/** Decade starts (1980 = 80s and older). */
+export const QUIZ_ERAS = [
+    { id: 2020, label: 'Latest (2020s)' },
+    { id: 2010, label: '2010s' },
+    { id: 2000, label: '2000s' },
+    { id: 1990, label: '90s' },
+    { id: 1980, label: '80s & classics' },
+];
+
+export const QUIZ_COMPANY = [
+    { id: 'solo', label: 'On my own' },
+    { id: 'partner', label: 'With my partner' },
+    { id: 'friends', label: 'With friends' },
+    { id: 'family', label: 'With family' },
+];
+
 const tmdbId = z.coerce.number().int().positive().max(100000000);
 const idList = z.array(tmdbId).max(MAX_PICKS).transform((ids) => [...new Set(ids)]);
 
@@ -64,9 +121,11 @@ export const TasteQuizSchema = z.object({
     region: z.string().regex(/^[A-Za-z]{2}$/, 'Region must be a 2-letter country code').transform((r) => r.toUpperCase()),
     languages: z.array(z.enum(QUIZ_LANGUAGES.map((l) => l.id))).max(QUIZ_LANGUAGES.length).default([]),
     maxRuntime: z.union([z.literal(120), z.literal(150), z.null()]).default(null),
-    dealbreakers: z.array(z.enum(DEALBREAKERS.map((d) => d.id))).max(DEALBREAKERS.length)
+    dealbreakers: z.array(z.enum(DEALBREAKER_IDS)).max(DEALBREAKER_IDS.length)
         .default([]).transform((d) => [...new Set(d)]),
     pattern: z.enum(WATCH_PATTERNS.map((p) => p.id)),
+    // Movies / series / both (older quizzes predate this → both).
+    format: z.enum(QUIZ_FORMATS.map((f) => f.id)).default('both'),
     // Display info for the picked films (so editing later shows titles/posters).
     picks: z.array(z.object({
         id: tmdbId,
@@ -100,6 +159,6 @@ export function quizError(result) {
 export function emptyQuiz(region = 'IN') {
     return {
         lovedIds: [], dislikedIds: [], platformIds: [], region,
-        languages: [], maxRuntime: null, dealbreakers: [], pattern: null,
+        languages: [], maxRuntime: null, dealbreakers: [], pattern: null, format: null,
     };
 }

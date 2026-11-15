@@ -48,7 +48,7 @@ function PosterTile({ movie, selected, onToggle, tone = 'love' }) {
 /**
  * Pick films: debounced TMDB search + a starter grid. `selected` is a Map id → movie.
  */
-export function MoviePickerStep({ selected, onToggle, exclude = [], tone = 'love', requiredHint }) {
+export function MoviePickerStep({ selected, onToggle, exclude = [], tone = 'love', requiredHint, starters = null, startersLoading = false }) {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState([]);
     const [searching, setSearching] = useState(false);
@@ -76,7 +76,9 @@ export function MoviePickerStep({ selected, onToggle, exclude = [], tone = 'love
     }, [query]);
 
     const excluded = useMemo(() => new Set(exclude.map(Number)), [exclude]);
-    const visible = (query.trim().length >= 2 ? results : STARTER_MOVIES).filter((m) => !excluded.has(Number(m.id)));
+    // Starter grid: films in the user's languages when we have them.
+    const grid = starters?.length ? starters : STARTER_MOVIES;
+    const visible = (query.trim().length >= 2 ? results : grid).filter((m) => !excluded.has(Number(m.id)));
     const chosen = [...selected.values()];
 
     return (
@@ -110,12 +112,19 @@ export function MoviePickerStep({ selected, onToggle, exclude = [], tone = 'love
             {requiredHint && <p className="mt-2 text-[12px] text-white/45">{requiredHint}</p>}
 
             <p className="mb-2 mt-4 text-[11px] font-semibold uppercase tracking-wider text-white/35">
-                {query.trim().length >= 2 ? (searching ? 'Searching…' : `Results for “${query.trim()}”`) : 'Popular picks'}
+                {query.trim().length >= 2
+                    ? (searching ? 'Searching…' : `Results for “${query.trim()}”`)
+                    : (starters?.length ? 'Popular in your languages' : 'Popular picks')}
             </p>
+            {startersLoading && query.trim().length < 2 && (
+                <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-5">
+                    {Array.from({ length: 10 }).map((_, i) => <div key={i} className="aspect-[2/3] animate-pulse rounded-lg skeleton" />)}
+                </div>
+            )}
             {!searching && query.trim().length >= 2 && !visible.length && (
                 <p className="py-6 text-center text-sm text-white/40">No movies found — try another title.</p>
             )}
-            <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-5">
+            <div className={`grid grid-cols-3 gap-2.5 sm:grid-cols-5 ${startersLoading && query.trim().length < 2 ? 'hidden' : ''}`}>
                 {visible.map((m) => (
                     <PosterTile key={m.id} movie={m} selected={selected.has(Number(m.id))} onToggle={onToggle} tone={tone} />
                 ))}
@@ -235,6 +244,74 @@ export function ChipsStep({ options, values, onToggle }) {
                     </button>
                 );
             })}
+        </div>
+    );
+}
+
+const PROFILE = 'https://image.tmdb.org/t/p/w185';
+
+function PersonTile({ person, selected, onToggle }) {
+    return (
+        <button
+            type="button"
+            onClick={() => onToggle(person)}
+            aria-pressed={selected}
+            className="group flex flex-col items-center gap-1.5 text-center"
+        >
+            <span className={`relative block aspect-square w-full max-w-[96px] overflow-hidden rounded-full bg-white/5 ring-2 transition ${selected ? 'ring-[var(--primary)]' : 'ring-transparent'}`}>
+                {person.photo
+                    ? <img src={`${PROFILE}${person.photo}`} alt="" loading="lazy" className={`h-full w-full object-cover ${selected ? 'opacity-60' : ''}`} />
+                    : <span className="flex h-full items-center justify-center text-lg font-bold text-white/40">{person.name?.[0]}</span>}
+                {selected && (
+                    <span className="absolute inset-0 flex items-center justify-center">
+                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--primary)] text-[12px] text-[#14181c]"><FaCheck /></span>
+                    </span>
+                )}
+            </span>
+            <span className={`line-clamp-2 text-[11px] leading-tight ${selected ? 'text-white' : 'text-white/65'}`}>{person.name}</span>
+        </button>
+    );
+}
+
+/** Actors + directors photo grid. `actors` / `directors` selected: Map id → person. */
+export function PeopleStep({ options, loading, selectedActors, selectedDirectors, onToggleActor, onToggleDirector }) {
+    if (loading) {
+        return (
+            <div className="grid grid-cols-4 gap-3 sm:grid-cols-6">
+                {Array.from({ length: 12 }).map((_, i) => <div key={i} className="aspect-square animate-pulse rounded-full skeleton" />)}
+            </div>
+        );
+    }
+    const section = (title, list, selected, onToggle) => (list.length > 0 && (
+        <div>
+            <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-white/35">{title}</p>
+            <div className="grid grid-cols-4 gap-3 sm:grid-cols-6">
+                {list.map((p) => (
+                    <PersonTile key={p.id} person={p} selected={selected.has(Number(p.id))} onToggle={onToggle} />
+                ))}
+            </div>
+        </div>
+    ));
+    if (!options.actors.length && !options.directors.length) {
+        return <p className="py-6 text-center text-sm text-white/45">Couldn’t load suggestions right now — tap Continue.</p>;
+    }
+    return (
+        <div className="space-y-6">
+            {section('Actors', options.actors, selectedActors, onToggleActor)}
+            {section('Directors', options.directors, selectedDirectors, onToggleDirector)}
+        </div>
+    );
+}
+
+/** Encouragement screen between questions (not counted as a question). */
+export function CheerScreen({ emoji, title, lines = [] }) {
+    return (
+        <div className="flex min-h-[46vh] flex-col items-center justify-center px-2 py-8 text-center">
+            <span className="text-5xl sm:text-6xl" aria-hidden>{emoji}</span>
+            <h2 className="mt-5 max-w-md text-2xl font-bold leading-snug text-white sm:text-3xl">{title}</h2>
+            {lines.map((line) => (
+                <p key={line} className="mt-3 max-w-md text-[15px] leading-relaxed text-white/60">{line}</p>
+            ))}
         </div>
     );
 }
