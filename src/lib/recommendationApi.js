@@ -231,10 +231,10 @@ export async function getLandingData() {
         });
         const payload = await res.json().catch(() => ({}));
         return res.ok
-            ? { hero: payload.hero || null, hot: payload.hot || [], wall: payload.wall || [] }
-            : { hero: null, hot: [], wall: [] };
+            ? { hero: payload.hero || null, hot: payload.hot || [], wall: payload.wall || [], poll: payload.poll || [] }
+            : { hero: null, hot: [], wall: [], poll: [] };
     } catch {
-        return { hero: null, hot: [], wall: [] };
+        return { hero: null, hot: [], wall: [], poll: [] };
     }
 }
 

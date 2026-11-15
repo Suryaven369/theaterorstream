@@ -8,7 +8,6 @@ import { generateSlugWithId } from '../lib/slugUtils';
 import { supabase } from '../lib/supabase';
 
 const IMG = 'https://image.tmdb.org/t/p';
-const DISPLAY = { fontFamily: "'Instrument Serif', Georgia, 'Times New Roman', serif", fontWeight: 400 };
 const GOLD = '#e8b34b';
 
 const CHOICES = [
@@ -151,7 +150,7 @@ function VerdictPoll({ movies, onSignup }) {
                                 {movie.year}
                                 {movie.rating ? <> · <FaStar className="mb-0.5 inline text-[10px]" style={{ color: GOLD }} /> {movie.rating}</> : null}
                             </p>
-                            <Link to={moviePath(movie)} className="mt-1 text-3xl leading-[1.05] text-white hover:underline sm:text-4xl" style={DISPLAY}>{movie.title}</Link>
+                            <Link to={moviePath(movie)} className="mt-1 text-2xl font-bold leading-tight tracking-tight text-white hover:underline sm:text-3xl">{movie.title}</Link>
                             {call?.verdict && (
                                 <p className="mt-2 text-[13px] text-white/55">
                                     Our call: <span className="font-semibold" style={{ color: GOLD }}>{call.verdict}</span>
@@ -212,27 +211,27 @@ function VerdictPoll({ movies, onSignup }) {
             </div>
 
             {/* Switch between this week's releases */}
-            <div className="mt-4 grid grid-cols-6 gap-2">
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
                 {movies.map((m, i) => {
                     const lead = leader(totals[m.tmdbId]);
+                    const active = i === index;
                     return (
                         <button
                             key={m.tmdbId}
                             type="button"
                             onClick={() => setIndex(i)}
                             aria-label={`Vote on ${m.title}`}
-                            aria-pressed={i === index}
-                            className={`group relative overflow-hidden rounded-lg ring-2 transition ${i === index ? 'ring-[#e8b34b]' : 'ring-transparent hover:ring-white/30'}`}
+                            aria-pressed={active}
+                            className={`flex items-center gap-3 rounded-xl border p-2 text-left transition ${active ? 'border-[#e8b34b]/70 bg-[#e8b34b]/[0.06]' : 'border-white/10 hover:border-white/25'}`}
                         >
-                            <img src={`${IMG}/w185${m.poster}`} alt="" className={`aspect-[2/3] w-full object-cover ${i === index ? '' : 'opacity-60 group-hover:opacity-90'}`} />
-                            {mine[m.tmdbId] && (
-                                <span className="absolute right-1 top-1 h-2 w-2 rounded-full" style={{ background: GOLD }} aria-hidden />
-                            )}
-                            {lead && (
-                                <span className="absolute inset-x-0 bottom-0 bg-black/70 px-1 py-0.5 text-center text-[9px] font-semibold text-white/85">
-                                    {lead.label}
+                            <img src={`${IMG}/w92${m.poster}`} alt="" className="h-14 w-10 shrink-0 rounded-md object-cover" />
+                            <span className="min-w-0">
+                                <span className={`line-clamp-1 text-[13px] font-semibold ${active ? 'text-white' : 'text-white/75'}`}>{m.title}</span>
+                                <span className="mt-0.5 block text-[11px] text-white/45">
+                                    {mine[m.tmdbId] ? 'You voted' : 'Not voted yet'}
+                                    {lead ? ` · ${lead.label} leads` : ''}
                                 </span>
-                            )}
+                            </span>
                         </button>
                     );
                 })}
@@ -245,7 +244,7 @@ function VerdictPoll({ movies, onSignup }) {
  * Landing page for signed-out visitors.
  */
 export default function LandingPage() {
-    const [data, setData] = useState({ hero: null, hot: [], wall: [], loading: true });
+    const [data, setData] = useState({ hero: null, hot: [], wall: [], poll: [], loading: true });
     const [mode, setMode] = useState('signup');
     const formRef = useRef(null);
 
@@ -261,7 +260,7 @@ export default function LandingPage() {
         setTimeout(() => formRef.current?.querySelector('input[type="email"]')?.focus({ preventScroll: true }), 450);
     };
 
-    const { hero, hot, wall } = data;
+    const { hero, hot, wall, poll } = data;
     const still = hero?.still ? `${IMG}/original${hero.still}` : null;
     const statementStill = hot[1]?.backdrop || hot[0]?.backdrop || hero?.still;
     const marquee = wall.length ? [...wall, ...wall] : [];
@@ -284,8 +283,8 @@ export default function LandingPage() {
                 </div>
 
                 <header className="mx-auto flex w-full max-w-7xl items-center justify-between px-5 pt-[calc(1.1rem+env(safe-area-inset-top,0px))] sm:px-8">
-                    <Link to="/" className="text-[22px] tracking-tight text-white" style={DISPLAY}>
-                        Theater<span className="italic" style={{ ...DISPLAY, color: GOLD }}>or</span>Stream
+                    <Link to="/" className="text-[19px] font-bold tracking-tight text-white">
+                        Theater<span style={{ color: GOLD }}>or</span>Stream
                     </Link>
                     <nav className="flex items-center gap-1 text-[14px] sm:gap-5">
                         <Link to="/?tab=explore" className="hidden text-white/75 hover:text-white sm:inline">Browse</Link>
@@ -298,9 +297,9 @@ export default function LandingPage() {
 
                 <div className="mx-auto grid w-full max-w-7xl flex-1 items-end gap-8 px-5 pb-8 pt-8 sm:px-8 lg:grid-cols-[1fr_400px] lg:items-center lg:gap-16 lg:pb-14">
                     <div className="lg:pb-6">
-                        <h1 className="text-[3.4rem] leading-[0.95] tracking-[-0.01em] text-white sm:text-7xl lg:text-[6.4rem]" style={DISPLAY}>
+                        <h1 className="text-[2.6rem] font-bold leading-[1.02] tracking-[-0.035em] text-white sm:text-6xl lg:text-[4.75rem]">
                             Theater or stream?
-                            <span className="mt-1 block italic" style={{ ...DISPLAY, color: GOLD }}>Know before you watch.</span>
+                            <span className="block" style={{ color: GOLD }}>Know before you watch.</span>
                         </h1>
                         <p className="mt-5 max-w-lg text-[17px] leading-relaxed text-white/75">
                             Picks for your taste, in your languages, with where to stream them and an honest call on what’s worth the big screen.
@@ -308,7 +307,7 @@ export default function LandingPage() {
                     </div>
 
                     <div ref={formRef} className="w-full scroll-mt-24 rounded-2xl border border-white/12 bg-[#0a0907]/70 p-5 backdrop-blur-xl sm:p-6">
-                        <h2 className="text-[28px] leading-tight text-white" style={DISPLAY}>{AUTH_MODE_TITLES[mode]}</h2>
+                        <h2 className="text-2xl font-bold tracking-tight text-white">{AUTH_MODE_TITLES[mode]}</h2>
                         <p className="mb-4 mt-0.5 text-[13px] text-white/50">
                             {mode === 'signup' ? 'Free. Your first picks in about two minutes.' : mode === 'login' ? 'Pick up where you left off.' : ' '}
                         </p>
@@ -324,7 +323,7 @@ export default function LandingPage() {
                 {hero && (
                     <div className="mx-auto w-full max-w-7xl px-5 pb-5 sm:px-8">
                         <Link to={moviePath(hero)} className="text-[12px] text-white/40 hover:text-white/75">
-                            Still: <span className="italic">{hero.title}</span>{hero.year ? ` (${hero.year})` : ''}
+                            Still: {hero.title}{hero.year ? ` (${hero.year})` : ''}
                         </Link>
                     </div>
                 )}
@@ -350,11 +349,11 @@ export default function LandingPage() {
             {/* ─── Live poll ────────────────────────────────────────── */}
             <section className="mx-auto grid max-w-7xl gap-10 px-5 py-20 sm:px-8 sm:py-28 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16">
                 <div className="lg:sticky lg:top-16 lg:self-start">
-                    <h2 className="text-5xl leading-[1] text-white sm:text-6xl" style={DISPLAY}>
-                        Theater, stream,<br /><span className="italic" style={{ ...DISPLAY, color: GOLD }}>or skip?</span>
+                    <h2 className="text-4xl font-bold leading-[1.05] tracking-[-0.03em] text-white sm:text-5xl">
+                        Theater, stream,<br /><span style={{ color: GOLD }}>or skip?</span>
                     </h2>
                     <p className="mt-5 max-w-md text-[17px] leading-relaxed text-white/65">
-                        This week’s biggest releases, put to a vote. Make your call and watch the split move as people vote, live.
+                        Three of the biggest releases right now, put to a vote. Make your call and watch the split move as people vote, live.
                     </p>
                     <p className="mt-6 max-w-md text-[14px] leading-relaxed text-white/45">
                         Sign up and every verdict is weighed against your own taste, so you know what’s worth it <em>for you</em>.
@@ -363,21 +362,21 @@ export default function LandingPage() {
                         Get personal verdicts <FaArrowRight className="text-[11px]" />
                     </button>
                 </div>
-                <VerdictPoll movies={hot} onSignup={() => goToForm('signup')} />
+                <VerdictPoll movies={poll.length ? poll : hot.slice(0, 3)} onSignup={() => goToForm('signup')} />
             </section>
 
             {/* ─── What you get ─────────────────────────────────────── */}
             <section className="border-t border-white/[0.07]">
                 <div className="mx-auto grid max-w-7xl gap-10 px-5 py-20 sm:px-8 sm:py-28 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16">
-                    <h2 className="text-5xl leading-[1] text-white sm:text-6xl lg:sticky lg:top-16 lg:self-start" style={DISPLAY}>
-                        Made for how you <span className="italic" style={{ ...DISPLAY, color: GOLD }}>actually</span> watch.
+                    <h2 className="text-4xl font-bold leading-[1.05] tracking-[-0.03em] text-white sm:text-5xl lg:sticky lg:top-16 lg:self-start">
+                        Made for how you <span style={{ color: GOLD }}>actually</span> watch.
                     </h2>
                     <ol className="divide-y divide-white/[0.08] border-y border-white/[0.08]">
                         {FEATURES.map((f, i) => (
                             <li key={f.title} className="grid grid-cols-[2.5rem_1fr] gap-x-4 py-7 sm:grid-cols-[3.5rem_1fr]">
                                 <span className="pt-1.5 text-[13px] tabular-nums text-white/35">{String(i + 1).padStart(2, '0')}</span>
                                 <div>
-                                    <h3 className="text-[28px] leading-tight text-white sm:text-[32px]" style={DISPLAY}>{f.title}</h3>
+                                    <h3 className="text-xl font-semibold tracking-tight text-white sm:text-2xl">{f.title}</h3>
                                     <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-white/55">{f.body}</p>
                                 </div>
                             </li>
@@ -392,8 +391,8 @@ export default function LandingPage() {
                 <div className="absolute inset-0 -z-10 bg-[#0a0907]/40" />
                 <div className="absolute inset-0 -z-10 bg-gradient-to-b from-[#0a0907] via-[#0a0907]/10 to-[#0a0907]" />
                 <div className="mx-auto max-w-7xl px-5 py-28 sm:px-8 sm:py-40">
-                    <p className="max-w-4xl text-5xl leading-[1.02] text-white sm:text-7xl" style={DISPLAY}>
-                        Less time scrolling.<br /><span className="italic" style={{ ...DISPLAY, color: GOLD }}>More time watching.</span>
+                    <p className="max-w-4xl text-4xl font-bold leading-[1.05] tracking-[-0.035em] text-white sm:text-6xl">
+                        Less time scrolling.<br /><span style={{ color: GOLD }}>More time watching.</span>
                     </p>
                     <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:items-center">
                         <button type="button" onClick={() => goToForm('signup')} className="rounded-full px-7 py-3.5 text-[15px] font-semibold text-black transition hover:brightness-110" style={{ background: GOLD }}>
@@ -408,7 +407,7 @@ export default function LandingPage() {
 
             {/* ─── FAQ ──────────────────────────────────────────────── */}
             <section className="mx-auto grid max-w-7xl gap-10 px-5 py-20 sm:px-8 sm:py-28 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16">
-                <h2 className="text-5xl leading-[1] text-white sm:text-6xl" style={DISPLAY}>Good questions.</h2>
+                <h2 className="text-4xl font-bold leading-[1.05] tracking-[-0.03em] text-white sm:text-5xl">Good questions.</h2>
                 <div className="divide-y divide-white/[0.08] border-y border-white/[0.08]">
                     {FAQS.map((f) => (
                         <details key={f.q} className="group py-5 [&_summary::-webkit-details-marker]:hidden">
@@ -441,10 +440,9 @@ export default function LandingPage() {
                 </div>
                 <p
                     aria-hidden
-                    className="mx-auto mt-12 max-w-7xl select-none whitespace-nowrap px-5 text-center text-[13vw] leading-[0.85] tracking-[-0.03em] text-white/[0.07] sm:px-8 lg:text-[10.5rem]"
-                    style={DISPLAY}
+                    className="mx-auto mt-12 max-w-7xl select-none whitespace-nowrap px-5 text-center text-[11.5vw] font-bold leading-[0.9] tracking-[-0.05em] text-white/[0.06] sm:px-8 lg:text-[9rem]"
                 >
-                    Theater<span className="italic" style={DISPLAY}>or</span>Stream
+                    Theater<span>or</span>Stream
                 </p>
                 <div className="border-t border-white/[0.07]">
                     <div className="mx-auto flex max-w-7xl flex-col gap-1 px-5 py-5 text-[12px] text-white/35 sm:flex-row sm:justify-between sm:px-8">

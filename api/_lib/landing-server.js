@@ -8,6 +8,9 @@ import { fetchTmdbApi } from './tmdb-server.js';
 const INDIAN_LANGS = 'hi|te|ta|ml|kn';
 const HOT_COUNT = 6;
 const WALL_COUNT = 18;
+// The landing page vote: exactly these titles, in this order (edit to change).
+// Ramayana: Rise of a Legend · Jailer 2 · Godzilla Minus Zero
+export const POLL_MOVIE_IDS = ['656908', '1234139', '1381071'];
 
 const safe = (promise) => promise.catch(() => null);
 const today = () => new Date().toISOString().slice(0, 10);
@@ -84,5 +87,9 @@ export async function getLandingData({ regionHint = null } = {}) {
         .filter((m) => m?.poster_path && !wallSeen.has(m.id) && wallSeen.add(m.id))
         .slice(0, WALL_COUNT);
 
-    return { hero, hot: hot.map(card), wall: wall.map(card) };
+    const poll = (await Promise.all(POLL_MOVIE_IDS.map((id) => safe(fetchTmdbApi(`/movie/${id}`)))))
+        .filter((m) => m?.id && m.poster_path)
+        .map(card);
+
+    return { hero, hot: hot.map(card), wall: wall.map(card), poll };
 }
