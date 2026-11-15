@@ -32,6 +32,9 @@ const FAQS = [
     { q: 'How do the live votes work?', a: 'Anyone can vote Theater, Wait for OTT or Skip on this week’s releases. One vote per person per movie, and you can change your mind.' },
 ];
 
+/** Responsive srcSet for a TMDB backdrop (phones get w780, desktops w1280/original). */
+const stillSrcSet = (path) => `${IMG}/w780${path} 780w, ${IMG}/w1280${path} 1280w, ${IMG}/original${path} 1920w`;
+
 const moviePath = (m) => `/movies/${generateSlugWithId(m.title, m.tmdbId, m.year)}`;
 
 // ── Anonymous voter id + your own votes, kept in this browser ─────────────
@@ -141,17 +144,17 @@ function VerdictPoll({ movies, onSignup }) {
             <div className="overflow-hidden rounded-3xl border border-white/10 bg-[#100e0b]">
                 <div className="relative">
                     {movie.backdrop && (
-                        <img src={`${IMG}/w1280${movie.backdrop}`} alt="" className="absolute inset-0 h-full w-full object-cover opacity-40" />
+                        <img src={`${IMG}/w780${movie.backdrop}`} srcSet={`${IMG}/w780${movie.backdrop} 780w, ${IMG}/w1280${movie.backdrop} 1280w`} sizes="(min-width: 1024px) 640px, 100vw" alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover opacity-40" />
                     )}
                     <div className="absolute inset-0 bg-gradient-to-t from-[#100e0b] via-[#100e0b]/70 to-[#100e0b]/20" />
-                    <div className="relative flex gap-4 p-5 pt-16 sm:gap-5 sm:p-6 sm:pt-24">
-                        <img src={`${IMG}/w342${movie.poster}`} alt="" className="h-36 w-24 shrink-0 rounded-lg object-cover shadow-2xl sm:h-44 sm:w-[118px]" />
+                    <div className="relative flex gap-4 p-4 pt-10 sm:gap-5 sm:p-6 sm:pt-24">
+                        <img src={`${IMG}/w342${movie.poster}`} alt="" className="h-[120px] w-20 shrink-0 rounded-lg object-cover shadow-2xl sm:h-44 sm:w-[118px]" />
                         <div className="flex min-w-0 flex-col justify-end">
                             <p className="text-[13px] text-white/50">
                                 {movie.year}
                                 {movie.rating ? <> · <FaStar className="mb-0.5 inline text-[10px]" style={{ color: GOLD }} /> {movie.rating}</> : null}
                             </p>
-                            <Link to={moviePath(movie)} className="mt-1 text-2xl font-semibold leading-tight tracking-tight text-white hover:underline sm:text-3xl">{movie.title}</Link>
+                            <Link to={moviePath(movie)} className="mt-1 text-xl font-semibold leading-tight tracking-tight text-white hover:underline sm:text-3xl">{movie.title}</Link>
                             {call?.verdict && (
                                 <p className="mt-2 text-[13px] text-white/55">
                                     Our call: <span className="font-semibold" style={{ color: GOLD }}>{call.verdict}</span>
@@ -162,7 +165,7 @@ function VerdictPoll({ movies, onSignup }) {
                     </div>
                 </div>
 
-                <div className="p-5 pt-2 sm:p-6 sm:pt-3">
+                <div className="p-4 pt-1 sm:p-6 sm:pt-3">
                     <p className="mb-3 text-[14px] text-white/70">{myChoice ? 'Your vote is in. Change it anytime.' : 'What’s your call?'}</p>
                     <div className="grid grid-cols-3 gap-2">
                         {CHOICES.map((c) => {
@@ -248,6 +251,18 @@ export default function LandingPage() {
     const [data, setData] = useState({ hero: null, hot: [], wall: [], poll: [], loading: true });
     const [mode, setMode] = useState('signup');
     const formRef = useRef(null);
+    const [showStickyCta, setShowStickyCta] = useState(false);
+
+    // Phones: once the hero signup card scrolls away, keep a signup button in reach.
+    useEffect(() => {
+        const el = formRef.current;
+        if (!el || typeof IntersectionObserver === 'undefined') return undefined;
+        const io = new IntersectionObserver(([entry]) => {
+            setShowStickyCta(!entry.isIntersecting && entry.boundingClientRect.top < 0);
+        }, { threshold: 0 });
+        io.observe(el);
+        return () => io.disconnect();
+    }, []);
 
     useEffect(() => {
         let alive = true;
@@ -262,7 +277,7 @@ export default function LandingPage() {
     };
 
     const { hero, hot, wall, poll } = data;
-    const still = hero?.still ? `${IMG}/original${hero.still}` : null;
+    const still = hero?.still || null;
     const statementStill = hot[1]?.backdrop || hot[0]?.backdrop || hero?.still;
     const marquee = wall.length ? [...wall, ...wall] : [];
 
@@ -277,47 +292,47 @@ export default function LandingPage() {
             <section className="relative isolate flex min-h-[100svh] flex-col overflow-hidden lg:min-h-[94vh]">
                 <div className="absolute inset-0 -z-10">
                     {still
-                        ? <img src={still} alt="" className="h-full w-full object-cover" fetchpriority="high" />
+                        ? <img src={`${IMG}/w1280${still}`} srcSet={stillSrcSet(still)} sizes="100vw" alt="" className="h-full w-full object-cover object-[60%_center]" fetchpriority="high" />
                         : <div className="h-full w-full bg-[#15110b]" />}
                     <div className="absolute inset-0 bg-gradient-to-r from-[#0a0907]/85 via-[#0a0907]/35 to-transparent" />
                     <div className="absolute inset-0 bg-gradient-to-t from-[#0a0907] via-[#0a0907]/10 to-[#0a0907]/40" />
                 </div>
 
-                <header className="mx-auto flex w-full max-w-7xl items-center justify-between px-5 pt-[calc(1.1rem+env(safe-area-inset-top,0px))] sm:px-8">
+                <header className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] sm:px-8 sm:pt-[calc(1.1rem+env(safe-area-inset-top,0px))]">
                     <Link to="/" className="flex items-center gap-2.5">
-                        <img src={LOGO} alt="TheaterOrStream" className="h-9 w-9 rounded-full object-cover" />
-                        <span className="text-lg font-semibold tracking-tight">
+                        <img src={LOGO} alt="TheaterOrStream" className="h-8 w-8 rounded-full object-cover sm:h-9 sm:w-9" />
+                        <span className="text-[17px] font-semibold tracking-tight sm:text-lg">
                             <span style={{ color: GOLD }}>Theater</span>
                             <span className="text-[#9299a6]"> or Stream</span>
                         </span>
                     </Link>
                     <nav className="flex items-center gap-1 text-[14px] sm:gap-5">
                         <Link to="/?tab=explore" className="hidden text-white/75 hover:text-white sm:inline">Browse</Link>
-                        <button type="button" onClick={() => goToForm('login')} className="px-2 py-2 text-white/85 hover:text-white">Log in</button>
+                        <button type="button" onClick={() => goToForm('login')} className="min-h-[44px] px-3 text-white/85 hover:text-white">Log in</button>
                         <button type="button" onClick={() => goToForm('signup')} className="hidden rounded-full bg-white px-4 py-2 font-medium text-black hover:bg-white/90 sm:inline-flex">
                             Sign up
                         </button>
                     </nav>
                 </header>
 
-                <div className="mx-auto grid w-full max-w-7xl flex-1 items-end gap-8 px-5 pb-8 pt-8 sm:px-8 lg:grid-cols-[1fr_400px] lg:items-center lg:gap-16 lg:pb-14">
+                <div className="mx-auto grid w-full max-w-7xl flex-1 content-start gap-5 px-4 pb-6 pt-5 sm:content-end sm:gap-8 sm:px-8 sm:pb-8 sm:pt-8 lg:grid-cols-[1fr_400px] lg:items-center lg:content-center lg:gap-16 lg:pb-14">
                     <div className="lg:pb-6">
-                        <h1 className="text-[2.6rem] font-semibold leading-[1.05] tracking-tight text-white sm:text-6xl lg:text-[4.5rem]">
+                        <h1 className="text-[2.15rem] font-semibold leading-[1.06] tracking-tight text-white min-[400px]:text-[2.4rem] sm:text-6xl lg:text-[4.5rem]">
                             Theater or stream?
                             <span className="block" style={{ color: GOLD }}>Know before you watch.</span>
                         </h1>
-                        <p className="mt-5 max-w-lg text-[17px] leading-relaxed text-white/75">
-                            Picks for your taste, in your languages, with where to stream them and an honest call on what’s worth the big screen.
+                        <p className="mt-3 max-w-lg text-[15px] leading-relaxed text-white/75 sm:mt-5 sm:text-[17px]">
+                            Picks for your taste, in your languages, with where to stream them<span className="hidden sm:inline"> and an honest call on what’s worth the big screen</span>.
                         </p>
                     </div>
 
-                    <div ref={formRef} className="w-full scroll-mt-24 rounded-2xl border border-white/12 bg-[#0a0907]/70 p-5 backdrop-blur-xl sm:p-6">
-                        <h2 className="text-2xl font-semibold tracking-tight text-white">{AUTH_MODE_TITLES[mode]}</h2>
-                        <p className="mb-4 mt-0.5 text-[13px] text-white/50">
+                    <div ref={formRef} className="w-full scroll-mt-20 rounded-2xl border border-white/12 bg-[#0a0907]/75 p-4 backdrop-blur-xl sm:p-6">
+                        <h2 className="text-xl font-semibold tracking-tight text-white sm:text-2xl">{AUTH_MODE_TITLES[mode]}</h2>
+                        <p className="mb-3 mt-0.5 text-[13px] text-white/50 sm:mb-4">
                             {mode === 'signup' ? 'Free. Your first picks in about two minutes.' : mode === 'login' ? 'Pick up where you left off.' : ' '}
                         </p>
                         <AuthForm mode={mode} onModeChange={setMode} theme="gold" compact />
-                        <p className="mt-4 text-center text-[11px] text-white/35">
+                        <p className="mt-3 text-center text-[11px] leading-relaxed text-white/35 sm:mt-4">
                             By continuing you agree to our{' '}
                             <Link to="/terms" className="underline underline-offset-2 hover:text-white/70">Terms</Link> and{' '}
                             <Link to="/privacy" className="underline underline-offset-2 hover:text-white/70">Privacy Policy</Link>.
@@ -326,7 +341,7 @@ export default function LandingPage() {
                 </div>
 
                 {hero && (
-                    <div className="mx-auto w-full max-w-7xl px-5 pb-5 sm:px-8">
+                    <div className="mx-auto hidden w-full max-w-7xl px-5 pb-5 sm:block sm:px-8">
                         <Link to={moviePath(hero)} className="text-[12px] text-white/40 hover:text-white/75">
                             Still: {hero.title}{hero.year ? ` (${hero.year})` : ''}
                         </Link>
@@ -335,11 +350,11 @@ export default function LandingPage() {
             </section>
 
             {/* ─── Poster wall ──────────────────────────────────────── */}
-            <section aria-label="Trending this week" className="overflow-hidden border-y border-white/[0.07] py-6">
+            <section aria-label="Trending this week" className="overflow-hidden border-y border-white/[0.07] py-4 sm:py-6">
                 {marquee.length ? (
                     <div className="lp-marquee flex w-max gap-3">
                         {marquee.map((m, i) => (
-                            <Link key={`${m.tmdbId}-${i}`} to={moviePath(m)} tabIndex={i >= wall.length ? -1 : 0} aria-hidden={i >= wall.length} className="block w-[110px] shrink-0 sm:w-[132px]">
+                            <Link key={`${m.tmdbId}-${i}`} to={moviePath(m)} tabIndex={i >= wall.length ? -1 : 0} aria-hidden={i >= wall.length} className="block w-[92px] shrink-0 sm:w-[132px]">
                                 <img src={`${IMG}/w185${m.poster}`} alt={m.title} loading="lazy" className="aspect-[2/3] w-full rounded-md object-cover opacity-80 transition hover:opacity-100" />
                             </Link>
                         ))}
@@ -352,18 +367,18 @@ export default function LandingPage() {
             </section>
 
             {/* ─── Live poll ────────────────────────────────────────── */}
-            <section className="mx-auto grid max-w-7xl gap-10 px-5 py-20 sm:px-8 sm:py-28 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16">
+            <section className="mx-auto grid max-w-7xl gap-8 px-4 py-14 sm:gap-10 sm:px-8 sm:py-28 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16">
                 <div className="lg:sticky lg:top-16 lg:self-start">
-                    <h2 className="text-4xl font-semibold leading-[1.08] tracking-tight text-white sm:text-5xl">
+                    <h2 className="text-[2rem] font-semibold leading-[1.08] tracking-tight text-white sm:text-5xl">
                         Theater, stream,<br /><span style={{ color: GOLD }}>or skip?</span>
                     </h2>
-                    <p className="mt-5 max-w-md text-[17px] leading-relaxed text-white/65">
+                    <p className="mt-4 max-w-md text-[15px] leading-relaxed text-white/65 sm:mt-5 sm:text-[17px]">
                         Three of the biggest releases right now, put to a vote. Make your call and watch the split move as people vote, live.
                     </p>
-                    <p className="mt-6 max-w-md text-[14px] leading-relaxed text-white/45">
+                    <p className="mt-4 hidden max-w-md text-[14px] leading-relaxed text-white/45 sm:block">
                         Sign up and every verdict is weighed against your own taste, so you know what’s worth it <em>for you</em>.
                     </p>
-                    <button type="button" onClick={() => goToForm('signup')} className="mt-7 inline-flex items-center gap-2 border-b pb-0.5 text-[15px] font-medium text-white hover:text-[#f5c518]" style={{ borderColor: GOLD }}>
+                    <button type="button" onClick={() => goToForm('signup')} className="mt-5 hidden min-h-[44px] items-center gap-2 border-b pb-0.5 text-[15px] font-medium text-white hover:text-[#f5c518] sm:mt-7 sm:inline-flex" style={{ borderColor: GOLD }}>
                         Get personal verdicts <FaArrowRight className="text-[11px]" />
                     </button>
                 </div>
@@ -372,17 +387,17 @@ export default function LandingPage() {
 
             {/* ─── What you get ─────────────────────────────────────── */}
             <section className="border-t border-white/[0.07]">
-                <div className="mx-auto grid max-w-7xl gap-10 px-5 py-20 sm:px-8 sm:py-28 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16">
-                    <h2 className="text-4xl font-semibold leading-[1.08] tracking-tight text-white sm:text-5xl lg:sticky lg:top-16 lg:self-start">
+                <div className="mx-auto grid max-w-7xl gap-8 px-4 py-14 sm:gap-10 sm:px-8 sm:py-28 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16">
+                    <h2 className="text-[2rem] font-semibold leading-[1.08] tracking-tight text-white sm:text-5xl lg:sticky lg:top-16 lg:self-start">
                         Made for how you <span style={{ color: GOLD }}>actually</span> watch.
                     </h2>
                     <ol className="divide-y divide-white/[0.08] border-y border-white/[0.08]">
                         {FEATURES.map((f, i) => (
-                            <li key={f.title} className="grid grid-cols-[2.5rem_1fr] gap-x-4 py-7 sm:grid-cols-[3.5rem_1fr]">
-                                <span className="pt-1.5 text-[13px] tabular-nums text-white/35">{String(i + 1).padStart(2, '0')}</span>
+                            <li key={f.title} className="py-5 sm:grid sm:grid-cols-[3.5rem_1fr] sm:gap-x-4 sm:py-7">
+                                <span className="block text-[12px] tabular-nums text-white/35 sm:pt-1.5 sm:text-[13px]">{String(i + 1).padStart(2, '0')}</span>
                                 <div>
-                                    <h3 className="text-xl font-semibold tracking-tight text-white sm:text-2xl">{f.title}</h3>
-                                    <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-white/55">{f.body}</p>
+                                    <h3 className="mt-1 text-[19px] font-semibold tracking-tight text-white sm:mt-0 sm:text-2xl">{f.title}</h3>
+                                    <p className="mt-1.5 max-w-xl text-[14.5px] leading-relaxed text-white/55 sm:mt-2 sm:text-[15px]">{f.body}</p>
                                 </div>
                             </li>
                         ))}
@@ -392,14 +407,14 @@ export default function LandingPage() {
 
             {/* ─── Statement ────────────────────────────────────────── */}
             <section className="relative isolate overflow-hidden">
-                {statementStill && <img src={`${IMG}/original${statementStill}`} alt="" loading="lazy" className="absolute inset-0 -z-10 h-full w-full object-cover" />}
+                {statementStill && <img src={`${IMG}/w1280${statementStill}`} srcSet={stillSrcSet(statementStill)} sizes="100vw" alt="" loading="lazy" className="absolute inset-0 -z-10 h-full w-full object-cover" />}
                 <div className="absolute inset-0 -z-10 bg-[#0a0907]/40" />
                 <div className="absolute inset-0 -z-10 bg-gradient-to-b from-[#0a0907] via-[#0a0907]/10 to-[#0a0907]" />
-                <div className="mx-auto max-w-7xl px-5 py-28 sm:px-8 sm:py-40">
-                    <p className="max-w-4xl text-4xl font-semibold leading-[1.08] tracking-tight text-white sm:text-6xl">
+                <div className="mx-auto max-w-7xl px-4 py-20 sm:px-8 sm:py-40">
+                    <p className="max-w-4xl text-[2.1rem] font-semibold leading-[1.08] tracking-tight text-white sm:text-6xl">
                         Less time scrolling.<br /><span style={{ color: GOLD }}>More time watching.</span>
                     </p>
-                    <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <div className="mt-8 flex flex-col gap-3 sm:mt-10 sm:flex-row sm:items-center">
                         <button type="button" onClick={() => goToForm('signup')} className="rounded-full px-7 py-3.5 text-[15px] font-semibold text-black transition hover:brightness-110" style={{ background: GOLD }}>
                             Create a free account
                         </button>
@@ -411,12 +426,12 @@ export default function LandingPage() {
             </section>
 
             {/* ─── FAQ ──────────────────────────────────────────────── */}
-            <section className="mx-auto grid max-w-7xl gap-10 px-5 py-20 sm:px-8 sm:py-28 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16">
-                <h2 className="text-4xl font-semibold leading-[1.08] tracking-tight text-white sm:text-5xl">Good questions.</h2>
+            <section className="mx-auto grid max-w-7xl gap-8 px-4 py-14 sm:gap-10 sm:px-8 sm:py-28 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16">
+                <h2 className="text-[2rem] font-semibold leading-[1.08] tracking-tight text-white sm:text-5xl">Good questions.</h2>
                 <div className="divide-y divide-white/[0.08] border-y border-white/[0.08]">
                     {FAQS.map((f) => (
-                        <details key={f.q} className="group py-5 [&_summary::-webkit-details-marker]:hidden">
-                            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-[17px] text-white">
+                        <details key={f.q} className="group py-4 sm:py-5 [&_summary::-webkit-details-marker]:hidden">
+                            <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-4 text-[16px] text-white sm:text-[17px]">
                                 {f.q}
                                 <FaPlus className="shrink-0 text-xs text-white/40 transition group-open:rotate-45" />
                             </summary>
@@ -426,13 +441,32 @@ export default function LandingPage() {
                 </div>
             </section>
 
+            {/* ─── Sticky signup (phones) ───────────────────────────── */}
+            <div
+                className={`fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#0a0907]/90 px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pt-3 backdrop-blur-xl transition-transform duration-300 sm:hidden ${showStickyCta ? 'translate-y-0' : 'translate-y-full'}`}
+                aria-hidden={!showStickyCta}
+            >
+                <div className="flex items-center gap-3">
+                    <p className="min-w-0 flex-1 text-[13px] leading-snug text-white/70">Picks for your taste, free.</p>
+                    <button
+                        type="button"
+                        tabIndex={showStickyCta ? 0 : -1}
+                        onClick={() => goToForm('signup')}
+                        className="min-h-[44px] shrink-0 rounded-full px-5 text-[15px] font-semibold text-black"
+                        style={{ background: GOLD }}
+                    >
+                        Sign up free
+                    </button>
+                </div>
+            </div>
+
             {/* ─── Footer ───────────────────────────────────────────── */}
             <footer className="overflow-hidden border-t border-white/[0.07]">
-                <div className="mx-auto flex max-w-7xl flex-col gap-8 px-5 pt-14 sm:px-8 md:flex-row md:justify-between">
+                <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 pt-10 sm:gap-8 sm:px-8 sm:pt-14 md:flex-row md:justify-between">
                     <p className="max-w-xs text-[15px] leading-relaxed text-white/55">
                         Honest verdicts, personal picks and where to watch, in every language you love.
                     </p>
-                    <div className="grid grid-cols-2 gap-x-16 gap-y-2 text-[14px] text-white/60 sm:grid-cols-3">
+                    <div className="grid grid-cols-2 gap-x-8 text-[14px] text-white/60 sm:grid-cols-3 sm:gap-x-16 sm:gap-y-2 [&>*]:flex [&>*]:min-h-[44px] [&>*]:items-center sm:[&>*]:min-h-0">
                         <Link to="/?tab=explore" className="hover:text-white">Browse movies</Link>
                         <Link to="/upcoming" className="hover:text-white">Coming soon</Link>
                         <Link to="/parent-guide" className="hover:text-white">Parent guide</Link>
@@ -445,12 +479,12 @@ export default function LandingPage() {
                 </div>
                 <p
                     aria-hidden
-                    className="mx-auto mt-12 max-w-7xl select-none whitespace-nowrap px-5 text-center text-[10.5vw] font-semibold leading-[0.95] tracking-tight text-white/[0.06] sm:px-8 lg:text-[8.5rem]"
+                    className="mx-auto mt-8 max-w-7xl select-none whitespace-nowrap px-4 pb-2 text-center text-[10.5vw] font-semibold leading-[1.1] tracking-tight text-white/[0.06] sm:mt-12 sm:px-8 lg:text-[8.5rem]"
                 >
                     Theater or Stream
                 </p>
                 <div className="border-t border-white/[0.07]">
-                    <div className="mx-auto flex max-w-7xl flex-col gap-1 px-5 py-5 text-[12px] text-white/35 sm:flex-row sm:justify-between sm:px-8">
+                    <div className="mx-auto flex max-w-7xl flex-col gap-1 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] pt-5 text-[12px] text-white/35 sm:flex-row sm:justify-between sm:px-8 sm:pb-5">
                         <p>© {new Date().getFullYear()} TheaterOrStream</p>
                         <p>Movie data and images from TMDB. Not endorsed or certified by TMDB.</p>
                     </div>

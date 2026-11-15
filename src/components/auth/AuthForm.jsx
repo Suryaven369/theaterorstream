@@ -220,7 +220,7 @@ export default function AuthForm({ mode, onModeChange, theme = 'default', compac
                         <div>
                             <label htmlFor="auth-password" className="text-xs text-white/50 mb-1 block">Password</label>
                             <input id="auth-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-                                placeholder={compact ? '8+ characters' : 'Min 8 chars, with a letter & number'}
+                                placeholder={compact ? 'Min 8 chars' : 'Min 8 chars, with a letter & number'}
                                 className={inputCls} required minLength={8} autoComplete="new-password" />
                         </div>
                         <div>
