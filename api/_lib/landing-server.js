@@ -7,6 +7,7 @@ import { fetchTmdbApi } from './tmdb-server.js';
 
 const INDIAN_LANGS = 'hi|te|ta|ml|kn';
 const HOT_COUNT = 6;
+const WALL_COUNT = 18;
 
 const safe = (promise) => promise.catch(() => null);
 const today = () => new Date().toISOString().slice(0, 10);
@@ -77,5 +78,11 @@ export async function getLandingData({ regionHint = null } = {}) {
         ? { ...card(heroMovie), still: await textlessBackdrop(heroMovie) }
         : null;
 
-    return { hero, hot: hot.map(card) };
+    // Poster wall for the scrolling strip: everything trending, hot first.
+    const wallSeen = new Set();
+    const wall = [...hot, ...regional, ...global]
+        .filter((m) => m?.poster_path && !wallSeen.has(m.id) && wallSeen.add(m.id))
+        .slice(0, WALL_COUNT);
+
+    return { hero, hot: hot.map(card), wall: wall.map(card) };
 }

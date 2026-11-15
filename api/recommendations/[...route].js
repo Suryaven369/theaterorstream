@@ -31,6 +31,7 @@ import { getHomeFeed } from '../_lib/home-feed-server.js';
 import { fetchTmdbApi } from '../_lib/tmdb-server.js';
 import { getQuizStarters, getQuizPeople, parseQuizLanguages } from '../_lib/quiz-server.js';
 import { getLandingData } from '../_lib/landing-server.js';
+import { getVerdictTotals, castVerdictVote } from '../_lib/verdict-votes-server.js';
 import { getRegionProviderCatalog, normalizeRegion, DEFAULT_REGION } from '../_lib/watch-providers-server.js';
 
 export const config = {
@@ -168,7 +169,9 @@ export default async function handler(req, res) {
     // --- TOS verdict: Theater / Wait for OTT / Skip (sign-in optional for personal fit) ---
     if (segment === 'tos-verdict') {
         if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
-        const tmdbId = route[1];
+        // Vercel's catch-all only matches one segment in production, so
+        // /tos-verdict/:id is rewritten to /tos-verdict?tmdbId=:id (vercel.json).
+        const tmdbId = route[1] || req.query?.tmdbId;
         if (!/^\d+$/.test(String(tmdbId || ''))) return res.status(400).json({ error: 'Missing title id' });
         try {
             const auth = req.headers?.authorization ? await requireUser(req) : { ok: false };
@@ -257,6 +260,42 @@ export default async function handler(req, res) {
         } catch (error) {
             console.warn('landing failed:', error.message);
             return res.status(200).json({ ok: true, hero: null, hot: [], degraded: true });
+        }
+    }
+
+    // --- Landing poll: live Theater / Wait for OTT / Skip totals ---
+    if (segment === 'verdict-votes') {
+        if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+        try {
+            const ids = String(req.query?.ids || '').split(',');
+            const data = await getVerdictTotals(ids);
+            res.setHeader('Cache-Control', 'no-store');
+            return res.status(200).json({ ok: true, ...data });
+        } catch (error) {
+            console.warn('verdict-votes failed:', error.message);
+            return res.status(200).json({ ok: true, totals: {}, available: false });
+        }
+    }
+
+    if (segment === 'verdict-vote') {
+        if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+        try {
+            const body = await readJsonBody(req);
+            const auth = req.headers?.authorization ? await requireUser(req) : { ok: false };
+            const ip = String(req.headers?.['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim() || null;
+            const data = await castVerdictVote({
+                tmdbId: body.tmdbId,
+                choice: body.choice,
+                voterId: body.voterId,
+                userId: auth.ok ? auth.user.id : null,
+                ip,
+            });
+            res.setHeader('Cache-Control', 'no-store');
+            return res.status(200).json({ ok: true, ...data });
+        } catch (error) {
+            const status = error.statusCode || 500;
+            if (status >= 500) console.error('verdict-vote failed:', error);
+            return res.status(status).json({ error: error.message || 'Could not save your vote' });
         }
     }
 
@@ -435,7 +474,7 @@ export default async function handler(req, res) {
             'for-you', 'tonight', 'family', 'trending-personalized',
             'similar/:tmdbId', 'mood/:moodId', 'perfect-tonight',
             'discovery/:section', 'events', 'taste-profile', 'dashboard',
-            'chat', 'streaming-services', 'providers', 'home', 'tonight-picks', 'movie-search', 'quiz-starters', 'quiz-people', 'queue', 'tos-verdict/:tmdbId',
+            'chat', 'streaming-services', 'providers', 'home', 'tonight-picks', 'movie-search', 'quiz-starters', 'quiz-people', 'landing', 'verdict-votes', 'verdict-vote', 'queue', 'tos-verdict/:tmdbId',
         ],
     });
 }

@@ -67,6 +67,10 @@
             "destination": "/api/sitemap-lists.xml"
         },
         {
+            "source": "/api/recommendations/tos-verdict/:tmdbId",
+            "destination": "/api/recommendations/tos-verdict?tmdbId=:tmdbId"
+        },
+        {
             "source": "/api/tmdb/(.*)",
             "destination": "/api/tmdb?path=$1"
         },

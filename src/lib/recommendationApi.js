@@ -230,9 +230,50 @@ export async function getLandingData() {
             headers: { Accept: 'application/json' },
         });
         const payload = await res.json().catch(() => ({}));
-        return res.ok ? { hero: payload.hero || null, hot: payload.hot || [] } : { hero: null, hot: [] };
+        return res.ok
+            ? { hero: payload.hero || null, hot: payload.hot || [], wall: payload.wall || [] }
+            : { hero: null, hot: [], wall: [] };
     } catch {
-        return { hero: null, hot: [] };
+        return { hero: null, hot: [], wall: [] };
+    }
+}
+
+/** Landing poll totals → { totals: { [tmdbId]: { theater, ott, skip } }, available }. */
+export async function getVerdictTotals(tmdbIds = []) {
+    if (!tmdbIds.length) return { totals: {}, available: true };
+    try {
+        const res = await fetch(`${resolveApiBase()}/api/recommendations/verdict-votes?ids=${tmdbIds.join(',')}`, {
+            headers: { Accept: 'application/json' },
+            cache: 'no-store',
+        });
+        const payload = await res.json().catch(() => ({}));
+        return { totals: payload.totals || {}, available: payload.available !== false };
+    } catch {
+        return { totals: {}, available: false };
+    }
+}
+
+/** Cast / change a landing poll vote ('theater' | 'ott' | 'skip'). Sign-in optional. */
+export async function castVerdictVote({ tmdbId, choice, voterId }) {
+    let token = null;
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        token = session?.access_token || null;
+    } catch { /* guest */ }
+    try {
+        const res = await fetch(`${resolveApiBase()}/api/recommendations/verdict-vote`, {
+            method: 'POST',
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({ tmdbId, choice, voterId }),
+        });
+        const payload = await res.json().catch(() => ({}));
+        return res.ok ? { ok: true, ...payload } : { ok: false, error: payload.error || 'Could not save your vote' };
+    } catch (error) {
+        return { ok: false, error: error.message };
     }
 }
 

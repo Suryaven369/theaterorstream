@@ -10,13 +10,14 @@ export const config = {
 const STATIC_PAGES = [
     { url: '/', priority: '1.0', changefreq: 'daily' },
     { url: '/upcoming', priority: '0.9', changefreq: 'daily' },
-    { url: '/coming-soon', priority: '0.9', changefreq: 'daily' },
     { url: '/search', priority: '0.8', changefreq: 'weekly' },
     { url: '/parent-guide', priority: '0.8', changefreq: 'weekly' },
     { url: '/parent-guide/violence', priority: '0.6', changefreq: 'weekly' },
     { url: '/parent-guide/sex-nudity', priority: '0.6', changefreq: 'weekly' },
     { url: '/parent-guide/profanity', priority: '0.6', changefreq: 'weekly' },
     { url: '/parent-guide/frightening', priority: '0.6', changefreq: 'weekly' },
+    // Sign up / log in (the landing page at / links here too).
+    { url: '/auth', priority: '0.6', changefreq: 'monthly' },
     { url: '/about', priority: '0.5', changefreq: 'monthly' },
     { url: '/privacy', priority: '0.3', changefreq: 'yearly' },
     { url: '/terms', priority: '0.3', changefreq: 'yearly' },

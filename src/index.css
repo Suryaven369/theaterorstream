@@ -1,5 +1,5 @@
 /* Import font - Inter only per design rules */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -735,4 +735,19 @@ a, button, [role="button"], label, select {
     -webkit-user-select: none;
     user-select: none;
   }
+}
+
+/* Landing page: slow poster marquee (paused on hover, off for reduced motion). */
+@keyframes lp-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.lp-marquee {
+  animation: lp-marquee 70s linear infinite;
+}
+.lp-marquee:hover {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-marquee { animation: none; }
 }
