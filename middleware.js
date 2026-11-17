@@ -302,6 +302,19 @@ async function handlePost(supabase, pathname, pageUrl) {
     return ogHtml({ title, description, image, url: pageUrl, type: 'article' });
 }
 
+const COLLECTION_UUID_RE =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const COLLECTION_OG_SELECT = `
+    id, name, description, is_public, is_watch_party, cover_image, banner_image, user_id,
+    collection_movies (
+      movie_id,
+      movie_title,
+      poster_path,
+      media_type
+    )
+`;
+
 function buildCollectionOgDescription(collection, movies, username) {
     const movieCount = movies.length;
     const about = String(collection.description || '').trim();
@@ -420,8 +433,9 @@ async function handleCollection(supabase, pathname, pageUrl, searchParams) {
         DEFAULT_OG_IMAGE;
 
     const description = buildCollectionOgDescription(collection, movies, username);
-    const kind = collection.is_watch_party ? 'Watch Party' : 'Collection';
-    const title = `${collection.name} · ${kind}`;
+    const title = collection.is_watch_party
+        ? `Join ${collection.name} · Watch Party`
+        : `${collection.name} · Collection`;
 
     return ogHtml({
         title,
