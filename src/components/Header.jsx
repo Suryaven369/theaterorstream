@@ -78,15 +78,23 @@ const Header = () => {
             <span className="text-[var(--color-theater)]">Theater</span>
             <span className="text-[var(--color-text-muted)]"> or Stream</span>
           </span>
-          <span
-            title="TheaterOrStream is in beta"
-            className="rounded-full border px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none tracking-wider text-[var(--color-theater)]"
-            style={{
-              borderColor: 'color-mix(in srgb, var(--color-theater) 40%, transparent)',
-              backgroundColor: 'color-mix(in srgb, var(--color-theater) 10%, transparent)',
-            }}
-          >
-            Beta
+          <span className="group relative inline-flex" aria-label="Beta">
+            <span
+              aria-hidden="true"
+              className="flex h-5 w-5 items-center justify-center rounded-full border text-[12px] font-bold leading-none text-[var(--color-theater)]"
+              style={{
+                borderColor: 'color-mix(in srgb, var(--color-theater) 40%, transparent)',
+                backgroundColor: 'color-mix(in srgb, var(--color-theater) 10%, transparent)',
+              }}
+            >
+              β
+            </span>
+            <span
+              role="tooltip"
+              className="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md bg-black/90 px-2 py-1 text-[11px] font-medium text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+            >
+              Beta
+            </span>
           </span>
         </Link>
 
