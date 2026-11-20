@@ -305,6 +305,13 @@ export default function LandingPage() {
                             <span style={{ color: GOLD }}>Theater</span>
                             <span className="text-[#9299a6]"> or Stream</span>
                         </span>
+                        <span
+                            title="TheaterOrStream is in beta"
+                            className="rounded-full border px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none tracking-wider"
+                            style={{ color: GOLD, borderColor: `${GOLD}66`, backgroundColor: `${GOLD}1a` }}
+                        >
+                            Beta
+                        </span>
                     </Link>
                     <nav className="flex items-center gap-1 text-[14px] sm:gap-5">
                         <Link to="/?tab=explore" className="hidden text-white/75 hover:text-white sm:inline">Browse</Link>

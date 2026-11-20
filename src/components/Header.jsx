@@ -78,6 +78,16 @@ const Header = () => {
             <span className="text-[var(--color-theater)]">Theater</span>
             <span className="text-[var(--color-text-muted)]"> or Stream</span>
           </span>
+          <span
+            title="TheaterOrStream is in beta"
+            className="rounded-full border px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none tracking-wider text-[var(--color-theater)]"
+            style={{
+              borderColor: 'color-mix(in srgb, var(--color-theater) 40%, transparent)',
+              backgroundColor: 'color-mix(in srgb, var(--color-theater) 10%, transparent)',
+            }}
+          >
+            Beta
+          </span>
         </Link>
 
         {/* Navigation */}
