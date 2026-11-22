@@ -5,92 +5,12 @@ import HomeRegionPicker from './HomeRegionPicker';
 import HomeComingSoonSidebar from './HomeComingSoonSidebar';
 import HomeExploreBrowseSidebar from './HomeExploreBrowseSidebar';
 import { ExploreCollectionsPanel } from './ExplorePanels';
+import { browseSectionKind, getSectionMovies } from './sectionUtils';
 
-const FALLBACK_REGION_ORDER = ['IN', 'US', 'GB', 'CA', 'AU'];
 const VALID_PANELS = new Set(['feed', 'collections']);
-
-/** Classify a CMS row for My Feed filtering. */
-function browseSectionKind(section) {
-  const blob = `${section.slug || ''} ${section.name || ''} ${section.api_source || ''}`.toLowerCase();
-  const api = String(section.api_source || '').toLowerCase();
-
-  if (section.slug === 'coming-soon' || /coming|upcoming|soon/.test(blob)) return 'coming';
-  if (/airing.?today/.test(blob) || api === 'airing_today') return 'skip';
-
-  // OTT / streaming platform rows (Netflix, Hotstar, “Trending on OTTs”, etc.)
-  if (/^provider_/.test(api)) return 'ott';
-  if (
-    /hotstar|netflix|prime|amazon|disney|hulu|hbo|\bmax\b|apple|paramount|peacock|jiocinema|sonyliv|zee5/.test(blob)
-    || /trending on|on ott|\botts?\b|streaming/.test(blob)
-  ) {
-    return 'ott';
-  }
-
-  if (api === 'now_playing' || /theater|theatre|now.?play|cinema|in.?theater/.test(blob)) {
-    return 'theater';
-  }
-  if (/editor|editors.?pick|curat(ed)?|staff.?pick|tos.?pick/.test(blob)) {
-    return 'editors';
-  }
-  // Hot Right Now — avoid matching Hotstar (already handled as ott)
-  if (/\bhot\b|right.?now|trend/.test(blob) || api === 'trending' || api === 'trending_live' || api === 'popular') {
-    return 'hot';
-  }
-  return 'other';
-}
 
 /** My Feed keeps only these three rails. */
 const ALLOWED_BROWSE_KINDS = new Set(['hot', 'theater', 'editors']);
-
-/** Prefer selected region; if empty, use first region that has titles. */
-function getSectionMovies(section, regionCode) {
-  const byRegion = section.movies_by_region || {};
-  const selected = byRegion[regionCode];
-  let movies = Array.isArray(selected) && selected.length > 0 ? selected : null;
-  let usedRegion = regionCode;
-  let isFallback = false;
-
-  if (!movies) {
-    for (const code of FALLBACK_REGION_ORDER) {
-      if (code === regionCode) continue;
-      const list = byRegion[code];
-      if (Array.isArray(list) && list.length > 0) {
-        movies = list;
-        usedRegion = code;
-        isFallback = true;
-        break;
-      }
-    }
-  }
-
-  if (!movies) {
-    for (const [code, list] of Object.entries(byRegion)) {
-      if (Array.isArray(list) && list.length > 0) {
-        movies = list;
-        usedRegion = code;
-        isFallback = true;
-        break;
-      }
-    }
-  }
-
-  if (!movies) {
-    return { movies: [], usedRegion: regionCode, isFallback: false };
-  }
-
-  // In Theaters = theatrical movies only (strip any series left from older fetches)
-  const blob = `${section.slug || ''} ${section.name || ''} ${section.api_source || ''}`.toLowerCase();
-  const isTheater =
-    section.api_source === 'now_playing'
-    || section.api_source === 'on_the_air'
-    || /theater|theatre|now.?play|cinema|in.?theater/.test(blob);
-
-  if (isTheater) {
-    movies = movies.filter((m) => (m.media_type || 'movie') !== 'tv');
-  }
-
-  return { movies, usedRegion, isFallback };
-}
 
 function panelFromSearch(searchParams) {
   const view = (searchParams.get('view') || 'feed').toLowerCase();

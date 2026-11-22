@@ -26,15 +26,16 @@ const NEWS_LIMIT = 3;
 export async function getFriendsActivity(userId, { limit = FRIENDS_LIMIT } = {}) {
     const supabase = getSupabaseAdmin();
 
-    let followingIds = [];
-    if (userId) {
-        const { data } = await supabase
-            .from('user_follows')
-            .select('following_id')
-            .eq('follower_id', userId)
-            .limit(500);
-        followingIds = [...new Set((data || []).map((r) => r.following_id).filter(Boolean))];
-    }
+    // The official (verified) account is a brand, not a friend — never in this row.
+    const [{ data: followRows }, { data: officialRows }] = await Promise.all([
+        userId
+            ? supabase.from('user_follows').select('following_id').eq('follower_id', userId).limit(500)
+            : Promise.resolve({ data: [] }),
+        supabase.from('user_profiles').select('id').eq('is_verified', true),
+    ]);
+    const officialIds = new Set((officialRows || []).map((r) => r.id));
+    const followingIds = [...new Set((followRows || []).map((r) => r.following_id))]
+        .filter((id) => id && !officialIds.has(id));
     const mode = followingIds.length ? 'friends' : 'community';
 
     const scope = (query, col = 'user_id') => {
@@ -42,11 +43,14 @@ export async function getFriendsActivity(userId, { limit = FRIENDS_LIMIT } = {})
         return userId ? query.neq(col, userId) : query;
     };
 
+    // Diary visibility the viewer may see: followers-only logs count for friends.
+    const allowedVis = mode === 'friends' ? ['public', 'followers'] : ['public'];
+
     const [logsRes, watchedRes, likedRes] = await Promise.all([
         scope(supabase
             .from('movie_logs')
             .select('user_id, tmdb_id, media_type, movie_title, poster_path, rating, review_text, created_at, season_number')
-            .eq('visibility', 'public')
+            .in('visibility', allowedVis)
             .order('created_at', { ascending: false })
             .limit(120)),
         scope(supabase
@@ -99,16 +103,33 @@ export async function getFriendsActivity(userId, { limit = FRIENDS_LIMIT } = {})
     const userIds = [...new Set([...entries.values()].map((e) => e.userId))];
     if (!userIds.length) return { mode, items: [] };
 
-    const { data: profiles } = await supabase
-        .from('user_profiles')
-        .select('id, username, display_name, avatar_url, avatar_id, activity_visibility')
-        .in('id', userIds);
+    // "Watched" rows have no privacy of their own, so a film logged privately
+    // would leak through them. Drop any film whose diary log the viewer can't
+    // see (unless they can see another log of it — those are in `logged`).
+    const logged = new Set((logsRes.data || []).map((r) => `${r.user_id}:${r.tmdb_id}`));
+    const tmdbIds = [...new Set([...entries.values()].map((e) => e.tmdbId))];
+    const [{ data: profiles }, { data: hiddenLogs }] = await Promise.all([
+        supabase
+            .from('user_profiles')
+            .select('id, username, display_name, avatar_url, avatar_id, activity_visibility, is_verified')
+            .in('id', userIds),
+        supabase
+            .from('movie_logs')
+            .select('user_id, tmdb_id')
+            .in('user_id', userIds)
+            .in('tmdb_id', tmdbIds)
+            .not('visibility', 'in', `(${allowedVis.join(',')})`),
+    ]);
+    const hidden = new Set((hiddenLogs || [])
+        .map((r) => `${r.user_id}:${r.tmdb_id}`)
+        .filter((k) => !logged.has(k)));
     const byId = new Map((profiles || []).map((p) => [p.id, p]));
 
     // Respect activity privacy: friends may see "followers" activity; the
     // community row only shows public activity.
     const visible = (p) => {
-        const vis = p?.activity_visibility || 'public';
+        if (!p || p.is_verified) return false;
+        const vis = p.activity_visibility || 'public';
         if (vis === 'private') return false;
         if (vis === 'followers') return mode === 'friends';
         return true;
@@ -118,7 +139,9 @@ export async function getFriendsActivity(userId, { limit = FRIENDS_LIMIT } = {})
     const seenFilms = new Set();
     const items = [];
     [...entries.values()]
-        .filter((e) => e.posterPath && e.title && visible(byId.get(e.userId)))
+        .filter((e) => e.posterPath && e.title
+            && !hidden.has(`${e.userId}:${e.tmdbId}`)
+            && visible(byId.get(e.userId)))
         .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')))
         .forEach((e) => {
             if (items.length >= limit || seenFilms.has(e.tmdbId)) return;

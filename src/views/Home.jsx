@@ -106,9 +106,10 @@ const Home = () => {
     return undefined;
   }, [user?.id, dispatch, activeTab]);
 
-  // Explore sections from Supabase (skip edge CDN so admin publishes show immediately)
+  // CMS sections from Supabase (skip edge CDN so admin publishes show immediately).
+  // Explore shows the rails; Feed uses the In Theaters rail.
   useEffect(() => {
-    if (activeTab !== 'explore') return undefined;
+    if (activeTab !== 'explore' && activeTab !== 'feed') return undefined;
     const now = Date.now();
     const isCacheValid = cachedSections && cachedTimestamp && (now - cachedTimestamp < SECTIONS_CACHE_TTL);
     if (isCacheValid) {
@@ -201,7 +202,11 @@ const Home = () => {
       ) : activeTab === 'feed' ? (
         <section className="page-below-header lg:pt-10 px-3 sm:px-8 py-4 sm:py-8">
           <Suspense fallback={<TabFallback />}>
-            <HomeFeed />
+            <HomeFeed
+              selectedRegion={selectedRegion}
+              cmsSections={cmsSections}
+              loadingSections={loadingSections}
+            />
           </Suspense>
         </section>
       ) : (

@@ -9,6 +9,7 @@ import { useAuth } from '../../context/AuthContext';
 import { CollectionCover } from './ExplorePanels';
 import VideoPlay from '../VideoPlay';
 import { readHomeFeedCache, writeHomeFeedCache } from '../../lib/homeFeedCache';
+import { getInTheaters } from './sectionUtils';
 
 const POSTER = 'https://image.tmdb.org/t/p/w342';
 
@@ -66,7 +67,18 @@ function FriendFilm({ item }) {
                 {item.user.username ? (
                     <Link to={`/${item.user.username}/profile`} className="shrink-0"><Avatar user={item.user} /></Link>
                 ) : <Avatar user={item.user} />}
-                <div className="flex min-w-0 items-center gap-1 text-[11px] text-white/55">
+                <div className="min-w-0 flex-1">
+                {item.user.username ? (
+                    <Link
+                        to={`/${item.user.username}/profile`}
+                        className="block truncate text-[11px] font-medium leading-tight text-white/80 hover:text-white"
+                    >
+                        @{item.user.username}
+                    </Link>
+                ) : (
+                    <span className="block truncate text-[11px] font-medium leading-tight text-white/80">{item.user.name}</span>
+                )}
+                <div className="flex min-w-0 items-center gap-1 text-[11px] leading-tight text-white/55">
                     {item.rating != null && (
                         <span className="inline-flex items-center gap-0.5 text-[var(--accent-green)]">
                             <FaStar className="text-[9px]" />{Number(item.rating).toFixed(1).replace(/\.0$/, '')}
@@ -78,7 +90,28 @@ function FriendFilm({ item }) {
                         <span className="truncate">{timeAgo(item.at)}</span>
                     )}
                 </div>
+                </div>
             </div>
+        </div>
+    );
+}
+
+/** Poster tile for the In Theaters row. */
+function TheaterFilm({ movie }) {
+    const mediaType = movie.media_type || 'movie';
+    const to = titlePath(mediaType, movie.title, movie.tmdb_id, movie.release_date);
+    const year = String(movie.release_date || '').slice(0, 4);
+    return (
+        <div className="w-[96px] shrink-0 snap-start sm:w-auto">
+            <Link to={to} className="group block" title={movie.title}>
+                <div className="relative aspect-[2/3] overflow-hidden rounded-md bg-white/5 ring-1 ring-white/10 transition group-hover:ring-[var(--accent-green)]">
+                    {movie.poster_path && (
+                        <img src={`${POSTER}${movie.poster_path}`} alt={movie.title} className="h-full w-full object-cover" loading="lazy" />
+                    )}
+                </div>
+                <h3 className="mt-1.5 truncate text-[12px] font-medium leading-tight text-white/85 group-hover:text-[var(--accent-green)]">{movie.title}</h3>
+                {year && <p className="text-[11px] leading-tight text-white/40">{year}</p>}
+            </Link>
         </div>
     );
 }
@@ -178,9 +211,9 @@ const Skeleton = ({ className, count }) => (
 
 /**
  * Feed tab — a short Letterboxd-style home:
- * New from friends → New trailers → Latest news (3) → Latest lists (6).
+ * New from friends → In theaters now → New trailers → Latest news (3) → Latest lists (6).
  */
-export default function HomeFeed() {
+export default function HomeFeed({ selectedRegion, cmsSections = [], loadingSections = false }) {
     const { user, isAuthenticated } = useAuth();
     const imageURL = useSelector((s) => s.movieData.imageURL);
     const key = user?.id || 'guest';
@@ -210,6 +243,10 @@ export default function HomeFeed() {
     const loading = !data;
     const friends = data?.friends || { mode: 'community', items: [] };
     const friendsTitle = friends.mode === 'friends' ? 'New from friends' : 'Popular with members';
+    const regionCode = selectedRegion?.code || 'IN';
+    const theaters = getInTheaters(cmsSections, regionCode);
+    const theaterMovies = theaters.movies.slice(0, 6);
+    const theatersLoading = loadingSections && !cmsSections.length;
 
     return (
         <div className="mx-auto max-w-5xl space-y-9 sm:space-y-12">
@@ -237,7 +274,25 @@ export default function HomeFeed() {
                 )}
             </section>
 
-            {/* 2. New trailers */}
+            {/* 2. In theaters now — the region's In Theaters rail */}
+            {(theatersLoading || theaterMovies.length > 0) && (
+                <section>
+                    <SectionHeader
+                        title="In theaters now"
+                        subtitle={theaters.isFallback
+                            ? `Showing ${theaters.usedRegion} releases (none for ${regionCode} yet)`
+                            : `Playing in cinemas${selectedRegion?.name ? ` in ${selectedRegion.name}` : ''}`}
+                        action={<Link to="/?tab=explore" className="text-[11px] font-medium uppercase tracking-wider text-white/45 hover:text-white">More</Link>}
+                    />
+                    <Row desktopCols="sm:grid-cols-6">
+                        {theatersLoading
+                            ? <Skeleton className="aspect-[2/3] w-[96px] sm:w-auto" count={6} />
+                            : theaterMovies.map((m) => <TheaterFilm key={`${m.media_type || 'movie'}-${m.tmdb_id}`} movie={m} />)}
+                    </Row>
+                </section>
+            )}
+
+            {/* 3. New trailers */}
             {(loading || data.trailers?.length > 0) && (
                 <section>
                     <SectionHeader title="New trailers" subtitle="Fresh picks and the most popular trailers this fortnight" />
@@ -249,7 +304,7 @@ export default function HomeFeed() {
                 </section>
             )}
 
-            {/* 3. Latest news — 3 stories, opens the source */}
+            {/* 4. Latest news — 3 stories, opens the source */}
             {(loading || data.news?.length > 0) && (
                 <section>
                     <SectionHeader title="Latest news" />
@@ -261,7 +316,7 @@ export default function HomeFeed() {
                 </section>
             )}
 
-            {/* 4. Latest public lists */}
+            {/* 5. Latest public lists */}
             {(lists === null || lists.length > 0) && (
                 <section>
                     <SectionHeader
