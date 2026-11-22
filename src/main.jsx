@@ -10,6 +10,7 @@ import { store } from "./store/store.jsx";
 
 import { AuthProvider } from "./context/AuthContext.jsx";
 import { ToastProvider } from "./components/Toast.jsx";
+import CookieConsentBanner from "./components/CookieConsentBanner.jsx";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
@@ -17,6 +18,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
       <AuthProvider>
         <ToastProvider>
           <RouterProvider router={router} />
+          <CookieConsentBanner />
         </ToastProvider>
       </AuthProvider>
     </Provider>

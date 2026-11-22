@@ -8,13 +8,31 @@
   <!-- Google Site Verification -->
   <meta name="google-site-verification" content="SJZnCCOapzUF4fK2N4qMPVeG9SrOEUi_2dMx3fKVq6M" />
 
-  <!-- Google tag (gtag.js) -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-B308BL6TYF"></script>
+  <!-- Google tag (gtag.js) — only loads after the visitor accepts analytics
+       cookies (see src/lib/cookieConsent.js). Consent Mode defaults to denied. -->
   <script>
     window.dataLayer = window.dataLayer || [];
     function gtag() { dataLayer.push(arguments); }
-    gtag('js', new Date());
-    gtag('config', 'G-B308BL6TYF');
+    gtag('consent', 'default', {
+      analytics_storage: 'denied',
+      ad_storage: 'denied',
+      ad_user_data: 'denied',
+      ad_personalization: 'denied'
+    });
+    window.tosLoadAnalytics = function () {
+      gtag('consent', 'update', { analytics_storage: 'granted' });
+      if (window.__tosGaLoaded) return;
+      window.__tosGaLoaded = true;
+      var s = document.createElement('script');
+      s.async = true;
+      s.src = 'https://www.googletagmanager.com/gtag/js?id=G-B308BL6TYF';
+      document.head.appendChild(s);
+      gtag('js', new Date());
+      gtag('config', 'G-B308BL6TYF');
+    };
+    try {
+      if (localStorage.getItem('tos_cookie_consent') === 'granted') window.tosLoadAnalytics();
+    } catch (e) { /* storage blocked: stay denied */ }
   </script>
 
   <!-- Favicon -->

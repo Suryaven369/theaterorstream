@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import SeoHead from '../components/SeoHead';
+import { openCookieSettings } from '../lib/cookieConsent';
 
 const UPDATED = 'July 10, 2026';
 const SITE = 'https://www.theaterorstream.com';
@@ -173,7 +174,7 @@ export function PrivacyPage() {
                         'Vercel — application hosting and edge delivery.',
                         'TMDB — movie/TV metadata and images (subject to TMDB’s terms; we do not sell your personal data to TMDB).',
                         'Cloudinary or similar — image hosting where used.',
-                        'Google Analytics — aggregated traffic analytics when enabled.',
+                        'Google Analytics — aggregated traffic analytics, only if you accept analytics cookies.',
                     ]}
                 />
                 <P>
@@ -184,10 +185,25 @@ export function PrivacyPage() {
             <section>
                 <H>6. Cookies &amp; similar tech</H>
                 <P>
-                    We use cookies and local storage for login sessions, preferences (e.g. recent searches),
-                    and analytics. You can control cookies through your browser; disabling some may limit
-                    features like staying signed in.
+                    <strong className="text-white/85">Essential (always on):</strong> we use your browser&rsquo;s
+                    local storage to keep you signed in and to remember preferences such as your region, recent
+                    searches and cached pages. The Service doesn&rsquo;t work properly without these, so they
+                    don&rsquo;t need consent.
                 </P>
+                <P>
+                    <strong className="text-white/85">Analytics (optional):</strong> with your consent, we use
+                    Google Analytics cookies (<code>_ga</code>, <code>_ga_*</code>) to understand how the site
+                    is used. Google Analytics doesn&rsquo;t load until you choose &ldquo;Accept&rdquo; in the
+                    cookie banner. You can change your choice at any time; withdrawing consent stops analytics
+                    and removes its cookies.
+                </P>
+                <button
+                    type="button"
+                    onClick={openCookieSettings}
+                    className="mt-1 rounded-full border border-white/20 px-4 py-2 text-sm font-medium text-white/85 hover:bg-white/10"
+                >
+                    Cookie settings
+                </button>
             </section>
             <section>
                 <H>7. Data retention</H>

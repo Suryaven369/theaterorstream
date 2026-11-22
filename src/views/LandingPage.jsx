@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom';
 import { FaStar, FaArrowRight, FaPlus } from 'react-icons/fa';
 import SeoHead from '../components/SeoHead';
+import { openCookieSettings } from '../lib/cookieConsent';
 import AuthForm, { AUTH_MODE_TITLES } from '../components/auth/AuthForm';
 import { getLandingData, getTosVerdict, getVerdictTotals, castVerdictVote } from '../lib/recommendationApi';
 import { generateSlugWithId } from '../lib/slugUtils';
@@ -490,6 +491,7 @@ export default function LandingPage() {
                         <Link to="/terms" className="hover:text-white">Terms</Link>
                         <Link to="/attributions" className="hover:text-white">Attributions</Link>
                         <button type="button" onClick={() => goToForm('login')} className="text-left hover:text-white">Log in</button>
+                        <button type="button" onClick={openCookieSettings} className="text-left hover:text-white">Cookie settings</button>
                     </div>
                 </div>
                 <p

@@ -1,5 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
+import { openCookieSettings } from "../lib/cookieConsent";
 
 const Footer = () => {
   return (
@@ -21,6 +22,7 @@ const Footer = () => {
             <Link to="/privacy" className="hover:text-white transition-colors">Privacy</Link>
             <Link to="/terms" className="hover:text-white transition-colors">Terms</Link>
             <Link to="/attributions" className="hover:text-white transition-colors">TMDB</Link>
+            <button type="button" onClick={openCookieSettings} className="hover:text-white transition-colors">Cookie settings</button>
           </nav>
 
           <p className="text-sm text-white/30 text-center md:text-right">
