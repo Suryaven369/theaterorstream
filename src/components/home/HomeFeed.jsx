@@ -8,12 +8,10 @@ import { generateSlugWithId } from '../../lib/slugUtils';
 import { useAuth } from '../../context/AuthContext';
 import { CollectionCover } from './ExplorePanels';
 import VideoPlay from '../VideoPlay';
+import { readHomeFeedCache, writeHomeFeedCache } from '../../lib/homeFeedCache';
 
 const POSTER = 'https://image.tmdb.org/t/p/w342';
 
-// Session cache so switching tabs doesn't reload the page.
-let cache = null; // { key, at, data, lists }
-const CACHE_MS = 5 * 60 * 1000;
 
 function titlePath(mediaType, title, tmdbId, date) {
     const slug = generateSlugWithId(title || '', tmdbId, String(date || '').slice(0, 4));
@@ -186,7 +184,7 @@ export default function HomeFeed() {
     const { user, isAuthenticated } = useAuth();
     const imageURL = useSelector((s) => s.movieData.imageURL);
     const key = user?.id || 'guest';
-    const fresh = cache && cache.key === key && Date.now() - cache.at < CACHE_MS ? cache : null;
+    const fresh = readHomeFeedCache(key);
 
     const [data, setData] = useState(fresh?.data || null);
     const [lists, setLists] = useState(fresh?.lists || null);
@@ -200,7 +198,7 @@ export default function HomeFeed() {
             getRecentPublicCollections(6).catch(() => []),
         ]).then(([feed, recentLists]) => {
             const safeLists = (recentLists || []).slice(0, 6);
-            if (feed.ok) cache = { key, at: Date.now(), data: feed, lists: safeLists };
+            if (feed.ok) writeHomeFeedCache({ key, data: feed, lists: safeLists });
             if (!alive) return;
             setData(feed);
             setLists(safeLists);

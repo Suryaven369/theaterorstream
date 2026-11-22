@@ -1040,6 +1040,51 @@ export async function approveFeedArticleCandidate(candidate) {
     return finalizeArticleApproval(supabase, article, { regenerateOnly: false });
 }
 
+/**
+ * Admin → Trailers (showcase_trailers) controls the Feed's "New trailers" row.
+ * Approving a trailer in the RSS inbox pins it to the top of that list, live;
+ * the admin can then hide or reorder it on the Trailers page.
+ */
+async function addTrailerPostToShowcase(supabase, article) {
+    const { data: post } = await supabase
+        .from('trailer_posts')
+        .select('tmdb_id, media_type, title, poster_path, backdrop_path, release_date, youtube_key, trailer_name, trailer_url, published_at')
+        .eq('tmdb_id', String(article.tmdb_id))
+        .eq('media_type', article.media_type || 'movie')
+        .maybeSingle();
+    if (!post?.youtube_key || !post.title) return;
+
+    const { data: first } = await supabase
+        .from('showcase_trailers')
+        .select('display_order')
+        .order('display_order', { ascending: true })
+        .limit(1);
+    const topOrder = (first?.[0]?.display_order ?? 1) - 1;
+    const releaseDate = /^\d{4}-\d{2}-\d{2}$/.test(post.release_date || '') ? post.release_date : null;
+
+    const { error } = await supabase
+        .from('showcase_trailers')
+        .upsert({
+            tmdb_id: String(post.tmdb_id),
+            media_type: post.media_type || 'movie',
+            title: post.title,
+            poster_path: post.poster_path || null,
+            backdrop_path: post.backdrop_path || null,
+            release_date: releaseDate,
+            trailer_key: post.youtube_key,
+            trailer_name: post.trailer_name || null,
+            trailer_published_at: post.published_at || null,
+            youtube_url: post.trailer_url || `https://www.youtube.com/watch?v=${post.youtube_key}`,
+            thumbnail_url: `https://img.youtube.com/vi/${post.youtube_key}/maxresdefault.jpg`,
+            thumbnail_fallback_url: `https://img.youtube.com/vi/${post.youtube_key}/hqdefault.jpg`,
+            category: 'latest',
+            display_order: topOrder,
+            is_active: true,
+            updated_at: new Date().toISOString(),
+        }, { onConflict: 'tmdb_id,trailer_key' });
+    if (error) throw new Error(error.message);
+}
+
 async function finalizeArticleApproval(supabase, article, { regenerateOnly = false } = {}) {
     let bodyHtml = article.body_html || '';
     const updates = {
@@ -1123,6 +1168,9 @@ async function finalizeArticleApproval(supabase, article, { regenerateOnly = fal
             // Migration 20261112000000 not applied yet.
             await setLive({ is_active: true, updated_at: now });
         }
+        await addTrailerPostToShowcase(supabase, article).catch((err) => {
+            console.warn('[rss] showcase add failed:', err.message);
+        });
     }
 
     return {

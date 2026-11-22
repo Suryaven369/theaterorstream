@@ -337,7 +337,7 @@ export async function getRegionProviders(region) {
  * Feed tab: friends' films, popular new trailers, latest news.
  * Works signed out (community row instead of friends).
  */
-export async function getHomeFeed() {
+export async function getHomeFeed({ fresh = false } = {}) {
     let token = null;
     try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -345,6 +345,8 @@ export async function getHomeFeed() {
     } catch { /* guest */ }
     try {
         const response = await fetch(`${resolveApiBase()}/api/recommendations/home?regionHint=${getUserRegionCode()}`, {
+            // Admin preview skips the browser cache so edits show right away.
+            ...(fresh ? { cache: 'no-store' } : {}),
             headers: {
                 Accept: 'application/json',
                 ...(token ? { Authorization: `Bearer ${token}` } : {}),

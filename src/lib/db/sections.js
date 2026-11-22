@@ -383,15 +383,16 @@ export const getShowcaseTrailers = async (activeOnly = false) => {
     return data || [];
 };
 
-// Add a trailer candidate (from the admin browser) to the public showcase
+// Add a trailer candidate (from the admin browser) to the top of the public
+// showcase — the Feed shows only the first 8 active, so new picks go first.
 export const createShowcaseTrailer = async (trailer) => {
     const { data: existing } = await supabase
         .from('showcase_trailers')
         .select('display_order')
-        .order('display_order', { ascending: false })
+        .order('display_order', { ascending: true })
         .limit(1);
 
-    const nextOrder = existing?.[0]?.display_order ? existing[0].display_order + 1 : 1;
+    const nextOrder = (existing?.[0]?.display_order ?? 1) - 1;
 
     const { data, error } = await supabase
         .from('showcase_trailers')

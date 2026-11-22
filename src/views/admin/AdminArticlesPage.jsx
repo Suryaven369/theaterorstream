@@ -14,7 +14,7 @@ import {
     regenerateFeedArticleSummary,
     toggleFeedArticleActive,
     deleteFeedArticle,
-} from "../../lib/supabase";
+} from "../../lib/db/rss";
 import { triggerRssRefresh } from "../../lib/adminSyncApi";
 import { useToast } from "../../components/Toast";
 import ConfirmationModal from "../../components/ConfirmationModal";

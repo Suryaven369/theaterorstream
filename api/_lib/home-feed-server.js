@@ -1,7 +1,7 @@
 /**
  * Feed tab ("home") — a short, Letterboxd-style page instead of an endless feed:
  *   1. New from friends  — what people you follow watched / logged / rated
- *   2. New trailers      — admin-approved trailers first, then the most
+ *   2. New trailers      — Admin → Trailers showcase first, then the most
  *                          popular trailers released this fortnight
  *   3. Latest news       — 3 real news stories, linking out to the source
  * (Latest public lists are loaded on the client from the existing helper.)
@@ -11,9 +11,8 @@ import { fetchRssTrailers } from './content-server.js';
 
 const FRIENDS_LIMIT = 12;
 const TRAILER_LIMIT = 4;
-// Admin-approved trailers always show (newest approval first), up to this many.
+// Admin showcase trailers always show (in admin order), up to this many.
 const APPROVED_TRAILER_MAX = 8;
-const APPROVED_TRAILER_DAYS = 14;
 const NEWS_LIMIT = 3;
 
 // ---------------------------------------------------------------------------
@@ -150,44 +149,44 @@ export async function getFriendsActivity(userId, { limit = FRIENDS_LIMIT } = {})
 // New trailers — most popular launches of the last two weeks
 // ---------------------------------------------------------------------------
 
-/** Trailers an admin approved in the last 14 days, newest approval first. */
-async function getApprovedTrailers(supabase) {
-    const since = new Date(Date.now() - APPROVED_TRAILER_DAYS * 864e5).toISOString();
+/**
+ * Admin → Trailers ("Showcase") is the single control for this row: every
+ * active showcase trailer, in the admin's drag order. Approving a trailer in
+ * Admin → Trailer Sources adds it to the showcase (see rss-server.js).
+ */
+async function getShowcaseTrailers(supabase) {
     const { data, error } = await supabase
-        .from('trailer_posts')
-        .select('tmdb_id, media_type, title, release_date, published_at, youtube_key, trailer_name, approved_at')
+        .from('showcase_trailers')
+        .select('tmdb_id, media_type, title, release_date, trailer_key, trailer_name, trailer_published_at, thumbnail_url, thumbnail_fallback_url')
         .eq('is_active', true)
-        .not('youtube_key', 'is', null)
-        .gte('approved_at', since)
-        .order('approved_at', { ascending: false })
+        .order('display_order', { ascending: true })
         .limit(APPROVED_TRAILER_MAX);
     if (error) {
-        // approved_at missing until migration 20261112000000 is applied.
-        if (!/approved_at/.test(error.message || '')) console.warn('[home] approved trailers failed:', error.message);
+        console.warn('[home] showcase trailers failed:', error.message);
         return [];
     }
-    return (data || []).map((p) => ({
+    return (data || []).filter((p) => p.trailer_key).map((p) => ({
         tmdbId: String(p.tmdb_id),
         mediaType: p.media_type === 'tv' ? 'tv' : 'movie',
         title: p.title,
         releaseDate: p.release_date || null,
         trailerName: p.trailer_name || 'Trailer',
-        youtubeKey: p.youtube_key,
-        thumbnail: `https://img.youtube.com/vi/${p.youtube_key}/maxresdefault.jpg`,
-        thumbnailFallback: `https://img.youtube.com/vi/${p.youtube_key}/hqdefault.jpg`,
-        publishedAt: p.published_at || null,
+        youtubeKey: p.trailer_key,
+        thumbnail: p.thumbnail_url || `https://img.youtube.com/vi/${p.trailer_key}/maxresdefault.jpg`,
+        thumbnailFallback: p.thumbnail_fallback_url || `https://img.youtube.com/vi/${p.trailer_key}/hqdefault.jpg`,
+        publishedAt: p.trailer_published_at || null,
         approved: true,
     }));
 }
 
 /**
- * Approved trailers lead (all of them, up to 8); popular new trailers fill the
- * rest so the section always has at least `limit` cards.
+ * Admin's showcase trailers lead (all active ones, up to 8, in their order);
+ * popular new trailers fill the rest so the row always has `limit` cards.
  */
 export async function getPopularNewTrailers({ limit = TRAILER_LIMIT } = {}) {
     const supabase = getSupabaseAdmin();
     const [approved, popular] = await Promise.all([
-        getApprovedTrailers(supabase),
+        getShowcaseTrailers(supabase),
         getMostPopularTrailers(supabase, { limit: limit + APPROVED_TRAILER_MAX }),
     ]);
     const seen = new Set();

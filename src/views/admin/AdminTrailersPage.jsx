@@ -10,6 +10,7 @@ import {
     reorderShowcaseTrailers,
     saveFullMovieToLibrary,
 } from "../../lib/supabase";
+import HomeFeedPreview from "../../components/admin/HomeFeedPreview";
 
 const FULL_APPEND = "credits,videos,images,release_dates,keywords,reviews,similar,recommendations";
 
@@ -28,6 +29,9 @@ const DAYS_BACK_OPTIONS = [
     { value: 30, label: "Last 30 days" },
     { value: 0, label: "All time" },
 ];
+
+// Matches APPROVED_TRAILER_MAX in api/_lib/home-feed-server.js.
+const HOME_TRAILER_MAX = 8;
 
 const CandidateCard = ({ item, alreadyShowcased, onAdd, adding }) => {
     const trailer = item.featured_trailer;
@@ -75,7 +79,7 @@ const CandidateCard = ({ item, alreadyShowcased, onAdd, adding }) => {
     );
 };
 
-const ShowcaseRow = ({ item, index, onToggle, onDelete, onDragStart, onDragOver, onDrop, dragging }) => {
+const ShowcaseRow = ({ item, index, onHome, onToggle, onDelete, onDragStart, onDragOver, onDrop, dragging }) => {
     return (
         <div
             draggable
@@ -103,8 +107,13 @@ const ShowcaseRow = ({ item, index, onToggle, onDelete, onDragStart, onDragOver,
                     {item.category} &middot; {item.media_type === "tv" ? "TV" : "Movie"}
                 </p>
             </div>
-            <span className={`text-[10px] px-2 py-1 rounded-full shrink-0 ${item.is_active ? "bg-green-500/20 text-green-400" : "bg-white/5 text-white/40"}`}>
-                {item.is_active ? "Live" : "Hidden"}
+            <span
+                className={`text-[10px] px-2 py-1 rounded-full shrink-0 ${
+                    onHome ? "bg-green-500/20 text-green-400" : item.is_active ? "bg-yellow-500/15 text-yellow-400" : "bg-white/5 text-white/40"
+                }`}
+                title={item.is_active && !onHome ? `Only the first ${HOME_TRAILER_MAX} live trailers show. Drag this one up to show it.` : undefined}
+            >
+                {onHome ? "On home" : item.is_active ? "Live · not shown" : "Hidden"}
             </span>
             <button
                 onClick={() => onToggle(item)}
@@ -139,6 +148,7 @@ const AdminTrailersPage = () => {
     const [searching, setSearching] = useState(false);
     const [syncingId, setSyncingId] = useState(null);
     const [syncMessage, setSyncMessage] = useState(null);
+    const [previewKey, setPreviewKey] = useState(0);
 
     const loadShowcase = useCallback(async () => {
         setLoadingShowcase(true);
@@ -146,6 +156,12 @@ const AdminTrailersPage = () => {
         setShowcased(data);
         setLoadingShowcase(false);
     }, []);
+
+    // After any edit: reload the list and the live home-feed preview.
+    const afterEdit = useCallback(() => {
+        loadShowcase();
+        setPreviewKey((k) => k + 1);
+    }, [loadShowcase]);
 
     const loadCandidates = useCallback(async (sort, days) => {
         setLoadingCandidates(true);
@@ -161,6 +177,8 @@ const AdminTrailersPage = () => {
 
     useEffect(() => { loadShowcase(); }, [loadShowcase]);
     useEffect(() => { loadCandidates(sortBy, daysBack); }, [sortBy, daysBack, loadCandidates]);
+
+    const homeIds = new Set(showcased.filter((s) => s.is_active).slice(0, HOME_TRAILER_MAX).map((s) => s.id));
 
     const isShowcased = (item) =>
         showcased.some((s) => s.tmdb_id === String(item.tmdb_id) && s.trailer_key === item.featured_trailer?.key);
@@ -187,7 +205,7 @@ const AdminTrailersPage = () => {
         });
         setAddingKey(null);
         if (result.success) {
-            loadShowcase();
+            afterEdit();
         } else {
             alert(`Failed to add trailer: ${result.error?.message || "Unknown error"}`);
         }
@@ -195,13 +213,13 @@ const AdminTrailersPage = () => {
 
     const handleToggle = async (item) => {
         await toggleShowcaseTrailerActive(item.id);
-        loadShowcase();
+        afterEdit();
     };
 
     const handleDelete = async (item) => {
         if (!confirm(`Remove "${item.title}" from the showcase?`)) return;
         await deleteShowcaseTrailer(item.id);
-        loadShowcase();
+        afterEdit();
     };
 
     const handleSearch = async (e) => {
@@ -266,18 +284,21 @@ const AdminTrailersPage = () => {
         setDragIndex(null);
         setOverIndex(null);
         await reorderShowcaseTrailers(reordered.map((r) => r.id));
-        loadShowcase();
+        afterEdit();
     };
 
     return (
         <div className="p-4 sm:p-6 max-w-7xl mx-auto">
             <div className="mb-6">
-                <h1 className="text-xl font-bold text-white">Showcase Trailers</h1>
+                <h1 className="text-xl font-bold text-white">Home Feed Trailers</h1>
                 <p className="text-sm text-white/40 mt-1">
-                    Pick which trailers appear on the Home feed. Only trailers listed under "Showcased" below are
-                    ever shown to users — the candidate browser on the left is just a preview of what's available.
+                    This page controls the "New trailers" row on the home feed. The first 8 live trailers under
+                    "Showcased" show first, in this order; if there are fewer than 4, popular new trailers fill the
+                    gap. Approving a trailer in RSS Sources also adds it to the top of this list.
                 </p>
             </div>
+
+            <HomeFeedPreview refreshKey={previewKey} />
 
             <div className="mb-6 bg-[#1a1a1a] rounded-xl border border-white/10 p-4">
                 <h2 className="text-sm font-semibold text-white/70 mb-1">Sync a movie/show from TMDB</h2>
@@ -433,6 +454,7 @@ const AdminTrailersPage = () => {
                                     key={item.id}
                                     item={item}
                                     index={index}
+                                    onHome={item.is_active && homeIds.has(item.id)}
                                     dragging={dragIndex === index || overIndex === index}
                                     onToggle={handleToggle}
                                     onDelete={handleDelete}
