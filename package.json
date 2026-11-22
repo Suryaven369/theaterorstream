@@ -16,7 +16,8 @@
     "backfill:embeddings": "node scripts/backfill-embeddings.mjs",
     "test": "vitest run",
     "reembed:library": "node scripts/reembed-library.mjs",
-    "eval:recs": "node scripts/eval-recs.mjs"
+    "eval:recs": "node scripts/eval-recs.mjs",
+    "eval:real": "node scripts/eval-real.mjs"
   },
   "dependencies": {
     "@reduxjs/toolkit": "^2.2.6",

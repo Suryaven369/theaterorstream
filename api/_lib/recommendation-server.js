@@ -18,7 +18,10 @@ import { getUserStreamingSetup } from './streaming-services-server.js';
 import { generateCandidates, passesDealbreakers, passesLanguage, strictLanguages } from './reco/candidates.js';
 import { effectiveMaxRuntime } from '../../src/lib/tasteQuiz.js';
 import { attachVectors, computeUserVector, VECTOR_PROVIDER } from './reco/embeddings.js';
-import { scoreCandidates, mmrSelect, cosine } from './reco/scoring.js';
+import {
+    scoreCandidates, mmrSelect, cosine, clusterTopGenres, interleaveByCluster, familiarityTarget,
+} from './reco/scoring.js';
+import { buildTasteSignals } from './reco/signals.js';
 import { buildVerdict, fetchCriticScores } from './reco/tos-verdict.js';
 import { TONIGHT_MOODS, TONIGHT_COMPANY, RECO_CONFIG } from './reco/config.js';
 import { z } from 'zod';
@@ -677,8 +680,9 @@ async function loadUserContext(supabase, userId, { regionHint = null } = {}) {
         }),
         supabase.from('ratings').select('*').eq('user_id', userId).order('updated_at', { ascending: false }).limit(200),
         // "Seen" history — never recommend these back. Best-effort (missing tables ignored).
-        supabase.from('user_watched_movies').select('movie_id').eq('user_id', userId).limit(2000),
-        supabase.from('movie_logs').select('tmdb_id').eq('user_id', userId).limit(2000),
+        // Watch history is also the main taste signal (reco/signals.js).
+        supabase.from('user_watched_movies').select('movie_id, media_type, watched_at').eq('user_id', userId).limit(2000),
+        supabase.from('movie_logs').select('tmdb_id, media_type, rating, created_at').eq('user_id', userId).limit(2000),
         supabase
             .from('user_liked_movies')
             .select('movie_id, media_type, liked_at')
@@ -845,14 +849,108 @@ async function loadUserContext(supabase, userId, { regionHint = null } = {}) {
         .slice(0, 30)
         .map((id) => ({ id, weight: weightAt(skippedEvents.find((e) => String(e.tmdb_id) === id)?.created_at, 0.2) }));
 
+    // Taste signals (reco/signals.js): every watched film counts (weaker), ratings
+    // — TOS and diary — are judged on the user's own scale, likes are strong.
+    // TV rows are left out: TMDB ids are per type, so a show id could pick up a
+    // film's vector. Each film is dated by when it first appeared in history.
+    const films = new Map();
+    const film = (id, at) => {
+        const key = String(id || '');
+        if (!key) return null;
+        const f = films.get(key) || { id: key, at: at || null };
+        if (at && (!f.at || new Date(at) < new Date(f.at))) f.at = at;
+        films.set(key, f);
+        return f;
+    };
+    (watchedRows || []).filter((r) => r.media_type !== 'tv').forEach((r) => {
+        const f = film(r.movie_id, r.watched_at);
+        if (f) f.watched = true;
+    });
+    (logRows || []).filter((r) => r.media_type !== 'tv').forEach((r) => {
+        const f = film(r.tmdb_id, r.created_at);
+        if (!f) return;
+        f.watched = true;
+        if (r.rating != null) f.logRating = Number(r.rating);
+    });
+    (likedRows || []).filter((r) => r.media_type !== 'tv').forEach((r) => {
+        const f = film(r.movie_id, r.liked_at);
+        if (f) f.liked = true;
+    });
+    (ratings || []).forEach((r) => {
+        const overall = computeOverallFromRatingRow(r);
+        const f = overall != null ? film(r.movie_id, r.updated_at) : null;
+        if (f) f.tosRating = overall;
+    });
+    strongNegative.forEach((e) => { const f = film(e.tmdb_id, e.created_at); if (f) f.disliked = true; });
+    // Quiz favourites act like likes until real history takes over.
+    quizLoved.forEach((id) => { const f = film(id, quiz?.savedAt); if (f) f.liked = true; });
+    quizDisliked.forEach((id) => { const f = film(id, quiz?.savedAt); if (f) f.disliked = true; });
+    const tasteSignals = buildTasteSignals([...films.values()]);
+
     let userVectorInfo = null;
     try {
         userVectorInfo = await computeUserVector(supabase, {
-            loved: lovedTmdbIds.slice(0, 60).map((id) => ({ id, weight: weightAt(lovedAt.get(id)) })),
-            disliked: [...negativeItems, ...skippedItems],
+            loved: tasteSignals.loved.slice(0, 120),
+            disliked: [...tasteSignals.disliked.slice(0, 40), ...skippedItems],
         });
     } catch (err) {
         console.warn('[reco] user vector unavailable:', err.message);
+    }
+
+    // Per-cluster facts: each cluster's main genres (for the popular pool) and
+    // seeds; plus how well-known the user's films usually are (familiarity).
+    const tasteClusters = userVectorInfo?.clusters || [];
+    const lovedWeight = new Map(tasteSignals.loved.map((x) => [x.id, x.weight]));
+    let clusterGenres = [];
+    let familiarity = null;
+    let lovedAnchors = [];
+    const historyIds = [...new Set([
+        ...tasteClusters.flatMap((c) => c.members),
+        ...[...films.values()].filter((f) => f.watched || f.liked || f.tosRating != null).map((f) => f.id),
+    ])].slice(0, 400);
+    if (historyIds.length) {
+        try {
+            const facts = new Map();
+            for (let i = 0; i < historyIds.length; i += 200) {
+                // eslint-disable-next-line no-await-in-loop
+                const { data: rows } = await supabase
+                    .from('movies_library')
+                    .select('tmdb_id, media_type, title, vote_count, genre_ids, genres')
+                    .in('tmdb_id', historyIds.slice(i, i + 200));
+                (rows || []).filter((r) => r.media_type !== 'tv').forEach((r) => facts.set(String(r.tmdb_id), r));
+            }
+            const genresById = new Map([...facts].map(([id, r]) => [id, extractGenreIds(r).map(Number)]));
+            if (tasteClusters.length > 1) clusterGenres = clusterTopGenres(tasteClusters, genresById);
+            familiarity = familiarityTarget([...films.values()]
+                .filter((f) => f.watched || f.liked || f.tosRating != null)
+                .map((f) => facts.get(f.id)?.vote_count));
+            // "Because you loved X" may only name films they liked or rated above
+            // their own average — not ones they merely watched.
+            const ratingsAll = [...films.values()].map((f) => f.tosRating ?? f.logRating).filter((r) => r != null);
+            const meanRating = ratingsAll.length ? ratingsAll.reduce((a, b) => a + b, 0) / ratingsAll.length : 7;
+            const anchorOk = (id) => {
+                const f = films.get(id);
+                const r = f?.tosRating ?? f?.logRating;
+                return !!f && (f.liked || (r != null && r >= meanRating));
+            };
+            lovedAnchors = (userVectorInfo?.lovedVectors || [])
+                .filter((x) => facts.get(x.id)?.title && anchorOk(x.id))
+                .sort((a, b) => b.weight - a.weight)
+                .slice(0, 60)
+                .map((x) => ({ id: x.id, title: facts.get(x.id).title, vector: x.vector }));
+        } catch (err) {
+            console.warn('[reco] cluster facts unavailable:', err.message);
+        }
+    }
+    // Seed the TMDB neighbour pools from every side of the taste, not just the biggest.
+    let seeds = tasteSeeds.slice(0, 8);
+    if (tasteClusters.length > 1) {
+        const perCluster = Math.max(2, Math.floor(8 / tasteClusters.length));
+        const clusterSeeds = tasteClusters.flatMap((c) => c.members
+            .slice().sort((a, b) => (lovedWeight.get(b) || 0) - (lovedWeight.get(a) || 0))
+            .slice(0, perCluster)
+            .map((id) => ({ tmdbId: id, mediaType: 'movie', score: lovedWeight.get(id) || 0 })));
+        if (clusterSeeds.length) seeds = clusterSeeds.slice(0, 10);
     }
 
     return {
@@ -885,7 +983,11 @@ async function loadUserContext(supabase, userId, { regionHint = null } = {}) {
         seenIds,
         lovedGenreSets,
         dislikedGenreSets,
-        tasteSeeds: tasteSeeds.slice(0, 8),
+        tasteSeeds: seeds,
+        tasteClusters,
+        clusterGenres,
+        familiarity,
+        lovedAnchors,
         suppressTmdbIds: signals.suppressTmdbIds || new Set(),
         userEmbedding: userVectorInfo?.vector || parseEmbeddingVector(baseProfile.embedding),
         userEmbeddingProvider: userVectorInfo?.vector ? VECTOR_PROVIDER : (baseProfile.embedding_provider || null),
@@ -1080,21 +1182,26 @@ async function fetchCandidateMovies(supabase, context, options) {
         });
     } else if (useEmbeddingPool) {
         if (context.userEmbedding) {
-            const literal = embeddingToRpcLiteral(context.userEmbedding);
-            if (literal) {
+            // Nearest films to each side of the taste (cluster centroids, sized by
+            // the cluster's share) — one averaged vector would only find the middle.
+            const clusters = context.userEmbeddingProvider === VECTOR_PROVIDER ? (context.tasteClusters || []) : [];
+            const queries = clusters.length > 1
+                ? clusters.map((c) => ({ vector: c.centroid, count: Math.max(40, Math.round(candidateLimit * c.weight) + 30) }))
+                : [{ vector: context.userEmbedding, count: candidateLimit }];
+            const results = await Promise.all(queries.map(async ({ vector, count }) => {
+                const literal = embeddingToRpcLiteral(vector);
+                if (!literal) return [];
                 const { data: matchRows, error } = await supabase.rpc('match_movies_by_embedding', {
                     query_embedding: literal,
-                    match_count: candidateLimit,
+                    match_count: count,
                     filter_media_type: mediaType,
                     filter_provider: context.userEmbeddingProvider,
                 });
-
-                if (!error && matchRows?.length) {
-                    matchRows.forEach((row) => {
-                        remember(row.tmdb_id, mediaType, Number(row.similarity) || 0);
-                    });
-                }
-            }
+                return error ? [] : (matchRows || []);
+            }));
+            results.flat().forEach((row) => {
+                remember(row.tmdb_id, mediaType, Number(row.similarity) || 0);
+            });
         }
 
         // Phase 2 candidate generator: loved-film neighbours, shared-keyword
@@ -1122,9 +1229,10 @@ async function fetchCandidateMovies(supabase, context, options) {
                     lovedKeywords,
                     prefs: context.prefs || {},
                     topGenreIds: topGenreIds(context.profile?.genre_weights, 3).map(Number),
+                    clusterGenres: context.clusterGenres || [],
                     exclude: new Set([...(context.seenIds || []), ...(context.suppressTmdbIds || [])]),
                 });
-                const pseudo = { neighbours: 0.46, keywords: 0.42, platforms: 0.38 };
+                const pseudo = { neighbours: 0.46, keywords: 0.42, platforms: 0.38, popular: 0.38 };
                 generated.cards.forEach((card, id) => remember(id, 'movie', pseudo[card._source] ?? 0.38));
                 context._liteCards = generated.cards;
                 const known = context._knownAvailable || new Map();
@@ -1446,20 +1554,24 @@ async function scoreAndRankMovies(supabase, movies, context, options = {}) {
     if (context.userVector && !isSeedMode && movies.length) {
         await attachVectors(supabase, movies);
         movies.forEach((m) => { m._fresh = freshnessBonus(m) > 0; });
+        const clusters = context.tasteClusters?.length > 1 ? context.tasteClusters : null;
         const scored = scoreCandidates(movies, context.userVector, {
             pattern: context.prefs?.pattern,
             ...(tonight || {}),
-        });
+        }, RECO_CONFIG, { clusters, familiarity: context.familiarity ?? null });
         scored.forEach((m) => {
             const bonus = tasteNudge(m, context.prefs);
             if (bonus) m.score = Math.round((m.score + bonus) * 1000) / 1000;
         });
         scored.sort((a, b) => (b.score - a.score) || (Number(a.tmdb_id) - Number(b.tmdb_id)));
-        const ranked = skipDiversity
-            ? scored.slice(0, limit)
-            : diversifyRanking(scored, limit, topGenreIds(context.profile.genre_weights, 2));
+        // Several tastes: each gets its fair share of the row (Netflix-style).
+        // One taste: the genre-diversity pass as before.
+        let ranked;
+        if (skipDiversity) ranked = scored.slice(0, limit);
+        else if (clusters) ranked = interleaveByCluster(scored, clusters, limit);
+        else ranked = diversifyRanking(scored, limit, topGenreIds(context.profile.genre_weights, 2));
         return ranked.map((movie) => toPublicItem(movie, {
-            reason: buildReason(context.profile, movie, {
+            reason: becauseYouLoved(movie, context.lovedAnchors) || buildReason(context.profile, movie, {
                 content: movie.scores.similarity,
                 genre: movie.scores.similarity,
                 axis: 0,
@@ -1559,6 +1671,25 @@ async function scoreAndRankMovies(supabase, movies, context, options = {}) {
             seedGenreIds,
         }),
     }));
+}
+
+/**
+ * "Because you loved X": the user's loved film most like this pick, when it's
+ * genuinely close (film-to-film cosine ≥ ANCHOR_MIN_COSINE). Null otherwise.
+ */
+// Calibrated on real picks (2026-11-22): film-to-film cosines run ~0.55–0.72;
+// ≥ 0.63 reads as a genuine likeness (The Tomorrow War ← The Adam Project).
+const ANCHOR_MIN_COSINE = 0.63;
+function becauseYouLoved(movie, anchors) {
+    if (!movie?.vector || !anchors?.length) return null;
+    let best = null;
+    let bestSim = ANCHOR_MIN_COSINE;
+    anchors.forEach((a) => {
+        if (String(a.id) === String(movie.tmdb_id)) return;
+        const sim = cosine(a.vector, movie.vector);
+        if (sim >= bestSim) { bestSim = sim; best = a; }
+    });
+    return best ? `Because you loved ${best.title}` : null;
 }
 
 /** Drop internal fields; expose availability ({id,name,logo}) for cards. */

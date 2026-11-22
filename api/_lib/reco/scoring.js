@@ -68,6 +68,158 @@ export function buildUserVector(loved, disliked = [], { dislikedWeight = RECO_CO
     return normalize(combined);
 }
 
+// ---------------------------------------------------------------------------
+// Taste clusters (multi-interest). One averaged vector lands *between* tastes
+// (horror + rom-com → neither), so loved films are split into a few clusters
+// and a candidate is scored against the cluster it fits best.
+// ---------------------------------------------------------------------------
+
+/**
+ * Spherical k-means over loved films. items: [{ id, vector, weight }].
+ * k grows with history (one cluster per `minPerCluster` films, up to maxK).
+ * Deterministic: seeds are the heaviest film, then the film least like any seed.
+ * Returns [{ centroid, weight (share 0–1), members: ids }], heaviest first.
+ */
+export function buildTasteClusters(items, { maxK = RECO_CONFIG.clusters.maxK, minPerCluster = RECO_CONFIG.clusters.minPerCluster, iterations = 15 } = {}) {
+    const valid = (items || []).filter((it) => it?.vector?.length && (it.weight ?? 1) > 0)
+        .map((it) => ({ ...it, weight: it.weight ?? 1, unit: normalize(it.vector) }));
+    if (!valid.length) return [];
+    const k = Math.max(1, Math.min(maxK, Math.floor(valid.length / minPerCluster)));
+
+    const byWeight = valid.slice().sort((a, b) => b.weight - a.weight || String(a.id).localeCompare(String(b.id)));
+    let centroids = [byWeight[0].unit];
+    while (centroids.length < k) {
+        let far = null;
+        let farSim = Infinity;
+        byWeight.forEach((it) => {
+            const sim = Math.max(...centroids.map((c) => cosine(c, it.unit)));
+            if (sim < farSim) { farSim = sim; far = it; }
+        });
+        if (!far) break;
+        centroids.push(far.unit);
+    }
+
+    let assign = [];
+    for (let iter = 0; iter < iterations; iter += 1) {
+        const next = valid.map((it) => {
+            let best = 0;
+            let bestSim = -Infinity;
+            centroids.forEach((c, ci) => {
+                const s = cosine(c, it.unit);
+                if (s > bestSim) { bestSim = s; best = ci; }
+            });
+            return best;
+        });
+        const changed = next.some((ci, i) => ci !== assign[i]);
+        assign = next;
+        centroids = centroids.map((c, ci) => {
+            const members = valid.filter((_, i) => assign[i] === ci).map((it) => ({ vector: it.unit, weight: it.weight }));
+            const mean = weightedMean(members);
+            return mean ? normalize(mean) : c;
+        });
+        if (!changed) break;
+    }
+
+    const total = valid.reduce((s, it) => s + it.weight, 0) || 1;
+    return centroids.map((centroid, ci) => {
+        const members = valid.filter((_, i) => assign[i] === ci);
+        return {
+            centroid,
+            weight: members.reduce((s, it) => s + it.weight, 0) / total,
+            members: members.map((it) => String(it.id)),
+        };
+    }).filter((c) => c.members.length).sort((a, b) => b.weight - a.weight);
+}
+
+/**
+ * Pull each cluster away from what the user dislikes (same idea as
+ * buildUserVector's negative term). Returns new clusters.
+ */
+export function applyDislikesToClusters(clusters, disliked = [], { dislikedWeight = RECO_CONFIG.dislikedWeight } = {}) {
+    const neg = weightedMean(disliked);
+    if (!neg) return clusters;
+    return clusters.map((c) => ({ ...c, centroid: normalize(c.centroid.map((x, i) => x - dislikedWeight * neg[i])) }));
+}
+
+/**
+ * How well a film fits the user's taste: cosine to its best-matching cluster.
+ * Small clusters get a slight discount so a one-off doesn't outrank a core taste.
+ * Returns { cosine, cluster } (cluster index into `clusters`).
+ */
+export function clusterFit(clusters, vector, { sizeDiscount = RECO_CONFIG.clusters.sizeDiscount } = {}) {
+    let best = { cosine: -Infinity, cluster: -1 };
+    clusters.forEach((c, ci) => {
+        const raw = cosine(c.centroid, vector);
+        const adjusted = raw - sizeDiscount * (1 - Math.min(1, c.weight * clusters.length));
+        if (adjusted > best.cosine) best = { cosine: adjusted, cluster: ci };
+    });
+    return best;
+}
+
+/**
+ * Each cluster's defining genres: the genres its films share most, ignoring
+ * Drama (too broad) unless it's all there is. genresById: Map(id → number[]).
+ * Returns [[genreId, …], …] aligned with `clusters`.
+ */
+export function clusterTopGenres(clusters, genresById, n = 2) {
+    return clusters.map((c) => {
+        const counts = new Map();
+        c.members.forEach((id) => (genresById.get(String(id)) || []).forEach((g) => counts.set(Number(g), (counts.get(Number(g)) || 0) + 1)));
+        const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0]).map(([g]) => g);
+        const specific = ranked.filter((g) => g !== 18);
+        return (specific.length ? specific : ranked).slice(0, n);
+    });
+}
+
+/**
+ * Give every taste its fair share of the list (Netflix-style multi-interest):
+ * slots go to clusters in proportion to their weight (largest-remainder), each
+ * cluster filling its slots with its own best-scored films. scored: best-first
+ * with `_cluster`. Films without a cluster join the biggest one.
+ * `floor` keeps a minimum share for small clusters so a side taste still shows.
+ */
+export function interleaveByCluster(scored, clusters, limit = scored.length, { floor = RECO_CONFIG.clusters.minShare } = {}) {
+    if (!clusters?.length || clusters.length === 1) return scored.slice(0, limit);
+    const buckets = clusters.map(() => []);
+    scored.forEach((c) => buckets[c._cluster >= 0 && c._cluster < clusters.length ? c._cluster : 0].push(c));
+    const raw = clusters.map((c) => Math.max(c.weight, floor));
+    const sum = raw.reduce((s, x) => s + x, 0);
+    const share = raw.map((x) => x / sum);
+    const out = [];
+    const taken = clusters.map(() => 0);
+    while (out.length < limit && buckets.some((b, i) => taken[i] < b.length)) {
+        // Next slot goes to the cluster furthest below its share so far.
+        let pickIdx = -1;
+        let deficit = -Infinity;
+        share.forEach((s, i) => {
+            if (taken[i] >= buckets[i].length) return;
+            const d = s * (out.length + 1) - taken[i];
+            if (d > deficit) { deficit = d; pickIdx = i; }
+        });
+        out.push(buckets[pickIdx][taken[pickIdx]]);
+        taken[pickIdx] += 1;
+    }
+    return out;
+}
+
+/**
+ * How well-known the user's films usually are: median log10(vote_count) of the
+ * films they watched/loved. Big-hit watchers sit near 4 (10k votes), hidden-gem
+ * hunters near 2.5. Returns null without enough data.
+ */
+export function familiarityTarget(voteCounts) {
+    const logs = (voteCounts || []).map(Number).filter((v) => v > 0).map((v) => Math.log10(v + 1)).sort((a, b) => a - b);
+    if (logs.length < 5) return null;
+    return logs[Math.floor(logs.length / 2)];
+}
+
+/** 1 when a film is as well-known as what the user usually watches, falling off either side. */
+export function familiarityFit(voteCount, target, spread = RECO_CONFIG.familiarity.spread) {
+    if (target == null) return 0.5;
+    const v = Math.log10(Math.max(0, Number(voteCount) || 0) + 1);
+    return Math.exp(-((v - target) ** 2) / (2 * spread * spread));
+}
+
 /** Bayesian-adjusted rating on 0–1: a handful of votes can't inflate it. */
 export function bayesianQuality(voteAverage, voteCount, cfg = RECO_CONFIG.quality) {
     const R = Number(voteAverage) || 0;
@@ -122,8 +274,21 @@ export function contextFit(movie, tonight = {}, cfg = RECO_CONFIG.context) {
  * with like (raw cosines from one model sit in a narrow band).
  * Returns new objects sorted best-first with { score, scores: {...} }.
  */
-export function scoreCandidates(candidates, userVector, tonight = {}, cfg = RECO_CONFIG) {
-    const raw = candidates.map((c) => (userVector && c.vector ? cosine(userVector, c.vector) : null));
+export function scoreCandidates(candidates, userVector, tonight = {}, cfg = RECO_CONFIG, { clusters = null, familiarity = null } = {}) {
+    // With taste clusters, similarity = fit to the best-matching cluster.
+    const fits = clusters?.length
+        ? candidates.map((c) => (c.vector ? clusterFit(clusters, c.vector) : null))
+        : null;
+    // Blend in the overall taste vector so small, noisy clusters can't bury a film
+    // that fits the user's taste as a whole.
+    const blend = clusters?.length ? (cfg.clusters?.globalBlend ?? 0) : 0;
+    const raw = fits
+        ? fits.map((f, i) => {
+            if (!f) return null;
+            const v = candidates[i].vector;
+            return blend && userVector && v ? (1 - blend) * f.cosine + blend * cosine(userVector, v) : f.cosine;
+        })
+        : candidates.map((c) => (userVector && c.vector ? cosine(userVector, c.vector) : null));
     const known = raw.filter((x) => x != null);
     const lo = known.length ? Math.min(...known) : 0;
     const hi = known.length ? Math.max(...known) : 1;
@@ -135,17 +300,22 @@ export function scoreCandidates(candidates, userVector, tonight = {}, cfg = RECO
         const similarity = raw[i] == null ? 0.35 : (raw[i] - lo) / span;
         const quality = bayesianQuality(c.vote_average, c.vote_count, cfg.quality);
         const ctx = contextFit(c, tonight, cfg.context);
-        let score = w.similarity * similarity + w.quality * quality + w.contextFit * ctx;
+        // Familiarity: as well-known as the user's usual films (only when we know their level).
+        const fam = familiarity != null ? familiarityFit(c.vote_count, familiarity) : null;
+        let score = w.similarity * similarity + w.quality * quality + w.contextFit * ctx
+            + (fam != null ? (w.familiarity || 0) * fam : 0);
         if (c.onYourServices?.length) score += cfg.bonuses.onYourServices;
         if (c._fresh) score += cfg.bonuses.freshRelease;
         return {
             ...c,
+            ...(fits?.[i] ? { _cluster: fits[i].cluster } : {}),
             score: Math.round(score * 1000) / 1000,
             scores: {
                 similarity: Math.round(similarity * 1000) / 1000,
                 cosine: raw[i] == null ? null : Math.round(raw[i] * 1000) / 1000,
                 quality: Math.round(quality * 1000) / 1000,
                 contextFit: Math.round(ctx * 1000) / 1000,
+                ...(fam != null ? { familiarity: Math.round(fam * 1000) / 1000 } : {}),
             },
         };
     }).sort((a, b) => b.score - a.score || String(a.tmdb_id).localeCompare(String(b.tmdb_id)));

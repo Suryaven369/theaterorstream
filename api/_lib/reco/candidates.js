@@ -8,6 +8,7 @@
  *      languages, vote_count ≥ 200, runtime ≤ their limit
  *   4. Language discover: popular + acclaimed films in the user's languages and genres
  *   5. People discover: films with the actors / directors the user picked
+ *   6. Popular per taste cluster: well-known, well-liked films in each cluster's genres
  * Languages are strict: when the user picked languages, nothing in any other
  * original language is ever shown (see strictLanguages / passesDealbreakers).
  * Hard filters (seen, disliked, platforms, dealbreakers) are applied by the caller
@@ -18,9 +19,9 @@
  */
 import { fetchTmdbApi } from '../tmdb-server.js';
 
-export const CANDIDATE_TARGET_MAX = 320;
+export const CANDIDATE_TARGET_MAX = 400;
 // Per-pool quotas so no single source crowds out the others.
-const POOL_QUOTA = { neighbours: 150, keywords: 60, platforms: 60, languages: 120, people: 60 };
+const POOL_QUOTA = { neighbours: 150, keywords: 60, platforms: 60, languages: 120, people: 60, popular: 100 };
 const SIMILAR_PER_SEED = 8; // TMDB /similar is weaker than /recommendations — keep only its top
 const NEIGHBOUR_SEEDS = 8;
 const KEYWORDS_FOR_DISCOVER = 6;
@@ -283,25 +284,56 @@ async function platformDiscoverPool(prefs, topGenreIds = []) {
 }
 
 /**
+ * Well-known, well-liked films for each taste cluster's main genres. Without
+ * this, users with no language picked only get close look-alikes and never
+ * the big popular films they actually go on to watch.
+ * clusterGenres: [[genreId, genreId], …] (one entry per cluster, heaviest first).
+ */
+async function popularClusterPool(clusterGenres, prefs) {
+    const sets = (clusterGenres || []).filter((g) => g?.length).slice(0, 4);
+    if (!sets.length) return [];
+    const langs = strictLanguages(prefs);
+    const base = {
+        include_adult: 'false',
+        'primary_release_date.lte': new Date().toISOString().slice(0, 10),
+        ...(langs ? { with_original_language: langs.join('|') } : {}),
+        ...(prefs.maxRuntime ? { 'with_runtime.lte': String(prefs.maxRuntime) } : {}),
+    };
+    const minPopular = langs ? '100' : '1500';
+    const minAcclaimed = langs ? '300' : '3000';
+    const jobs = sets.flatMap((genres) => [
+        { ...base, with_genres: genres.join(','), sort_by: 'popularity.desc', 'vote_count.gte': minPopular, page: '1' },
+        { ...base, with_genres: genres.join(','), sort_by: 'vote_count.desc', 'vote_count.gte': minAcclaimed, page: '1' },
+    ]);
+    const pages = await Promise.all(jobs.map((params) => safe(fetchTmdbApi('/discover/movie', params))));
+    // Interleave so every cluster contributes its best titles before any cluster's tail.
+    const lists = pages.map((d) => d?.results || []);
+    const out = [];
+    for (let rank = 0; rank < 20; rank += 1) lists.forEach((l) => { if (l[rank]) out.push(l[rank]); });
+    return out;
+}
+
+/**
  * Build the candidate pool for a user.
  * @param {{ lovedIds: string[], lovedKeywords: Array<Array<{id,name}>>, prefs: object,
  *           topGenreIds?: number[], exclude?: Set<string> }} input
  * @returns {Promise<{ cards: Map<string, object>, knownAvailable: Map<string, number[]>,
  *           sources: Record<string, number>, keywords: Array<{id,name,count}> }>}
  */
-export async function generateCandidates({ lovedIds = [], lovedKeywords = [], prefs = {}, topGenreIds = [], exclude = new Set() }) {
+export async function generateCandidates({ lovedIds = [], lovedKeywords = [], prefs = {}, topGenreIds = [], clusterGenres = [], exclude = new Set() }) {
     const keywords = topSharedKeywords(lovedKeywords);
-    const [neighbours, byKeyword, onPlatforms, byLanguage, byPeople] = await Promise.all([
+    const [neighbours, byKeyword, onPlatforms, byLanguage, byPeople, popular] = await Promise.all([
         lovedNeighbourPool(lovedIds.map(String)),
         keywordDiscoverPool(keywords, prefs),
         platformDiscoverPool(prefs, topGenreIds),
         languageDiscoverPool(prefs, topGenreIds),
         peopleDiscoverPool(prefs),
+        popularClusterPool(clusterGenres, prefs),
     ]);
 
     const cards = new Map();
     const knownAvailable = new Map();
-    const sources = { neighbours: 0, keywords: 0, platforms: 0, languages: 0, people: 0 };
+    const sources = { neighbours: 0, keywords: 0, platforms: 0, languages: 0, people: 0, popular: 0 };
     // Strict languages: drop other-language titles before they use up a quota.
     const langs = strictLanguages(prefs);
     const add = (list, source) => {
@@ -323,6 +355,7 @@ export async function generateCandidates({ lovedIds = [], lovedKeywords = [], pr
     add(neighbours, 'neighbours');
     add(byKeyword, 'keywords');
     add(byLanguage, 'languages');
+    add(popular, 'popular');
     add(onPlatforms, 'platforms');
 
     return { cards, knownAvailable, sources, keywords };

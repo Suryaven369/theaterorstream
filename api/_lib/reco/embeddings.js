@@ -5,7 +5,7 @@
  * batched call and persisted (library rows) or memory-cached (TMDB-only cards).
  */
 import { buildMovieDocument, embedBatchOpenAI } from '../embedding-server.js';
-import { parseVector, buildUserVector } from './scoring.js';
+import { parseVector, buildUserVector, buildTasteClusters, applyDislikesToClusters } from './scoring.js';
 
 export const VECTOR_PROVIDER = 'openai';
 const memoryVectors = new Map(); // tmdbId → vector, for titles not in the library yet
@@ -97,10 +97,13 @@ export async function computeUserVector(supabase, { loved = [], disliked = [] })
     }
 
     const pick = (list) => list
-        .map((x) => ({ vector: vectors.get(String(x.id)), weight: x.weight ?? 1 }))
+        .map((x) => ({ id: String(x.id), vector: vectors.get(String(x.id)), weight: x.weight ?? 1 }))
         .filter((x) => x.vector);
     const lovedV = pick(loved);
     const dislikedV = pick(disliked);
     const vector = buildUserVector(lovedV, dislikedV);
-    return vector ? { vector, lovedUsed: lovedV.length, dislikedUsed: dislikedV.length } : null;
+    if (!vector) return null;
+    // Taste clusters: the sides of the user's taste, each pulled away from dislikes.
+    const clusters = applyDislikesToClusters(buildTasteClusters(lovedV), dislikedV);
+    return { vector, clusters, lovedVectors: lovedV, lovedUsed: lovedV.length, dislikedUsed: dislikedV.length };
 }

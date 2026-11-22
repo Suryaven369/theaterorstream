@@ -9,10 +9,16 @@ export const RECO_CONFIG = {
     // 0.6/0.2/0.2 → hit@20 32.6%; 0.45/0.45/0.1 → 45.7%. Heavier quality scored
     // higher still, but the eval films are famous titles, so we stop here to
     // avoid everyone getting the same top-rated classics.
+    //
+    // Retuned 2026-11-22 on REAL users' histories (`npm run eval:real -- --mode
+    // folds`, 183 held-out films): with watch-history signals, taste clusters,
+    // the popular-per-cluster pool and familiarity, recall@20 2.1% → 6.7% and
+    // pool recall 15.9% → ~30%. Quality drops to 0.25 — fit to the user leads.
     weights: {
-        similarity: 0.45,
-        quality: 0.45,
+        similarity: 0.5,
+        quality: 0.25,
         contextFit: 0.1,
+        familiarity: 0.15,
     },
 
     // User vector = mean(loved) − dislikedWeight · mean(disliked), then normalised.
@@ -42,6 +48,24 @@ export const RECO_CONFIG = {
     bonuses: {
         onYourServices: 0.05,
         freshRelease: 0.03,
+    },
+
+    // Familiarity: favour films about as well-known as the user's usual ones.
+    // spread = how far (in log10 votes) before the fit halves-ish (~0.7 ≈ 5×).
+    familiarity: {
+        spread: 0.7,
+    },
+
+    // Taste clusters (multi-interest): one cluster per `minPerCluster` loved
+    // films, up to maxK. sizeDiscount trims small clusters' cosine slightly.
+    clusters: {
+        maxK: 4,
+        minPerCluster: 6,
+        sizeDiscount: 0.03,
+        // Smallest share of a list any cluster gets when interleaving.
+        minShare: 0.15,
+        // Similarity = (1 − globalBlend)·best-cluster fit + globalBlend·overall fit.
+        globalBlend: 0,
     },
 
     // MMR diversity: λ·relevance − (1−λ)·max similarity to already-picked titles.
