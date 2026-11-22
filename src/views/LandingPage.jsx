@@ -494,11 +494,11 @@ export default function LandingPage() {
                 </div>
                 <p
                     aria-hidden
-                    className="group mx-auto mt-8 max-w-7xl select-none whitespace-nowrap px-4 pb-2 text-center text-[10.5vw] font-semibold leading-[1.1] tracking-tight text-white/[0.06] sm:mt-12 sm:px-8 lg:text-[8.5rem]"
+                    className="mx-auto mt-8 max-w-7xl select-none whitespace-nowrap px-4 pb-2 text-center text-[10.5vw] font-semibold leading-[1.1] tracking-tight text-white/[0.06] sm:mt-12 sm:px-8 lg:text-[8.5rem]"
                 >
-                    {/* Hover lights up the wordmark in brand colours: Theater yellow, Stream grey. */}
-                    <span className="transition-colors duration-300 group-hover:text-[#f5c518]">Theater</span>
-                    <span className="transition-colors duration-300 group-hover:text-[#9299a6]"> or Stream</span>
+                    {/* Each half lights up on its own hover: Theater yellow, Stream grey. */}
+                    <span className="transition-colors duration-300 hover:text-[#f5c518]">Theater</span>{' '}
+                    <span className="transition-colors duration-300 hover:text-[#9299a6]">or Stream</span>
                 </p>
                 <div className="border-t border-white/[0.07]">
                     <div className="mx-auto flex max-w-7xl flex-col gap-1 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] pt-5 text-[12px] text-white/35 sm:flex-row sm:justify-between sm:px-8 sm:pb-5">
