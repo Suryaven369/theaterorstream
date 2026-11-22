@@ -171,12 +171,13 @@ function isCollectionUuid(value) {
     return COLLECTION_UUID_RE.test(String(value || ''));
 }
 
-/** Public URL for a list — prefer stable collection id when known; include ?u=owner. */
+/**
+ * Public URL for a list: `/collection/{list-name}?u=owner` — names are unique
+ * per owner (see uniqueListName). Falls back to the collection id when the
+ * owner is unknown (names collide across users), the name has no URL-safe
+ * characters, or it's a Watch Party (private invite link — keep it unguessable).
+ */
 export function collectionPublicPath(collection, ownerUsername = null) {
-    const slug = collection?.id && isCollectionUuid(collection.id)
-        ? collection.id
-        : (collection?.slug || createSlug(collection?.name) || collection?.id);
-    if (!slug) return '/';
     const u = ownerUsername
         || collection?.user_profiles?.username
         || collection?.owner?.username
@@ -185,8 +186,36 @@ export function collectionPublicPath(collection, ownerUsername = null) {
     const owner = u && String(u).replace(/^@/, '') !== 'user'
         ? String(u).replace(/^@/, '')
         : null;
+    const id = collection?.id && isCollectionUuid(collection.id) ? collection.id : null;
+    const nameSlug = createSlug(collection?.name) || collection?.slug || null;
+    const useName = nameSlug && owner && !collection?.is_watch_party;
+    const slug = useName ? nameSlug : (id || nameSlug || collection?.id);
+    if (!slug) return '/';
     if (owner) return `/collection/${slug}?u=${encodeURIComponent(owner)}`;
     return `/collection/${slug}`;
+}
+
+/**
+ * Name links need names to be unique per owner: "Horror" twice becomes
+ * "Horror (2)". `excludeId` skips the list being renamed.
+ */
+async function uniqueListName(userId, name, excludeId = null) {
+    const base = createSlug(name);
+    if (!userId || !base) return name;
+    const { data } = await supabase
+        .from('user_collections')
+        .select('id, name')
+        .eq('user_id', userId);
+    const taken = new Set((data || [])
+        .filter((c) => c.id !== excludeId)
+        .map((c) => createSlug(c.name)));
+    if (!taken.has(base)) return name;
+    for (let n = 2; n < 100; n += 1) {
+        const suffix = ` (${n})`;
+        const candidate = `${name.slice(0, LIST_NAME_MAX - suffix.length).trim()}${suffix}`;
+        if (!taken.has(createSlug(candidate))) return candidate;
+    }
+    return name;
 }
 const normalizeTags = (tags) =>
     [...new Set((Array.isArray(tags) ? tags : [])
@@ -345,7 +374,7 @@ export async function syncListPostCover(collectionId) {
 
 export const createUserCollection = async (userId, name, description = '', isPublic = false, options = {}) => {
     if (!userId) return { success: false };
-    const cleanName = name.trim().slice(0, LIST_NAME_MAX);
+    const cleanName = await uniqueListName(userId, name.trim().slice(0, LIST_NAME_MAX));
     const cleanDescription = (description || '').trim().slice(0, LIST_DESCRIPTION_MAX);
     const tags = normalizeTags(options.tags);
     const isFranchise = hasFranchiseTag(tags) || options.category === 'franchise';
@@ -777,6 +806,9 @@ export const updateUserCollection = async (collectionId, updates) => {
     const patch = existing?.is_system
         ? { description: updates.description, is_public: updates.is_public }
         : { name: updates.name, description: updates.description, is_public: updates.is_public };
+    if (patch.name && existing?.user_id) {
+        patch.name = await uniqueListName(existing.user_id, patch.name, collectionId);
+    }
 
     if (updates.cover_image !== undefined) patch.cover_image = updates.cover_image;
     if (updates.banner_image !== undefined) patch.banner_image = updates.banner_image;

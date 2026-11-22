@@ -504,12 +504,21 @@ const CollectionDetails = () => {
                     setCollection(data);
                     applyCollectionToForm(data);
                     setLoading(false);
-                    // Ensure shareable URL includes owner when we resolved without ?u=
-                    const resolvedOwner = data?.user_profiles?.username;
-                    if (data && resolvedOwner && !ownerFromQuery) {
+                    // Swap old /collection/{uuid} links (or links missing ?u=) for the
+                    // readable /collection/{list-name}?u=owner address.
+                    const resolvedOwner = data?.user_profiles?.username || ownerFromQuery;
+                    if (data && resolvedOwner) {
+                        const canonical = collectionPublicPath(data, resolvedOwner);
+                        const [canonicalPath, canonicalQuery] = canonical.split('?');
                         const next = new URLSearchParams(searchParams);
-                        next.set('u', resolvedOwner);
-                        navigate(`${location.pathname}?${next.toString()}`, { replace: true, state: location.state });
+                        new URLSearchParams(canonicalQuery || '').forEach((v, k) => next.set(k, v));
+                        const target = `${canonicalPath}?${next.toString()}`;
+                        if (target !== `${location.pathname}${location.search}`) {
+                            const canonicalSlug = decodeURIComponent(canonicalPath.split('/').pop() || '');
+                            // Seed the cache so the new address renders without a reload.
+                            setPageCache(collectionPageKey(canonicalSlug, user?.id || null, resolvedOwner), data);
+                            navigate(target, { replace: true, state: location.state });
+                        }
                     }
                 },
             });
@@ -868,11 +877,18 @@ const CollectionDetails = () => {
                 invalidatePageCache(collectionsListKey(collection.user_id, false));
             }
             if (!isTheaterCollection) {
-                const newSlug = createSlug(editName.trim());
-                if (newSlug !== slug) {
-                    const ownerKey = ownerUsername || collection.user_profiles?.username || profile?.username || null;
-                    invalidatePageCache(collectionPageKey(newSlug, user?.id || null, ownerKey));
-                    navigate(collectionPublicPath({ slug: newSlug, name: editName.trim() }, ownerKey), { replace: true });
+                // Saved name may differ from what was typed ("Horror (2)") — link from the saved row.
+                const ownerKey = ownerUsername || collection.user_profiles?.username || profile?.username || null;
+                const savedName = result.data?.name || editName.trim();
+                const nextPath = collectionPublicPath({
+                    id: collection.id,
+                    name: savedName,
+                    is_watch_party: result.data?.is_watch_party ?? editWatchParty,
+                }, ownerKey);
+                const nextSlug = decodeURIComponent(nextPath.split('?')[0].split('/').pop() || '');
+                if (nextSlug && nextSlug !== slug) {
+                    invalidatePageCache(collectionPageKey(nextSlug, user?.id || null, ownerKey));
+                    navigate(nextPath, { replace: true });
                     setIsEditing(false);
                     setSaving(false);
                     return;

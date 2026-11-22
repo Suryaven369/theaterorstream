@@ -43,17 +43,31 @@ export default async function handler() {
                 (from, to) =>
                     supabase
                         .from('user_collections')
-                        .select('name, updated_at, is_system, collection_kind')
+                        .select('name, user_id, updated_at, is_system, collection_kind, is_watch_party')
                         .eq('is_public', true)
                         .order('updated_at', { ascending: false })
                         .range(from, to),
                 { pageSize: 500, maxRows: 2000 },
             );
 
+            // Same address the app uses: /collection/{list-name}?u=owner
+            // (names are only unique per owner, so ?u= is required).
+            const ownerIds = [...new Set(lists.map((l) => l.user_id).filter(Boolean))];
+            const usernames = new Map();
+            for (let i = 0; i < ownerIds.length; i += 200) {
+                const { data: profiles } = await supabase
+                    .from('user_profiles')
+                    .select('id, username')
+                    .in('id', ownerIds.slice(i, i + 200));
+                (profiles || []).forEach((p) => usernames.set(p.id, p.username));
+            }
+
             for (const list of lists) {
-                if (list.is_system || list.collection_kind === 'watched_in_theater') continue;
+                if (list.is_system || list.collection_kind === 'watched_in_theater' || list.is_watch_party) continue;
                 const slug = createListSlug(list.name);
-                push(`/collection/${slug}`, toDate(list.updated_at), 'weekly', '0.7');
+                const owner = usernames.get(list.user_id);
+                if (!slug || !owner) continue;
+                push(`/collection/${slug}?u=${encodeURIComponent(owner)}`, toDate(list.updated_at), 'weekly', '0.7');
             }
         } catch (err) {
             console.error('sitemap-lists user_collections:', err);

@@ -32,7 +32,11 @@ function listOwnerUsername(user) {
 function listPostPath(item) {
   const owner = listOwnerUsername(item.user);
   if (item.collectionId) {
-    return collectionPublicPath({ id: item.collectionId, name: item.listTitle || item.movieTitle }, owner);
+    return collectionPublicPath({
+      id: item.collectionId,
+      name: item.listTitle || item.movieTitle,
+      is_watch_party: !!item.watchParty,
+    }, owner);
   }
   const slug = createSlug(item.listTitle || item.movieTitle || '');
   if (!slug) return '/';
